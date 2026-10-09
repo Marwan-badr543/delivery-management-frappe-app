@@ -1,0 +1,110 @@
+{
+ "actions": [],
+ "autoname": "prompt",
+ "creation": "2026-10-06 23:39:15.300801",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "delivery_date",
+  "reserved_units",
+  "effective_capacity",
+  "column_break_1",
+  "has_capacity_override",
+  "capacity_override",
+  "manually_disabled",
+  "is_full"
+ ],
+ "fields": [
+  {
+   "fieldname": "delivery_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Delivery Date",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "reserved_units",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Reserved AC Units",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "effective_capacity",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Effective Capacity",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "has_capacity_override",
+   "fieldtype": "Check",
+   "label": "Has Date Override",
+   "read_only": 1
+  },
+  {
+   "depends_on": "has_capacity_override",
+   "fieldname": "capacity_override",
+   "fieldtype": "Int",
+   "label": "Date Override Capacity",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "manually_disabled",
+   "fieldtype": "Check",
+   "in_standard_filter": 1,
+   "label": "Manually Disabled",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "is_full",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Is Full",
+   "read_only": 1
+  }
+ ],
+ "in_create": 1,
+ "links": [],
+ "modified": "2026-10-07 01:51:34.586127",
+ "modified_by": "Administrator",
+ "module": "Delivery Management",
+ "name": "AC Day Capacity",
+ "naming_rule": "Set by user",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "delete": 1,
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager"
+  },
+  {
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Delivery Manager"
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "role": "Sales User"
+  }
+ ],
+ "read_only": 1,
+ "sort_field": "delivery_date",
+ "sort_order": "DESC",
+ "states": []
+}

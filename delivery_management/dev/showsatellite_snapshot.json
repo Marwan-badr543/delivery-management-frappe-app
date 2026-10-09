@@ -1,0 +1,1376 @@
+{
+ "company": {
+  "company_name": "showsatellite",
+  "abbr": "SHD",
+  "default_currency": "BHD",
+  "country": "Bahrain"
+ },
+ "item_groups": [
+  {
+   "name": "All Item Groups",
+   "parent_item_group": "",
+   "is_group": 1,
+   "lft": 1
+  },
+  {
+   "name": "Products",
+   "parent_item_group": "All Item Groups",
+   "is_group": 0,
+   "lft": 2
+  },
+  {
+   "name": "Raw Material",
+   "parent_item_group": "All Item Groups",
+   "is_group": 1,
+   "lft": 4
+  },
+  {
+   "name": "Star Gold 4 Way",
+   "parent_item_group": "Raw Material",
+   "is_group": 0,
+   "lft": 5
+  },
+  {
+   "name": "Lucky Star 2 way",
+   "parent_item_group": "Raw Material",
+   "is_group": 0,
+   "lft": 7
+  },
+  {
+   "name": "MX 1 way",
+   "parent_item_group": "Raw Material",
+   "is_group": 0,
+   "lft": 9
+  },
+  {
+   "name": "Triax Single",
+   "parent_item_group": "Raw Material",
+   "is_group": 0,
+   "lft": 11
+  },
+  {
+   "name": "Achas fast charger",
+   "parent_item_group": "Raw Material",
+   "is_group": 0,
+   "lft": 13
+  },
+  {
+   "name": "Anker Android",
+   "parent_item_group": "Raw Material",
+   "is_group": 0,
+   "lft": 15
+  },
+  {
+   "name": "Anker Iphone",
+   "parent_item_group": "Raw Material",
+   "is_group": 0,
+   "lft": 17
+  },
+  {
+   "name": "Anker power Line",
+   "parent_item_group": "Raw Material",
+   "is_group": 0,
+   "lft": 19
+  },
+  {
+   "name": "Screen",
+   "parent_item_group": "Raw Material",
+   "is_group": 0,
+   "lft": 21
+  },
+  {
+   "name": "TICKIN BOARD",
+   "parent_item_group": "Raw Material",
+   "is_group": 0,
+   "lft": 23
+  },
+  {
+   "name": "Motherboard",
+   "parent_item_group": "Raw Material",
+   "is_group": 0,
+   "lft": 25
+  },
+  {
+   "name": "Services",
+   "parent_item_group": "All Item Groups",
+   "is_group": 0,
+   "lft": 28
+  },
+  {
+   "name": "Sub Assemblies",
+   "parent_item_group": "All Item Groups",
+   "is_group": 0,
+   "lft": 30
+  },
+  {
+   "name": "Consumable",
+   "parent_item_group": "All Item Groups",
+   "is_group": 0,
+   "lft": 32
+  },
+  {
+   "name": "Television",
+   "parent_item_group": "All Item Groups",
+   "is_group": 1,
+   "lft": 34
+  },
+  {
+   "name": "Magic Clasic",
+   "parent_item_group": "Television",
+   "is_group": 0,
+   "lft": 35
+  },
+  {
+   "name": "Magic Pro",
+   "parent_item_group": "Television",
+   "is_group": 0,
+   "lft": 37
+  },
+  {
+   "name": "Magic Unbreakable",
+   "parent_item_group": "Television",
+   "is_group": 0,
+   "lft": 39
+  },
+  {
+   "name": "Easy",
+   "parent_item_group": "Television",
+   "is_group": 0,
+   "lft": 41
+  },
+  {
+   "name": "JVC",
+   "parent_item_group": "Television",
+   "is_group": 0,
+   "lft": 43
+  },
+  {
+   "name": "Visio",
+   "parent_item_group": "Television",
+   "is_group": 0,
+   "lft": 45
+  },
+  {
+   "name": "MASER",
+   "parent_item_group": "Television",
+   "is_group": 0,
+   "lft": 47
+  },
+  {
+   "name": "Magic Pro Plus",
+   "parent_item_group": "Television",
+   "is_group": 0,
+   "lft": 49
+  },
+  {
+   "name": "Remotes",
+   "parent_item_group": "All Item Groups",
+   "is_group": 1,
+   "lft": 52
+  },
+  {
+   "name": "Magic TV",
+   "parent_item_group": "Remotes",
+   "is_group": 0,
+   "lft": 53
+  },
+  {
+   "name": "Sharp",
+   "parent_item_group": "Remotes",
+   "is_group": 0,
+   "lft": 55
+  },
+  {
+   "name": "Samsung Orginal",
+   "parent_item_group": "Remotes",
+   "is_group": 0,
+   "lft": 57
+  },
+  {
+   "name": "Samsung Normal",
+   "parent_item_group": "Remotes",
+   "is_group": 0,
+   "lft": 59
+  },
+  {
+   "name": "Sony",
+   "parent_item_group": "Remotes",
+   "is_group": 0,
+   "lft": 61
+  },
+  {
+   "name": "Skyworth",
+   "parent_item_group": "Remotes",
+   "is_group": 0,
+   "lft": 63
+  },
+  {
+   "name": "Panasonic",
+   "parent_item_group": "Remotes",
+   "is_group": 0,
+   "lft": 65
+  },
+  {
+   "name": "Classpro",
+   "parent_item_group": "Remotes",
+   "is_group": 0,
+   "lft": 67
+  },
+  {
+   "name": "Uneva",
+   "parent_item_group": "Remotes",
+   "is_group": 0,
+   "lft": 69
+  },
+  {
+   "name": "Hisense",
+   "parent_item_group": "Remotes",
+   "is_group": 0,
+   "lft": 71
+  },
+  {
+   "name": "Tcl",
+   "parent_item_group": "Remotes",
+   "is_group": 0,
+   "lft": 73
+  },
+  {
+   "name": "Haier",
+   "parent_item_group": "Remotes",
+   "is_group": 0,
+   "lft": 75
+  },
+  {
+   "name": "Startrack",
+   "parent_item_group": "Remotes",
+   "is_group": 0,
+   "lft": 77
+  },
+  {
+   "name": "LG Orginal",
+   "parent_item_group": "Remotes",
+   "is_group": 0,
+   "lft": 79
+  },
+  {
+   "name": "LG Normal",
+   "parent_item_group": "Remotes",
+   "is_group": 0,
+   "lft": 81
+  },
+  {
+   "name": "Super General",
+   "parent_item_group": "Remotes",
+   "is_group": 0,
+   "lft": 83
+  },
+  {
+   "name": "Aftroon",
+   "parent_item_group": "Remotes",
+   "is_group": 0,
+   "lft": 85
+  },
+  {
+   "name": "Toshiba",
+   "parent_item_group": "Remotes",
+   "is_group": 0,
+   "lft": 87
+  },
+  {
+   "name": "Supra",
+   "parent_item_group": "Remotes",
+   "is_group": 0,
+   "lft": 89
+  },
+  {
+   "name": "TCL Big",
+   "parent_item_group": "Remotes",
+   "is_group": 0,
+   "lft": 91
+  },
+  {
+   "name": "AC Remote",
+   "parent_item_group": "Remotes",
+   "is_group": 0,
+   "lft": 93
+  },
+  {
+   "name": "Nikai",
+   "parent_item_group": "Remotes",
+   "is_group": 0,
+   "lft": 95
+  },
+  {
+   "name": "JCV Orginal",
+   "parent_item_group": "Remotes",
+   "is_group": 0,
+   "lft": 97
+  },
+  {
+   "name": "Bein Remote Big",
+   "parent_item_group": "Remotes",
+   "is_group": 0,
+   "lft": 99
+  },
+  {
+   "name": "Bein Remote Small",
+   "parent_item_group": "Remotes",
+   "is_group": 0,
+   "lft": 101
+  },
+  {
+   "name": "DREAM Box",
+   "parent_item_group": "Remotes",
+   "is_group": 0,
+   "lft": 103
+  },
+  {
+   "name": "Starsat Normal",
+   "parent_item_group": "Remotes",
+   "is_group": 0,
+   "lft": 105
+  },
+  {
+   "name": "X96 Remote",
+   "parent_item_group": "Remotes",
+   "is_group": 0,
+   "lft": 107
+  },
+  {
+   "name": "Media Star",
+   "parent_item_group": "Remotes",
+   "is_group": 0,
+   "lft": 109
+  },
+  {
+   "name": "Starsat Big",
+   "parent_item_group": "Remotes",
+   "is_group": 0,
+   "lft": 111
+  },
+  {
+   "name": "Skybox",
+   "parent_item_group": "Remotes",
+   "is_group": 0,
+   "lft": 113
+  },
+  {
+   "name": "MI Box",
+   "parent_item_group": "Remotes",
+   "is_group": 0,
+   "lft": 115
+  },
+  {
+   "name": "Mega Plus",
+   "parent_item_group": "Remotes",
+   "is_group": 0,
+   "lft": 117
+  },
+  {
+   "name": "VIP sat",
+   "parent_item_group": "Remotes",
+   "is_group": 0,
+   "lft": 119
+  },
+  {
+   "name": "Humax Remote",
+   "parent_item_group": "Remotes",
+   "is_group": 0,
+   "lft": 121
+  },
+  {
+   "name": "Icone",
+   "parent_item_group": "Remotes",
+   "is_group": 0,
+   "lft": 123
+  },
+  {
+   "name": "Humax Big",
+   "parent_item_group": "Remotes",
+   "is_group": 0,
+   "lft": 125
+  },
+  {
+   "name": "Ching Chong",
+   "parent_item_group": "Remotes",
+   "is_group": 0,
+   "lft": 127
+  },
+  {
+   "name": "Universal Remote",
+   "parent_item_group": "Remotes",
+   "is_group": 0,
+   "lft": 129
+  },
+  {
+   "name": "AIR FLY MOUSE",
+   "parent_item_group": "Remotes",
+   "is_group": 0,
+   "lft": 131
+  },
+  {
+   "name": "BEOUT",
+   "parent_item_group": "Remotes",
+   "is_group": 0,
+   "lft": 133
+  },
+  {
+   "name": "LG Copy",
+   "parent_item_group": "Remotes",
+   "is_group": 0,
+   "lft": 135
+  },
+  {
+   "name": "APPLE REMOTE",
+   "parent_item_group": "Remotes",
+   "is_group": 0,
+   "lft": 137
+  },
+  {
+   "name": "Receivers",
+   "parent_item_group": "All Item Groups",
+   "is_group": 1,
+   "lft": 140
+  },
+  {
+   "name": "Magic Recevier",
+   "parent_item_group": "Receivers",
+   "is_group": 0,
+   "lft": 141
+  },
+  {
+   "name": "Starsat",
+   "parent_item_group": "Receivers",
+   "is_group": 0,
+   "lft": 143
+  },
+  {
+   "name": "X96",
+   "parent_item_group": "Receivers",
+   "is_group": 0,
+   "lft": 145
+  },
+  {
+   "name": "X99",
+   "parent_item_group": "Receivers",
+   "is_group": 0,
+   "lft": 147
+  },
+  {
+   "name": "BeinSports",
+   "parent_item_group": "Receivers",
+   "is_group": 0,
+   "lft": 149
+  },
+  {
+   "name": "Humax",
+   "parent_item_group": "Receivers",
+   "is_group": 0,
+   "lft": 151
+  },
+  {
+   "name": "Android",
+   "parent_item_group": "Receivers",
+   "is_group": 0,
+   "lft": 153
+  },
+  {
+   "name": "Aster",
+   "parent_item_group": "Receivers",
+   "is_group": 0,
+   "lft": 155
+  },
+  {
+   "name": "Android Hyparat",
+   "parent_item_group": "Receivers",
+   "is_group": 0,
+   "lft": 157
+  },
+  {
+   "name": "Tiger Recevier",
+   "parent_item_group": "Receivers",
+   "is_group": 0,
+   "lft": 159
+  },
+  {
+   "name": "Stand",
+   "parent_item_group": "All Item Groups",
+   "is_group": 1,
+   "lft": 162
+  },
+  {
+   "name": "Stargold stand Moving",
+   "parent_item_group": "Stand",
+   "is_group": 0,
+   "lft": 163
+  },
+  {
+   "name": "Stargold Normal",
+   "parent_item_group": "Stand",
+   "is_group": 0,
+   "lft": 165
+  },
+  {
+   "name": "Stargold Big",
+   "parent_item_group": "Stand",
+   "is_group": 0,
+   "lft": 167
+  },
+  {
+   "name": "Cabels",
+   "parent_item_group": "All Item Groups",
+   "is_group": 1,
+   "lft": 170
+  },
+  {
+   "name": "Internet Cable 1.5 M",
+   "parent_item_group": "Cabels",
+   "is_group": 0,
+   "lft": 171
+  },
+  {
+   "name": "Internet Cable 3 M",
+   "parent_item_group": "Cabels",
+   "is_group": 0,
+   "lft": 173
+  },
+  {
+   "name": "Stargold Hdmi 5 M",
+   "parent_item_group": "Cabels",
+   "is_group": 0,
+   "lft": 175
+  },
+  {
+   "name": "Stargold Hdmi 10 M",
+   "parent_item_group": "Cabels",
+   "is_group": 0,
+   "lft": 177
+  },
+  {
+   "name": "Stargold Hdmi 15 M",
+   "parent_item_group": "Cabels",
+   "is_group": 0,
+   "lft": 179
+  },
+  {
+   "name": "HDTV 10 M",
+   "parent_item_group": "Cabels",
+   "is_group": 0,
+   "lft": 181
+  },
+  {
+   "name": "HDTV 5 M",
+   "parent_item_group": "Cabels",
+   "is_group": 0,
+   "lft": 183
+  },
+  {
+   "name": "HDTV 3 M",
+   "parent_item_group": "Cabels",
+   "is_group": 0,
+   "lft": 185
+  },
+  {
+   "name": "HDTV 2 M",
+   "parent_item_group": "Cabels",
+   "is_group": 0,
+   "lft": 187
+  },
+  {
+   "name": "Computer",
+   "parent_item_group": "All Item Groups",
+   "is_group": 0,
+   "lft": 190
+  },
+  {
+   "name": "PHILPS",
+   "parent_item_group": "All Item Groups",
+   "is_group": 0,
+   "lft": 192
+  },
+  {
+   "name": "Subscription",
+   "parent_item_group": "All Item Groups",
+   "is_group": 0,
+   "lft": 194
+  },
+  {
+   "name": "BEIN",
+   "parent_item_group": "All Item Groups",
+   "is_group": 0,
+   "lft": 196
+  },
+  {
+   "name": "ADAPTER",
+   "parent_item_group": "All Item Groups",
+   "is_group": 0,
+   "lft": 198
+  },
+  {
+   "name": "ROUTER",
+   "parent_item_group": "All Item Groups",
+   "is_group": 0,
+   "lft": 200
+  },
+  {
+   "name": "DISEQC",
+   "parent_item_group": "All Item Groups",
+   "is_group": 0,
+   "lft": 202
+  },
+  {
+   "name": "DOOR LOCK",
+   "parent_item_group": "All Item Groups",
+   "is_group": 0,
+   "lft": 204
+  },
+  {
+   "name": "Repairing",
+   "parent_item_group": "All Item Groups",
+   "is_group": 0,
+   "lft": 206
+  },
+  {
+   "name": "MOSQUITO",
+   "parent_item_group": "All Item Groups",
+   "is_group": 0,
+   "lft": 208
+  },
+  {
+   "name": "Samsung",
+   "parent_item_group": "All Item Groups",
+   "is_group": 0,
+   "lft": 210
+  },
+  {
+   "name": "DishWasher",
+   "parent_item_group": "Samsung",
+   "is_group": 0,
+   "lft": 211
+  },
+  {
+   "name": "Hand Blender",
+   "parent_item_group": "All Item Groups",
+   "is_group": 0,
+   "lft": 214
+  },
+  {
+   "name": "Blender",
+   "parent_item_group": "All Item Groups",
+   "is_group": 0,
+   "lft": 216
+  },
+  {
+   "name": "Chopper",
+   "parent_item_group": "All Item Groups",
+   "is_group": 0,
+   "lft": 218
+  },
+  {
+   "name": "WATER DISPENSER",
+   "parent_item_group": "All Item Groups",
+   "is_group": 0,
+   "lft": 220
+  },
+  {
+   "name": "WooCommerce Products",
+   "parent_item_group": "All Item Groups",
+   "is_group": 0,
+   "lft": 222
+  },
+  {
+   "name": "Samsung Microwave",
+   "parent_item_group": "All Item Groups",
+   "is_group": 0,
+   "lft": 224
+  },
+  {
+   "name": "Air Conditioner",
+   "parent_item_group": "All Item Groups",
+   "is_group": 1,
+   "lft": 226
+  },
+  {
+   "name": "Air Conditioner Accessory",
+   "parent_item_group": "Air Conditioner",
+   "is_group": 0,
+   "lft": 227
+  },
+  {
+   "name": "Magic Air Conditioner",
+   "parent_item_group": "Air Conditioner",
+   "is_group": 0,
+   "lft": 229
+  },
+  {
+   "name": "MAGIC RECIVER",
+   "parent_item_group": "All Item Groups",
+   "is_group": 0,
+   "lft": 232
+  },
+  {
+   "name": "HEATER",
+   "parent_item_group": "All Item Groups",
+   "is_group": 0,
+   "lft": 234
+  },
+  {
+   "name": "TELIONIX",
+   "parent_item_group": "All Item Groups",
+   "is_group": 0,
+   "lft": 236
+  },
+  {
+   "name": "Washing Machine",
+   "parent_item_group": "All Item Groups",
+   "is_group": 0,
+   "lft": 238
+  },
+  {
+   "name": "Fixed Assets",
+   "parent_item_group": "All Item Groups",
+   "is_group": 0,
+   "lft": 240
+  },
+  {
+   "name": "building materials",
+   "parent_item_group": "All Item Groups",
+   "is_group": 0,
+   "lft": 242
+  },
+  {
+   "name": "office supplies",
+   "parent_item_group": "All Item Groups",
+   "is_group": 0,
+   "lft": 244
+  },
+  {
+   "name": "auto services",
+   "parent_item_group": "All Item Groups",
+   "is_group": 0,
+   "lft": 246
+  },
+  {
+   "name": "spareparts",
+   "parent_item_group": "All Item Groups",
+   "is_group": 0,
+   "lft": 248
+  }
+ ],
+ "warehouses": [
+  {
+   "name": "All Warehouses - SHD",
+   "warehouse_name": "All Warehouses",
+   "parent_warehouse": "",
+   "is_group": 1
+  },
+  {
+   "name": "Stores - SHD",
+   "warehouse_name": "Stores",
+   "parent_warehouse": "All Warehouses - SHD",
+   "is_group": 0
+  },
+  {
+   "name": "Work In Progress - SHD",
+   "warehouse_name": "Work In Progress",
+   "parent_warehouse": "All Warehouses - SHD",
+   "is_group": 0
+  },
+  {
+   "name": "Finished Goods - SHD",
+   "warehouse_name": "Finished Goods",
+   "parent_warehouse": "All Warehouses - SHD",
+   "is_group": 0
+  },
+  {
+   "name": "Goods In Transit - SHD",
+   "warehouse_name": "Goods In Transit",
+   "parent_warehouse": "All Warehouses - SHD",
+   "is_group": 0
+  },
+  {
+   "name": "Muharraq - SHD",
+   "warehouse_name": "Muharraq",
+   "parent_warehouse": "All Warehouses - SHD",
+   "is_group": 0
+  },
+  {
+   "name": "Nuwaidrat - SHD",
+   "warehouse_name": "Nuwaidrat",
+   "parent_warehouse": "All Warehouses - SHD",
+   "is_group": 0
+  },
+  {
+   "name": "Banijamra - SHD",
+   "warehouse_name": "Banijamra",
+   "parent_warehouse": "All Warehouses - SHD",
+   "is_group": 0
+  },
+  {
+   "name": "JIDHAFS - SHD",
+   "warehouse_name": "Jidhafs",
+   "parent_warehouse": "All Warehouses - SHD",
+   "is_group": 0
+  },
+  {
+   "name": "HamzaCenter - SHD",
+   "warehouse_name": "HamzaCenter",
+   "parent_warehouse": "All Warehouses - SHD",
+   "is_group": 0
+  },
+  {
+   "name": "Maasum - SHD",
+   "warehouse_name": "Maasum",
+   "parent_warehouse": "All Warehouses - SHD",
+   "is_group": 0
+  },
+  {
+   "name": "MaamerStore - SHD",
+   "warehouse_name": "MaamerStore",
+   "parent_warehouse": "All Warehouses - SHD",
+   "is_group": 0
+  },
+  {
+   "name": "Workshop - SHD",
+   "warehouse_name": "Workshop",
+   "parent_warehouse": null,
+   "is_group": 1
+  },
+  {
+   "name": "Workshop – Pending Receipt - SHD",
+   "warehouse_name": "Workshop – Pending Receipt",
+   "parent_warehouse": "Workshop - SHD",
+   "is_group": 0
+  },
+  {
+   "name": "Workshop – Under Repair - SHD",
+   "warehouse_name": "Workshop – Under Repair",
+   "parent_warehouse": "Workshop - SHD",
+   "is_group": 0
+  },
+  {
+   "name": "Workshop – Ready for Delivery - SHD",
+   "warehouse_name": "Workshop – Ready for Delivery",
+   "parent_warehouse": "Workshop - SHD",
+   "is_group": 0
+  }
+ ],
+ "branches": [
+  {
+   "name": "Jidhafs"
+  },
+  {
+   "name": "BaniJamra"
+  },
+  {
+   "name": "Muharraq"
+  },
+  {
+   "name": "Nuwaidrat"
+  }
+ ],
+ "pos_profiles": [
+  {
+   "name": "BaniJamra",
+   "warehouse": "Banijamra - SHD",
+   "selling_price_list": "Standard Selling",
+   "disabled": 0,
+   "flags": {
+    "posa_allow_delete": 0,
+    "posa_allow_user_to_edit_rate": 0,
+    "posa_allow_user_to_edit_additional_discount": 0,
+    "posa_use_percentage_discount": 0,
+    "posa_max_discount_allowed": 0.0,
+    "posa_scale_barcode_start": 221,
+    "posa_allow_change_posting_date": 1,
+    "posa_default_card_view": 1,
+    "posa_default_sales_order": 0,
+    "posa_allow_user_to_edit_item_discount": 0,
+    "posa_display_items_in_stock": 0,
+    "posa_allow_partial_payment": 1,
+    "posa_allow_credit_sale": 1,
+    "posa_allow_return": 1,
+    "posa_apply_customer_discount": 0,
+    "use_cashback": 0,
+    "use_customer_credit": 1,
+    "posa_hide_closing_shift": 0,
+    "posa_auto_set_batch": 1,
+    "posa_display_item_code": 1,
+    "posa_allow_zero_rated_items": 1,
+    "hide_expected_amount": 0,
+    "posa_allow_sales_order": 1,
+    "posa_show_template_items": 0,
+    "posa_hide_variants_items": 0,
+    "posa_fetch_coupon": 1,
+    "posa_allow_customer_purchase_order": 0,
+    "posa_allow_print_last_invoice": 1,
+    "posa_display_additional_notes": 1,
+    "posa_allow_write_off_change": 0,
+    "posa_new_line": 0,
+    "posa_input_qty": 0,
+    "posa_allow_print_draft_invoices": 0,
+    "posa_use_delivery_charges": 1,
+    "posa_auto_set_delivery_charges": 0,
+    "posa_allow_duplicate_customer_names": 1,
+    "posa_use_pos_awesome_payments": 1,
+    "posa_allow_make_new_payments": 1,
+    "posa_allow_reconcile_payments": 1,
+    "posa_allow_mpesa_reconcile_payments": 0,
+    "posa_allow_submissions_in_background_job": 1,
+    "posa_search_serial_no": 1,
+    "posa_search_batch_no": 1,
+    "posa_tax_inclusive": 1,
+    "posa_local_storage": 1,
+    "posa_use_server_cache": 1,
+    "posa_server_cache_duration": 1,
+    "pose_use_limit_search": 0,
+    "posa_search_limit": 500,
+    "hide_unavailable_items": 0,
+    "validate_stock_on_save": 0,
+    "ignore_pricing_rule": 0,
+    "allow_rate_change": 0,
+    "allow_discount_change": 0
+   }
+  },
+  {
+   "name": "JIDHAFS",
+   "warehouse": "JIDHAFS - SHD",
+   "selling_price_list": "Standard Selling",
+   "disabled": 0,
+   "flags": {
+    "posa_allow_delete": 0,
+    "posa_allow_user_to_edit_rate": 0,
+    "posa_allow_user_to_edit_additional_discount": 1,
+    "posa_use_percentage_discount": 0,
+    "posa_max_discount_allowed": 75.0,
+    "posa_scale_barcode_start": 221,
+    "posa_allow_change_posting_date": 1,
+    "posa_default_card_view": 1,
+    "posa_default_sales_order": 0,
+    "posa_allow_user_to_edit_item_discount": 0,
+    "posa_display_items_in_stock": 0,
+    "posa_allow_partial_payment": 1,
+    "posa_allow_credit_sale": 1,
+    "posa_allow_return": 1,
+    "posa_apply_customer_discount": 1,
+    "use_cashback": 0,
+    "use_customer_credit": 1,
+    "posa_hide_closing_shift": 0,
+    "posa_auto_set_batch": 1,
+    "posa_display_item_code": 1,
+    "posa_allow_zero_rated_items": 1,
+    "hide_expected_amount": 0,
+    "posa_allow_sales_order": 1,
+    "posa_show_template_items": 0,
+    "posa_hide_variants_items": 0,
+    "posa_fetch_coupon": 1,
+    "posa_allow_customer_purchase_order": 0,
+    "posa_allow_print_last_invoice": 1,
+    "posa_display_additional_notes": 1,
+    "posa_allow_write_off_change": 0,
+    "posa_new_line": 0,
+    "posa_input_qty": 0,
+    "posa_allow_print_draft_invoices": 0,
+    "posa_use_delivery_charges": 1,
+    "posa_auto_set_delivery_charges": 0,
+    "posa_allow_duplicate_customer_names": 1,
+    "posa_use_pos_awesome_payments": 1,
+    "posa_allow_make_new_payments": 1,
+    "posa_allow_reconcile_payments": 1,
+    "posa_allow_mpesa_reconcile_payments": 0,
+    "posa_allow_submissions_in_background_job": 1,
+    "posa_search_serial_no": 1,
+    "posa_search_batch_no": 1,
+    "posa_tax_inclusive": 1,
+    "posa_local_storage": 1,
+    "posa_use_server_cache": 1,
+    "posa_server_cache_duration": 1,
+    "pose_use_limit_search": 0,
+    "posa_search_limit": 500,
+    "hide_unavailable_items": 0,
+    "validate_stock_on_save": 0,
+    "ignore_pricing_rule": 0,
+    "allow_rate_change": 0,
+    "allow_discount_change": 0
+   }
+  },
+  {
+   "name": "Muharraq",
+   "warehouse": "Muharraq - SHD",
+   "selling_price_list": "Standard Selling",
+   "disabled": 0,
+   "flags": {
+    "posa_allow_delete": 0,
+    "posa_allow_user_to_edit_rate": 0,
+    "posa_allow_user_to_edit_additional_discount": 1,
+    "posa_use_percentage_discount": 0,
+    "posa_max_discount_allowed": 50.0,
+    "posa_scale_barcode_start": 221,
+    "posa_allow_change_posting_date": 1,
+    "posa_default_card_view": 1,
+    "posa_default_sales_order": 0,
+    "posa_allow_user_to_edit_item_discount": 0,
+    "posa_display_items_in_stock": 0,
+    "posa_allow_partial_payment": 1,
+    "posa_allow_credit_sale": 1,
+    "posa_allow_return": 1,
+    "posa_apply_customer_discount": 1,
+    "use_cashback": 0,
+    "use_customer_credit": 1,
+    "posa_hide_closing_shift": 0,
+    "posa_auto_set_batch": 1,
+    "posa_display_item_code": 1,
+    "posa_allow_zero_rated_items": 1,
+    "hide_expected_amount": 0,
+    "posa_allow_sales_order": 1,
+    "posa_show_template_items": 0,
+    "posa_hide_variants_items": 0,
+    "posa_fetch_coupon": 0,
+    "posa_allow_customer_purchase_order": 0,
+    "posa_allow_print_last_invoice": 1,
+    "posa_display_additional_notes": 1,
+    "posa_allow_write_off_change": 0,
+    "posa_new_line": 0,
+    "posa_input_qty": 1,
+    "posa_allow_print_draft_invoices": 0,
+    "posa_use_delivery_charges": 1,
+    "posa_auto_set_delivery_charges": 0,
+    "posa_allow_duplicate_customer_names": 1,
+    "posa_use_pos_awesome_payments": 1,
+    "posa_allow_make_new_payments": 1,
+    "posa_allow_reconcile_payments": 1,
+    "posa_allow_mpesa_reconcile_payments": 0,
+    "posa_allow_submissions_in_background_job": 1,
+    "posa_search_serial_no": 1,
+    "posa_search_batch_no": 1,
+    "posa_tax_inclusive": 1,
+    "posa_local_storage": 1,
+    "posa_use_server_cache": 1,
+    "posa_server_cache_duration": 1,
+    "pose_use_limit_search": 0,
+    "posa_search_limit": 500,
+    "hide_unavailable_items": 0,
+    "validate_stock_on_save": 0,
+    "ignore_pricing_rule": 0,
+    "allow_rate_change": 0,
+    "allow_discount_change": 0
+   }
+  },
+  {
+   "name": "Nuwaidrat",
+   "warehouse": "Nuwaidrat - SHD",
+   "selling_price_list": "Standard Selling",
+   "disabled": 0,
+   "flags": {
+    "posa_allow_delete": 0,
+    "posa_allow_user_to_edit_rate": 0,
+    "posa_allow_user_to_edit_additional_discount": 1,
+    "posa_use_percentage_discount": 0,
+    "posa_max_discount_allowed": 50.0,
+    "posa_scale_barcode_start": 221,
+    "posa_allow_change_posting_date": 1,
+    "posa_default_card_view": 1,
+    "posa_default_sales_order": 0,
+    "posa_allow_user_to_edit_item_discount": 0,
+    "posa_display_items_in_stock": 0,
+    "posa_allow_partial_payment": 1,
+    "posa_allow_credit_sale": 1,
+    "posa_allow_return": 1,
+    "posa_apply_customer_discount": 1,
+    "use_cashback": 0,
+    "use_customer_credit": 1,
+    "posa_hide_closing_shift": 0,
+    "posa_auto_set_batch": 1,
+    "posa_display_item_code": 1,
+    "posa_allow_zero_rated_items": 1,
+    "hide_expected_amount": 0,
+    "posa_allow_sales_order": 1,
+    "posa_show_template_items": 0,
+    "posa_hide_variants_items": 0,
+    "posa_fetch_coupon": 1,
+    "posa_allow_customer_purchase_order": 0,
+    "posa_allow_print_last_invoice": 1,
+    "posa_display_additional_notes": 1,
+    "posa_allow_write_off_change": 0,
+    "posa_new_line": 0,
+    "posa_input_qty": 0,
+    "posa_allow_print_draft_invoices": 0,
+    "posa_use_delivery_charges": 1,
+    "posa_auto_set_delivery_charges": 0,
+    "posa_allow_duplicate_customer_names": 1,
+    "posa_use_pos_awesome_payments": 1,
+    "posa_allow_make_new_payments": 1,
+    "posa_allow_reconcile_payments": 1,
+    "posa_allow_mpesa_reconcile_payments": 0,
+    "posa_allow_submissions_in_background_job": 1,
+    "posa_search_serial_no": 1,
+    "posa_search_batch_no": 1,
+    "posa_tax_inclusive": 1,
+    "posa_local_storage": 1,
+    "posa_use_server_cache": 1,
+    "posa_server_cache_duration": 1,
+    "pose_use_limit_search": 0,
+    "posa_search_limit": 500,
+    "hide_unavailable_items": 0,
+    "validate_stock_on_save": 0,
+    "ignore_pricing_rule": 0,
+    "allow_rate_change": 0,
+    "allow_discount_change": 0
+   }
+  }
+ ],
+ "items": [
+  {
+   "item_code": "COTTING A/C",
+   "item_name": "COTTING A/C 3.0 TON",
+   "item_group": "Air Conditioner",
+   "has_serial_no": 0,
+   "is_stock_item": 1,
+   "stock_uom": "Nos",
+   "rate": 40.0
+  },
+  {
+   "item_code": "COTTING A/C 1.5 TON",
+   "item_name": "COTTING A/C 1.5 TON",
+   "item_group": "Air Conditioner",
+   "has_serial_no": 0,
+   "is_stock_item": 1,
+   "stock_uom": "Nos",
+   "rate": 40.0
+  },
+  {
+   "item_code": "COTTING A/C 2.0 TON",
+   "item_name": "COTTING A/C 2.0 TON",
+   "item_group": "Air Conditioner",
+   "has_serial_no": 0,
+   "is_stock_item": 1,
+   "stock_uom": "Nos",
+   "rate": 40.0
+  },
+  {
+   "item_code": "COTTING A/C 2.5 TON",
+   "item_name": "COTTING A/C 2.5 TON",
+   "item_group": "Air Conditioner",
+   "has_serial_no": 0,
+   "is_stock_item": 1,
+   "stock_uom": "Nos",
+   "rate": 40.0
+  },
+  {
+   "item_code": "Copper Pipe",
+   "item_name": "Copper Pipe",
+   "item_group": "Air Conditioner Accessory",
+   "has_serial_no": 0,
+   "is_stock_item": 1,
+   "stock_uom": "Nos",
+   "rate": 7.0
+  },
+  {
+   "item_code": "Electric Wire",
+   "item_name": "Electric Wire",
+   "item_group": "Air Conditioner Accessory",
+   "has_serial_no": 0,
+   "is_stock_item": 1,
+   "stock_uom": "Nos",
+   "rate": 0.7
+  },
+  {
+   "item_code": "Air Conditioner Magic 1.0 TON 10 Years Compressor Warranty 7 Years indoor Unit",
+   "item_name": "Air Conditioner Magic 1.0 TON 10 Years Compressor Warranty 7 Years indoor Unit",
+   "item_group": "Magic Air Conditioner",
+   "has_serial_no": 1,
+   "is_stock_item": 1,
+   "stock_uom": "Nos",
+   "rate": 145.0
+  },
+  {
+   "item_code": "Air Conditioner Magic 1.5 TON 10 Years Compressor Warranty 7 Years indoor Unit",
+   "item_name": "Air Conditioner Magic 1.5 TON 10 Years Compressor Warranty 7 Years indoor Unit",
+   "item_group": "Magic Air Conditioner",
+   "has_serial_no": 1,
+   "is_stock_item": 1,
+   "stock_uom": "Nos",
+   "rate": 215.0
+  },
+  {
+   "item_code": "Air Conditioner Magic 1.5 TON Air Conditioner Magic 1.5 QH TON 10 Years Compressor Warranty 7 Years indoor Unit",
+   "item_name": "Air Conditioner Magic 1.5 QH TON 10 Years Compressor Warranty 7 Years indoor Unit",
+   "item_group": "Magic Air Conditioner",
+   "has_serial_no": 1,
+   "is_stock_item": 1,
+   "stock_uom": "Nos",
+   "rate": 215.0
+  },
+  {
+   "item_code": "Air Conditioner Magic 2.0 TON 10 Years Compressor Warranty 7 Years indoor And Outdoor Unit",
+   "item_name": "Air Conditioner Magic 2.0 TON 10 Years Compressor Warranty 7 Years indoor And Outdoor Unit",
+   "item_group": "Magic Air Conditioner",
+   "has_serial_no": 1,
+   "is_stock_item": 1,
+   "stock_uom": "Nos",
+   "rate": 258.0
+  },
+  {
+   "item_code": "Air Conditioner Magic 2.5 TON 10 Years Compressor Warranty 7 Years indoor And Outdoor Unit",
+   "item_name": "Air Conditioner Magic 2.5 TON 10 Years Compressor Warranty 7 Years indoor And Outdoor Unit",
+   "item_group": "Magic Air Conditioner",
+   "has_serial_no": 1,
+   "is_stock_item": 1,
+   "stock_uom": "Nos",
+   "rate": 325.0
+  },
+  {
+   "item_code": "Air Conditioner Magic 3 TON 10 Years Compressor Warranty 7 Years indoor And Outdoor Unit",
+   "item_name": "Air Conditioner Magic 3 TON 10 Years Compressor Warranty 7 Years indoor And Outdoor Unit",
+   "item_group": "Magic Air Conditioner",
+   "has_serial_no": 1,
+   "is_stock_item": 1,
+   "stock_uom": "Nos",
+   "rate": 375.0
+  },
+  {
+   "item_code": "Ductable Air Conditioner 3 TON",
+   "item_name": "Ductable Air Conditioner 3 TON",
+   "item_group": "Magic Air Conditioner",
+   "has_serial_no": 1,
+   "is_stock_item": 1,
+   "stock_uom": "Nos",
+   "rate": 345.0
+  },
+  {
+   "item_code": "GAS R32 FILLING",
+   "item_name": "GAS R32 FILLING",
+   "item_group": "Magic Air Conditioner",
+   "has_serial_no": 0,
+   "is_stock_item": 1,
+   "stock_uom": "Nos",
+   "rate": 35.0
+  },
+  {
+   "item_code": "Set-Magic Freestand 5 TON 10 Years Compressor Warranty 7 Years indoor And Outdoor Unit",
+   "item_name": "Set-Magic Freestand 5 TON 10 Years Compressor Warranty 7 Years indoor And Outdoor Unit",
+   "item_group": "Magic Air Conditioner",
+   "has_serial_no": 1,
+   "is_stock_item": 1,
+   "stock_uom": "Nos",
+   "rate": 730.0
+  },
+  {
+   "item_code": "GOVI Android TV Box",
+   "item_name": "GOVI Android TV Box",
+   "item_group": "Android",
+   "has_serial_no": 1,
+   "is_stock_item": 1,
+   "stock_uom": "Nos",
+   "rate": 14.0
+  },
+  {
+   "item_code": "HUMAX ANDROID BOX",
+   "item_name": "HUMAX ANDROID BOX",
+   "item_group": "Android",
+   "has_serial_no": 1,
+   "is_stock_item": 1,
+   "stock_uom": "Nos",
+   "rate": 33.0
+  },
+  {
+   "item_code": "HDTV 2.0 PREMIUM 3m",
+   "item_name": "HDTV 2.0 PREMIUM 3m",
+   "item_group": "HDTV 3 M",
+   "has_serial_no": 1,
+   "is_stock_item": 1,
+   "stock_uom": "Nos",
+   "rate": 6.5
+  },
+  {
+   "item_code": "HDTV HDMI  2.1 PREMIUM 3M 8K",
+   "item_name": "HDTV HDMI  2.1 PREMIUM 3M 8K",
+   "item_group": "HDTV 3 M",
+   "has_serial_no": 1,
+   "is_stock_item": 1,
+   "stock_uom": "Nos",
+   "rate": 6.5
+  },
+  {
+   "item_code": "MAGIC TV 32 FHD LED",
+   "item_name": "MAGIC TV 32 FHD LED",
+   "item_group": "Magic Clasic",
+   "has_serial_no": 1,
+   "is_stock_item": 1,
+   "stock_uom": "Nos",
+   "rate": 27.0
+  },
+  {
+   "item_code": "Magic TV 43  Full HD Frameless MG43Y24FSBT2/14 2 YEARS WARRANTY.",
+   "item_name": "Magic TV 43  Full HD Frameless MG43Y24FSBT2/14 2 YEARS WARRANTY.",
+   "item_group": "Magic Clasic",
+   "has_serial_no": 1,
+   "is_stock_item": 1,
+   "stock_uom": "Nos",
+   "rate": 75.0
+  },
+  {
+   "item_code": "Magic TV 100 Premium MGP100DT24USBT2Q 144HZ 2 YEARS WARRANTY.",
+   "item_name": "Magic TV 100 Premium MGP100DT24USBT2Q 144HZ 2 YEARS WARRANTY.",
+   "item_group": "Magic Pro",
+   "has_serial_no": 1,
+   "is_stock_item": 1,
+   "stock_uom": "Nos",
+   "rate": 550.0
+  },
+  {
+   "item_code": "Magic TV 65 Premium MGP65DT24USGT2Q 2 YEARS WARRANTY.",
+   "item_name": "Magic TV 65 Premium MGP65DT24USGT2Q 2 YEARS WARRANTY.",
+   "item_group": "Magic Pro",
+   "has_serial_no": 1,
+   "is_stock_item": 1,
+   "stock_uom": "Nos",
+   "rate": 179.0
+  },
+  {
+   "item_code": "BEIN NORMAL REMOTE",
+   "item_name": "BEIN NORMAL REMOTE",
+   "item_group": "Remotes",
+   "has_serial_no": 1,
+   "is_stock_item": 1,
+   "stock_uom": "Nos",
+   "rate": 4.0
+  },
+  {
+   "item_code": "EASY TV REMOTE 4300 ORIGNAL",
+   "item_name": "EASY TV REMOTE 4300 ORIGNAL",
+   "item_group": "Remotes",
+   "has_serial_no": 0,
+   "is_stock_item": 1,
+   "stock_uom": "Nos",
+   "rate": 6.0
+  }
+ ],
+ "server_scripts": [
+  {
+   "name": "active serial after delete delivery note",
+   "script_type": "DocType Event",
+   "reference_doctype": "Delivery Note",
+   "doctype_event": "After Delete",
+   "script": "serial_nos = []\n\nfor item in doc.get(\"items\") or []:\n    raw = item.get(\"serial_no\")\n    if raw:\n        serial_nos = serial_nos + [s.strip() for s in raw.replace(\",\", \"\\n\").split(\"\\n\") if s.strip()]\n\nif serial_nos:\n    existing = frappe.get_all(\n        \"Serial No\",\n        filters={\"name\": [\"in\", list(set(serial_nos))]},\n        pluck=\"name\"\n    )\n\n    for sn in existing:\n        frappe.db.set_value(\"Serial No\", sn, \"status\", \"Active\", update_modified=True)"
+  },
+  {
+   "name": "Delivery Note From Sales Order",
+   "script_type": "DocType Event",
+   "reference_doctype": "Sales Order",
+   "doctype_event": "After Submit",
+   "script": "items_to_load = []\r\nfor item in doc.items:\r\n  items_to_load.append({'item_code': item.item_code, 'rate': item.rate, 'qty': item.qty, 'uom': item.uom, 'warehouse': item.warehouse, 'against_sales_order':doc.name, 'so_detail':item.name })\r\n\r\n\r\n\r\nfrappe.get_doc(dict(\r\ndoctype = 'Delivery Note',\r\ntitle = doc.customer,\r\ncustomer = doc.customer_name,\r\ncompany = doc.company,\r\nset_warehouse=doc.set_warehouse,\r\ndocstatus = 0,\r\nitems = items_to_load,\r\n)).insert(ignore_permissions=True)\r\n\r\nfrappe.msgprint(msg=(f'Delivery Note for {doc.customer_name} has been created'),title=('Automation Success'), indicator='green')"
+  },
+  {
+   "name": "invalidate serial after insert delivery note",
+   "script_type": "DocType Event",
+   "reference_doctype": "Delivery Note",
+   "doctype_event": "After Insert",
+   "script": "serial_nos = []\n\nfor item in doc.get(\"items\") or []:\n    raw = item.get(\"serial_no\")\n    if raw:\n        serial_nos = serial_nos + [s.strip() for s in raw.replace(\",\", \"\\n\").split(\"\\n\") if s.strip()]\n\nif serial_nos:\n    existing = frappe.get_all(\n        \"Serial No\",\n        filters={\"name\": [\"in\", list(set(serial_nos))]},\n        pluck=\"name\"\n    )\n\n    for sn in existing:\n        frappe.db.set_value(\"Serial No\", sn, \"status\", \"Inactive\", update_modified=True)"
+  }
+ ],
+ "system": {
+  "time_zone": "Asia/Bahrain",
+  "cust_master_name": "Customer Name"
+ }
+}

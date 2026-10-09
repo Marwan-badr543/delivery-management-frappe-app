@@ -1,0 +1,6 @@
+.dm-header-search { position: relative; width: 280px; max-width: 30vw; margin-inline: auto 16px; }
+.dm-header-search input { height: 30px; padding-left: 34px; padding-right: 64px; cursor: pointer; background: var(--control-bg); }
+.dm-header-search .dm-hs-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); display: flex; pointer-events: none; }
+.dm-header-search .dm-hs-icon svg { stroke: var(--icon-stroke); }
+.dm-header-search kbd { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); font-size: 11px; pointer-events: none; }
+@media (max-width: 767px) { .dm-header-search { display: none; } }

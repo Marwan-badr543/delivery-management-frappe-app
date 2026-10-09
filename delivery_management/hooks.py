@@ -9,8 +9,8 @@ app_license = "mit"
 # ------------------
 
 # include js, css files in header of desk.html
-# app_include_css = "/assets/delivery_management/css/delivery_management.css"
-# app_include_js = "/assets/delivery_management/js/delivery_management.js"
+app_include_css = "/assets/delivery_management/css/header_search.css"
+app_include_js = "/assets/delivery_management/js/header_search.js"
 
 # include js, css files in header of web template
 # web_include_css = "/assets/delivery_management/css/delivery_management.css"
@@ -213,3 +213,29 @@ app_license = "mit"
 # auth_hooks = [
 # 	"delivery_management.auth.validate"
 # ]
+
+# ---------------------------------------------------------------------------
+# Delivery Management
+# ---------------------------------------------------------------------------
+
+required_apps = ["erpnext"]
+
+after_install = "delivery_management.install.after_install"
+after_migrate = "delivery_management.install.after_migrate"
+
+doctype_js = {"Sales Order": "public/js/sales_order.js"}
+
+extend_bootinfo = "delivery_management.api.pos.extend_bootinfo"
+
+doc_events = {
+	"Sales Order": {
+		"validate": "delivery_management.orders.sales_order.validate",
+		"before_submit": "delivery_management.orders.sales_order.before_submit",
+		"on_cancel": "delivery_management.orders.events.on_sales_order_cancel",
+		"on_trash": "delivery_management.orders.events.on_sales_order_trash",
+	},
+	"Delivery Note": {
+		# Runs before stock_solution / the server script mark serials Inactive on after_insert.
+		"before_insert": "delivery_management.orders.events.copy_allocated_serials_to_delivery_note",
+	},
+}

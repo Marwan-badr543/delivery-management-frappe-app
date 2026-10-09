@@ -1,0 +1,138 @@
+{
+ "actions": [],
+ "creation": "2026-10-06 23:39:15.300801",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "capacity_section",
+  "global_ac_daily_capacity",
+  "column_break_1",
+  "slot_lead_time_hours",
+  "booking_window_days",
+  "classification_section",
+  "ac_item_groups",
+  "column_break_2",
+  "ac_excluded_item_groups",
+  "ac_excluded_items",
+  "ac_rule_note",
+  "stock_section",
+  "main_warehouse"
+ ],
+ "fields": [
+  {
+   "fieldname": "capacity_section",
+   "fieldtype": "Section Break",
+   "label": "Capacity"
+  },
+  {
+   "default": "20",
+   "description": "Default maximum AC installations (units, not orders) per day when no date-specific override exists.",
+   "fieldname": "global_ac_daily_capacity",
+   "fieldtype": "Int",
+   "label": "Global AC Daily Capacity",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "2",
+   "description": "Disable same-day slots starting less than this many hours from now (a slot starting exactly at now + lead time is also disabled).",
+   "fieldname": "slot_lead_time_hours",
+   "fieldtype": "Float",
+   "label": "Slot Lead Time Hours",
+   "reqd": 1
+  },
+  {
+   "default": "30",
+   "description": "How many days ahead the POS offers delivery dates.",
+   "fieldname": "booking_window_days",
+   "fieldtype": "Int",
+   "label": "Booking Window (Days)"
+  },
+  {
+   "fieldname": "classification_section",
+   "fieldtype": "Section Break",
+   "label": "AC Classification"
+  },
+  {
+   "description": "An item is an AC when its Item Group is one of these groups or any group under them.",
+   "fieldname": "ac_item_groups",
+   "fieldtype": "Table MultiSelect",
+   "label": "AC Item Groups",
+   "options": "Delivery AC Item Group",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Groups (and their children) under an AC group that must NOT consume AC installation capacity, e.g. accessories.",
+   "fieldname": "ac_excluded_item_groups",
+   "fieldtype": "Table MultiSelect",
+   "label": "Excluded Item Groups",
+   "options": "Delivery AC Excluded Group"
+  },
+  {
+   "description": "Single items inside the AC groups that are not installations (e.g. gas refill).",
+   "fieldname": "ac_excluded_items",
+   "fieldtype": "Table MultiSelect",
+   "label": "Excluded Items",
+   "options": "Delivery AC Excluded Item"
+  },
+  {
+   "fieldname": "ac_rule_note",
+   "fieldtype": "HTML",
+   "label": "AC Rule Note",
+   "options": "<p class='text-muted small'>Excluded lines are <b>AC accessories</b>: they travel with the AC installation when the order has AC units, and need a normal delivery slot only when the order has no AC unit.</p>"
+  },
+  {
+   "fieldname": "stock_section",
+   "fieldtype": "Section Break",
+   "label": "Order Fulfilment"
+  },
+  {
+   "description": "Warehouse that serves delivery Orders. Serials and stock for Orders are taken from here.",
+   "fieldname": "main_warehouse",
+   "fieldtype": "Link",
+   "label": "Main Store (Delivery Orders)",
+   "options": "Warehouse",
+   "reqd": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-10-07 02:39:48.265104",
+ "modified_by": "Administrator",
+ "module": "Delivery Management",
+ "name": "Delivery Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "role": "Delivery Manager",
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "Sales User"
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

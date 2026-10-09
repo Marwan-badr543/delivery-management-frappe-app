@@ -1,0 +1,25 @@
+{
+ "content": null,
+ "creation": "2026-10-07 06:48:33.454622",
+ "docstatus": 0,
+ "doctype": "Page",
+ "icon": "chart",
+ "idx": 0,
+ "modified": "2026-10-07 06:48:33.454622",
+ "modified_by": "Administrator",
+ "module": "Delivery Management",
+ "name": "sales-statistics",
+ "owner": "Administrator",
+ "page_name": "sales-statistics",
+ "roles": [
+  {"role": "System Manager"},
+  {"role": "Sales Manager"},
+  {"role": "Accounts Manager"},
+  {"role": "Sales User"}
+ ],
+ "script": null,
+ "standard": "Yes",
+ "style": null,
+ "system_page": 0,
+ "title": "Sales Statistics"
+}
