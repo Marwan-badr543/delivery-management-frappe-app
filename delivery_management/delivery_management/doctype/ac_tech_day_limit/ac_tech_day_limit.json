@@ -1,0 +1,52 @@
+{
+ "actions": [],
+ "creation": "2026-10-10 10:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "driver",
+  "work_date",
+  "max_orders"
+ ],
+ "fields": [
+  {
+   "fieldname": "driver",
+   "fieldtype": "Link",
+   "options": "User",
+   "label": "AC Tech",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 4
+  },
+  {
+   "fieldname": "work_date",
+   "fieldtype": "Date",
+   "label": "Date",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 3
+  },
+  {
+   "fieldname": "max_orders",
+   "fieldtype": "Int",
+   "label": "Max Orders",
+   "non_negative": 1,
+   "in_list_view": 1,
+   "description": "Orders this technician can take on this day, instead of the global limit. 0 = day off (cannot be assigned).",
+   "columns": 3
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-11 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Delivery Management",
+ "name": "AC Tech Day Limit",
+ "owner": "Administrator",
+ "row_format": "Dynamic",
+ "states": [],
+ "description": "Per-day limit for one AC Tech (a row of Delivery Settings). Delete the row to follow the global limit again.",
+ "istable": 1,
+ "editable_grid": 1,
+ "permissions": []
+}

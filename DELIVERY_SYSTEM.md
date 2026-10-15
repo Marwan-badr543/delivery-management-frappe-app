@@ -11,7 +11,7 @@ App: `apps/delivery_management` (**Frappe v16 / ERPNext v16**, bench `~/frappe/f
 | POS submit | `posawesome...posapp.submit_invoice(..., force_sync=True)` (we patched POS Awesome) | `posawesome...invoice_processing.creation.submit_invoice(..., submit_in_background=False)`: no POS Awesome Python patch needed |
 | Sellable serial | `status = Active` and no `delivery_document_no` / `sales_invoice` | v16 Serial No has neither field. Sellable = `status = Active` and still in a warehouse (sold or delivered serials leave the warehouse). Oldest first by `posting_date` (v16 has no `purchase_date`) |
 | Serial settings | n/a | Stock Settings must have **Activate Serial / Batch No for Item** and **Use Serial / Batch Fields** on. The app writes serials into the plain `serial_no` fields and ERPNext builds the bundles from them |
-| Server scripts | `server_script_enabled` in the site config | v16 reads it **only from `common_site_config.json`**: `bench set-config -g server_script_enabled 1`. Without it the production "Delivery Note From Sales Order" script fails and every Order submit fails |
+| Server scripts | `server_script_enabled` in the site config | **Not needed any more (§12.2).** The app creates the Delivery Note and reserves serials itself; the three production scripts are disabled by a patch on migrate |
 | Salesman (Sales Statistics) | invoice `owner` | V15 lets several cashiers share one login and switch with a PIN; the verified cashier is stored in `posa_cashier`. Salesman = `posa_cashier`, else `owner` |
 | POS cashier PIN / shift | none | V15 refuses any sale without an open **POS Opening Shift** and a terminal unlocked by a cashier PIN. Our flow goes through V15's own submit, so this applies to Orders too |
 | Retries | n/a | V15 resends a submit with the same `posa_client_request_id` after a network drop. `api.pos.submit` returns the first result instead of creating a second Sales Order (`service.already_submitted`, test `TestRetriedSubmit`) |
@@ -475,7 +475,8 @@ server script. Please check by hand on `/app/posawesome` and `/app/delivery-slot
    *Delivery Manager* role.
 5. POS profiles: **Allow Create Sales Order** is already on in production. Background
    submission can stay as it is (see §3).
-6. Optionally fix the server script (`customer = doc.customer`).
+6. ~~Optionally fix the server script~~: replaced by the app (§12.2); the migrate patch disables the scripts.
+7. Phase 3/4 steps: see §12.6.
 
 **Not done in this phase (as agreed):** migrating the old system's existing
 bookings, driver assignment, notifications, etc.
@@ -500,5 +501,205 @@ delivery_management/
   delivery_management/page/sales_statistics/ Sales Statistics page (js/css/json)
   install.py    role, custom fields, default settings (after_install/after_migrate)
   dev/          setup_showsatellite.py + showsatellite_snapshot.json
-  tests/        test_slot_engine.py · test_orders.py · fixtures.py · utils.py · race_check.py
+  drivers/      assignment.py (availability, assign) · delivery_note.py (DN hooks, permissions) · stats.py
+  api/drivers.py  Driver Assignment / Delivery Schedule / Installation Statistics endpoints
+  delivery_management/page/{driver_assignment,delivery_schedule,installation_statistics}/
+  delivery_management/print_format/pos_invoice_salesman/
+  public/js/    drivers_common.js · delivery_note.js · header_search.js
+  fixtures/role.json   AC Tech, TV Driver, Technician, Maintenance Technician
+  orders/       delivery_note.py (DN from SO) · serials.py (serial reservations and guard)
+  customer_support/  tickets.py (support rules) · permissions.py · doctype/support_technician_visit ·
+                page/{support_tickets,technician_issues,maintenance_issues}
+  api/support.py   Support pages endpoints
+  public/js/    support_pages.js · issue.js
+  patches/      ac_tech_day_limits_into_settings.py · disable_replaced_server_scripts.py
+  tests/        test_slot_engine.py · test_orders.py · test_sales_stats.py · test_drivers.py · test_serials.py ·
+                test_support.py · fixtures.py · utils.py · race_check.py
 ```
+
+---
+
+## 11. Phase 3 (2026-10-10): drivers, delivery charge, bundles
+
+### 11.0 Request checklist (all done and tested)
+
+- [x] 1. Item check box **Has Delivery Charge** + Delivery Settings **Delivery Charge Item**. In a POS Order the charge item is added once; never a second row or qty 2. The server refuses duplicates.
+- [x] 2. Product Bundle created and tested from the POS (Order and branch Invoice, TV bundle and AC bundle).
+- [x] 3. Roles **AC Tech** and **TV Driver** as fixtures (`fixtures/role.json`).
+- [x] 4. Delivery Note: **Delivery Schedule** section (copied from the Sales Order, still kept on SO/SI), **Order Type** (AC / Non AC, from the item groups like the POS), **Driver / AC Tech** (User, set only from the page). Shown in the list view and the standard filters.
+- [x] 5. Doctype **Driver Schedule** (one row per assigned DN, the old `driver_schedule`), doctype **AC Tech Day Limit** (the old per-day override), Delivery Settings **AC Tech Max Orders per Day**.
+- [x] 6. Page **Driver Assignment** (`/desk/driver-assignment`), tabs TV / AC.
+- [x] 7. Page **Delivery Schedule** (`/desk/delivery-schedule`), tabs TV / AC, for drivers.
+- [x] 8. POS guard: AC and non-AC items cannot be in one POS Order. A manual mixed order gets no Order Type, and the DN asks for one.
+- [x] 9. Page **Installation Statistics** (`/desk/installation-statistics`).
+- [x] 10. Print format **POS Invoice Salesman** (copy of production `POS_INVO_C1` + "Sales Man").
+- [x] 11. Only `delivery_management` and the POS Awesome front end changed; nothing in frappe / erpnext.
+
+### 11.1 Order Type of a Delivery Note
+
+Set on insert from the items, with the same classification as the POS (`slots.cart`): Delivery Settings AC item groups, bundles counted by their components.
+
+| Items | Order Type |
+|---|---|
+| AC units (+ AC accessories, services, delivery charge) | **AC** |
+| TVs / other stock goods (+ accessories alone, services, delivery charge) | **Non AC** |
+| AC units **and** TVs / other goods (only possible in a manual order) | *empty*: the form shows a warning and the field becomes required; the DN cannot be saved again or submitted until someone chooses |
+
+The DN is still created as before by the production server script on SO submit; an empty type never blocks that insert. Old DNs were filled by the patch `patches/backfill_delivery_note_schedule.py`. Changing the type of an assigned DN removes a driver of the wrong role.
+
+### 11.2 Who can be assigned (port of `driver_schedule.py`)
+
+| | TV / Non AC orders | AC orders |
+|---|---|---|
+| Role | **TV Driver** | **AC Tech** |
+| Busy when | another of his orders the same day is within **0.5 h** (person assigning is a System Manager) or **1 h** (anyone else) of this time; a missing time conflicts | he already has his daily maximum of AC orders that day |
+| Daily maximum | none | Delivery Settings *AC Tech Max Orders per Day* (0 = no limit), or the per-day *AC Tech Day Limit* (0 = **day off**); a per-day limit always wins |
+
+Unavailable people are listed but greyed with the reason ("unavailable", "3/3 full", "day off"); the server checks again on assign (`drivers/assignment.check_assignable`) under a row lock on the driver, so two people can't both take his last free place. Counts are always read from **Driver Schedule** rows, which are kept in step with the DN (assign, unassign, reschedule from the Delivery Slots page, cancel, delete).
+
+### 11.3 Pages
+
+**System Manager = admin in the old system.** Delivery Manager has the same rights on these pages.
+
+* **Driver Assignment** (System Manager, Delivery Manager): draft DNs waiting for delivery, earliest first. Filters: search (DN, customer, phone), assigned / not assigned, driver, area, date; page size and paging. Columns: DN, customer + phone, address, delivery day/time (AC: installation day + units), type, payment, driver. "Assign driver" opens the list of drivers of the right role with availability. Clicking a row opens the Delivery Note. AC tab + a date: each AC Tech's load that day, click to set his limit for that day (0 = day off, empty = global). A banner lists DNs that still need an Order Type.
+* **Delivery Schedule** (+ TV Driver, AC Tech): assigned DNs in a date range (default today to +1 month, "Today" button). A driver sees only his own; managers see all and can filter by driver. Status filter Pending / Delivered (= DN submitted). Order details: customer, phone (tap to call), address + Google Maps, items (bundle components and serials), schedule, payment (total / paid / outstanding) with **Record payment** (Payment Entry against the order's invoice, never above the outstanding, credited to the driver), **Open Delivery Note**, **Download DN PDF**, **Upload photo / file** (attached to the customer, as before), **customer signature** pad (attached to the DN). **No Ship, Return or Submit** (the office submits the DN). Phone layout: rows become cards.
+* **Installation Statistics** (+ TV Driver, AC Tech): from **submitted** DNs with a driver. Presets Today / Last 7 days / This month, start/end date, technician (managers only), unit type (all / AC / TV & non-AC). Cards: AC units, TV & non-AC units, total. Table per technician with bars, orders, totals; click a row to list his DNs. A driver sees only himself. AC units = qty of AC items; non-AC units = qty of other stock items (accessories only when the order has no AC unit; services and the delivery charge are not units). No caching.
+
+Drivers get read + print on Delivery Note, limited to their own DNs by `drivers/delivery_note.has_permission` / `get_permission_query_conditions`. Users who also have a stock/sales/accounts role keep their normal access.
+
+### 11.4 POS (Order mode only)
+
+* **AC / non-AC guard** (`useDeliveryRules.ts`, server `api.pos.check_pos_order_rules`): adding an AC unit to a cart with a TV (or the other way) is refused with "AC items and TV / non-AC items must be in separate orders…". AC accessories, services and the delivery charge fit both. Branch Invoices are not limited (no delivery); manual orders in ERPNext are not limited.
+* **Delivery charge**: adding an item with *Has Delivery Charge* adds the Delivery Charge Item (qty 1) if it is not in the cart yet. Adding it again by hand is refused; two rows or qty 2 are refused before payment and by the server. Switching the sale to Invoice removes a charge the POS added by itself. The item must be non-stock, in the POS Profile's item groups and have a price.
+* POS Awesome's own "Delivery Charges" box (top right) is a different, older feature; it was left as it is.
+
+### 11.5 Product Bundles
+
+Tested in the browser: *TV 43 + HDMI CABLE BUNDLE* (Order and branch Invoice) and *AC 1.5 TON + COPPER PIPE BUNDLE* (Order). What the app does for bundles:
+
+* Stock: checked per component (POS list and server); a bundle is sellable as many times as its scarcest component allows.
+* Booking: the components decide (TV bundle books a delivery slot, AC bundle books AC units).
+* Serials: Order: picked from the main store for the serialised components on the Sales Order packing list, reserved (Inactive) and copied to the Delivery Note; cancelling the order frees them. Branch Invoice: picked from the branch.
+* Order Type / Installation Statistics count the components.
+* Known POS Awesome issue (upstream, not changed): the browser console shows `expand_bundle … reading 'push'` when a bundle is added; the cart shows the bundle line only. The sale is not affected (ERPNext builds the packing list on the server).
+
+### 11.6 Sales Invoice print
+
+Print format **POS Invoice Salesman** (module Delivery Management): the production POS format `POS_INVO_C1` (read with GET from production) with a **Sales Man** line under Posting Time: the cashier who made the sale (`posa_cashier`, PIN login), else the user who created the invoice (same rule as Sales Statistics). The dev seed sets it on the four Showsatellite POS Profiles. **On production after the upgrade:** POS Profile → Print Format → *POS Invoice Salesman*.
+
+### 11.7 Tests
+
+`tests/test_drivers.py` (15): order type incl. bundles and mixed, schedule copy, TV window, AC limit / override / day off, role check, unassign/cancel, type change, driver access, installation stats, POS order rules, item rules. `tests/test_orders.py` adds bundle Order / Invoice / stock / cancel and the driver payment. Dev users (seed): `tv.driver1@`, `tv.driver2@`, `ac.tech1@`, `ac.tech2@showsatellite.test`, password in `dev/setup_showsatellite.py` (`DEV_DRIVER_PASSWORD`).
+
+
+---
+
+## 12. Phase 4 (2026-10-11): settings, Delivery Note, serials, support
+
+### 12.0 Request checklist (all done and tested)
+
+- [x] 1. Per-day AC Tech limits moved into **Delivery Settings** (table *AC Tech Day Limits*). All driver settings are there now, including the TV driver gaps (were hard-coded 1 h / 0.5 h) and the support visit gap.
+- [x] 2. Server script **"Delivery Note From Sales Order"** replaced by the app; deleted on dev. **"invalidate serial after insert delivery note"** and **"active serial after delete delivery note"** replaced and disabled.
+- [x] 3. Serial number report and double-use tests (§12.3).
+- [x] 4. Support management (§12.4), from the old system's logic on ERPNext Issue / Maintenance Visit / Warranty Claim.
+- [x] 5. Coverage check of the old system (§12.5).
+
+### 12.1 Delivery Settings (new fields)
+
+| Field | Default | Used for |
+|---|---|---|
+| TV Driver Gap (Hours) | 1 | Driver Assignment, assigner without System Manager |
+| TV Driver Gap for System Manager (Hours) | 0.5 | Driver Assignment, System Manager (old admin window) |
+| AC Tech Day Limits (table) | – | Per technician and day: max orders (0 = day off). Also edited from the AC tab of Driver Assignment, which writes only that row (under a lock) |
+| Create Delivery Note when a Sales Order is submitted | on | §12.2 |
+| Only for Company | empty = all | dev: `showsatellite` (the site also hosts the `marwan` company) |
+| Technician Visit Gap (Minutes) | 60 | Support: a technician is busy ± this many minutes around a visit |
+| Default Service Person | – | Maintenance Visit `service_person` when the technician has no Sales Person (prod used "Sales Team") |
+
+The old standalone *AC Tech Day Limit* doctype became that child table; patch `ac_tech_day_limits_into_settings` moves existing rows.
+
+### 12.2 Delivery Note from Sales Order (`orders/delivery_note.py`)
+
+Sales Order `on_submit` → ERPNext's own `make_delivery_note` mapper → draft Delivery Note (ignore permissions, like the script). Compared with the script: customer **ID** (the script used the name), price list, currency, taxes, addresses and the `against_sales_order`/`so_detail` links; made once (skipped when the order already has a DN, draft or submitted, or nothing is left to deliver, or *Skip Delivery Note* is ticked). The serials reserved by the POS order, the schedule and the Order Type are copied as before. The desk shows a small green alert; the POS shows nothing.
+
+Patch `disable_replaced_server_scripts` disables the three scripts by name on every site that has them (production too, on its first migrate) and switches the setting on. Disabled, not deleted, so they can be looked at. Running both would make two Delivery Notes per order.
+
+### 12.3 Serial numbers: how they work now
+
+**Serial No status in ERPNext v16** (field `status`; there is **no Workflow** on Serial No, on dev or on production):
+
+| Status | Meaning | Set by |
+|---|---|---|
+| Active | In a warehouse | ERPNext, on every inward movement (purchase, receipt, transfer, return, DN cancel) |
+| Inactive | Business meaning: **reserved for an open order**, still in the warehouse | This app (ERPNext also uses it for a few internal cases, e.g. a cancelled purchase receipt) |
+| Delivered | Left the store to a customer (DN, or invoice with update stock); warehouse emptied, customer and warranty expiry set | ERPNext |
+| Consumed | Used in manufacture / repack / material issue | ERPNext |
+| Expired | Warranty/expiry passed | ERPNext |
+
+Life of a serial in a POS **Order**: Active (in Stores) → picked by the POS server and **Inactive** (Sales Order `dm_serial_nos`) → same serial on the auto Delivery Note → DN submitted → **Delivered**. Cancelling the order (or closing it) makes it Active again unless another document holds it. A branch **Invoice** takes an Active serial from the branch and it becomes Delivered at once.
+
+**Can two orders get the same serial?** No. What prevents it:
+
+1. **The POS never takes a serial from the browser.** Serials POS Awesome pre-fills are dropped; the server picks them (`orders/stock.pick_serials`).
+2. **Picking skips reserved serials twice over**: status must be Active *and* no live document may hold it (open Sales Order or draft Delivery Note). The second check matters because ERPNext sets a moved serial back to Active.
+3. **Row locks**: the pick is `SELECT … FOR UPDATE`. Two cashiers selling the last TV at the same moment: the second waits, then sees it taken and gets "Not enough stock". Proved with two real DB connections (`serial_race.py` run on dev: one GOT, one REFUSED).
+4. **One guard on every outward movement** (`Serial and Batch Bundle` validate/before_submit → `orders/serials.guard_outward_bundle`). In v16 every outward serial goes through a bundle, so it covers Delivery Notes, Sales Invoices with update stock, Stock Entries (issue, transfer) and the POS, whatever screen or API made them. A serial held by another open order is refused with "… is reserved for SO-…, DN-…".
+5. **Desk documents**: a Delivery Note, stock Sales Invoice or outward Stock Entry row with an empty serial gets a free serial from the app *before* ERPNext's FIFO auto-pick. That FIFO ignores Inactive and takes the oldest serial, usually the reserved one (Stock Settings *Auto Create Serial and Batch Bundle For Outward* is on); test `test_material_issue_without_serial_takes_a_free_one` fails without this step.
+   Note for the warehouse: a Sales Order typed in the desk now gets its draft Delivery Note **with serials already filled** (oldest free) and reserved; the old script left them empty. Change a serial on the draft if needed; the old one is freed. A typed serial that another order holds is refused on save.
+6. **The flag follows the documents** (replaces the two server scripts): a draft Delivery Note reserves its serials (Inactive), changing a serial frees the old one, deleting the draft frees them, a cancelled DN of an open order stays reserved, closing/cancelling the Sales Order frees them, and any other stock entry that moves a serial puts the flag back after ERPNext resets it.
+7. **A reserved serial cannot be moved by a Stock Entry** (transfer or issue) while its order is open: the guard refuses it. Free it first (cancel/close the order or change the serial on its Delivery Note).
+
+What it does not cover: a serial typed on a document of an app that writes to the database directly (bypassing documents), and production data before the upgrade (v14 rules). Tests: `tests/test_serials.py` (17) and `test_orders.py`.
+
+### 12.4 Support management (`customer_support/`)
+
+Port of the old system's support part (old pages `/support`, `/support/technician`, `/support/maint-tech`; services `issue_tickets.py`, `technicians.py`, `maint_tech.py`). The Frappe 15 `support_management` app was read for ideas (it used Issue + workflow + separate tech doctypes); the old system's logic was followed.
+
+* **Ticket = ERPNext Issue** (as the old system: it created an Issue for every ticket, 488 on production). Support fields `sm_*` on Issue: stage, customer phone, sales invoice, delivery note, item, serial, address, visit time, CS user, technician, maintenance technician, CS report, technician visits (child table *Support Technician Visit*), maintenance report, pickup slot, resolved by. Issues without a stage (e.g. the WhatsApp ones) are not part of the flow.
+* **Stages**: Customer Service → Technician → Maintenance Technician; resolve at any stage once that stage's report exists. Resolve = Issue *Resolved* + its Warranty Claims *Closed*.
+* **Customer service** (page **Support Tickets**, role *Support Team*, sees the tickets they opened; System Manager sees all): New Ticket with customer found by phone (customer ID, mobile or contact phone), past orders shown with items and **delivered serials**; one click fills item, serial, invoice and address. CS report required; visit time cannot be in the past. Update schedule/address, update the CS report (only in this stage), choose a technician: every user with role *Technician*, with his visits that day; busy within ± gap minutes = greyed. Checked again on the server under a lock (the old system checked only in the browser).
+* **Technician** (page **Technician Issues**, role *Technician*, only his tickets, date filter): log a visit → draft **Maintenance Visit** (Breakdown, completion status, item, serial, service person) and, when the serial's warranty has not expired, a **Warranty Claim** (Work In Progress; reused on later visits). Edit his visit reports. Escalate to a *Maintenance Technician*, optionally booking a **pickup delivery slot** (same capacity as delivery orders; booked in the same transaction, the old system leaked the booking when the move failed).
+* **Maintenance technician** (page **Maintenance Issues**, role *Maintenance Technician*): write/edit the maintenance report, resolve.
+* Technicians see only their own Issues in the desk too (`customer_support/permissions.py`).
+* Differences from the old system (decisions): technician lists come from roles (the old page listed every employee); the delivery note/serial is found from the invoice in ERPNext v16 (the old lookup by `delivery_document_no` does not exist in v16); old "MAINT-TICKET-n" numbers are not needed (every ticket is an Issue).
+* Tests: `tests/test_support.py` (14). Browser: full flow as `cs.agent1@`, `tech1@`, `maint1@showsatellite.test` (dev password as the drivers).
+
+### 12.5 Old system parts still not in ERPNext (logs and dashboard ignored)
+
+1. **Assign a delivery slot to an already submitted order** (old Orders page "Assign delivery"). Today the slot is chosen before the Sales Order is submitted; a manual booking on Delivery Slots is not linked to the order or its Delivery Note.
+2. **WhatsApp bot reschedule API** (old `/admin/whatsapp-orders/reschedule-delivery`, by Sales Order).
+3. **Website shop** (catalog, options/add-ons, OpenCart webhook, customer OTP accounts, per-order quantity limits `max_quantity` / AC per order, Google Sheet log): only if the website stays live.
+4. Ship / Return flags and DN submit by drivers: left out on purpose (phase 3).
+5. Departments and per-user page permissions: replaced by roles / Role Profiles.
+
+### 12.6 Production steps (after the v16 upgrade)
+
+1. `bench migrate` (adds fields/roles, moves day limits, **disables the 3 server scripts**), then `bench clear-cache`.
+2. Delivery Settings: check *Create Delivery Note…* (on), set *Only for Company* if the site has other companies, *Default Service Person* (e.g. "Sales Team"), gaps.
+3. Roles: *Support Team* (customer service), *Technician*, *Maintenance Technician*.
+4. Items: set **Warranty Period (days)** on items, so delivered serials get a warranty expiry and Warranty Claims are opened.
+5. Tickets still open in the old system's own database do not move by themselves: finish them there or re-open them on the Support Tickets page.
+
+## 13. Mixed AC / non-AC orders, driver submit (2026-10-12)
+
+* The POS no longer blocks AC units and TV / other goods in one Order (the item guard,
+  the submit check and `api.pos.check_pos_order_rules` mixing rule were removed; the
+  delivery-charge-once rule stays). The cashier books both the delivery slot and the
+  AC installation day in the Delivery panel.
+* `orders.delivery_note.split_by_order_type`: a mixed Sales Order gets **two** draft
+  Delivery Notes — `AC` (AC units, mixed bundles, AC accessories; installation day and
+  AC units only) and `Non AC` (other goods, delivery charge, services; delivery date and
+  time only). Admin slot moves (`orders.schedule.stamp_schedule`) update each note with
+  its own fields only.
+* Delivery Schedule page: "Delivered: submit Delivery Note" button on a draft order
+  (`api.drivers.submit_delivery_note`; driver may submit only his own assigned notes).
+
+## 14. AC Site Check (2026-10-13)
+
+DocType **AC Site Check** (`ACSC-.YYYY.-#####`): an AC Tech visits the customer's house
+before a sale to recommend the AC type / capacity. Fields: customer name, phone, AC Tech
+(only users with the AC Tech role), check date, status, area / block / road / building,
+notes, and the **Rooms** table (AC Site Check Room: room, size, recommendations).
+On save the customer is found by phone (`customer_support.tickets.find_customer`); if none,
+a new Customer is created from the name and phone. The address is saved on the customer
+like the POS does. Tests: `tests/test_ac_site_check.py`.

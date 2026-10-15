@@ -1,0 +1,19 @@
+{
+ "app": "delivery_management",
+ "creation": "2026-10-13 12:00:00.000000",
+ "docstatus": 0,
+ "doctype": "Desktop Icon",
+ "hidden": 0,
+ "icon_type": "Link",
+ "idx": 20,
+ "label": "Delivery Management",
+ "link_type": "Workspace Sidebar",
+ "logo_url": "/assets/delivery_management/images/delivery-logo.svg",
+ "modified": "2026-10-13 14:00:00.000000",
+ "modified_by": "Administrator",
+ "name": "Delivery Management",
+ "owner": "Administrator",
+ "roles": [],
+ "standard": 1,
+ "link_to": "Delivery Management"
+}

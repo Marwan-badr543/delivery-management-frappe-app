@@ -1,0 +1,232 @@
+{
+ "actions": [],
+ "autoname": "naming_series:",
+ "creation": "2026-10-13 10:00:00",
+ "description": "An AC Tech visits the customer's house to check the site and recommend the suitable AC type and capacity per room.",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "naming_series",
+  "customer_name",
+  "customer_phone",
+  "customer",
+  "column_break_c",
+  "ac_tech",
+  "check_date",
+  "check_time",
+  "status",
+  "address_section",
+  "area",
+  "block_no",
+  "road_no",
+  "column_break_a",
+  "building_no",
+  "address",
+  "rooms_section",
+  "rooms",
+  "notes"
+ ],
+ "fields": [
+  {
+   "default": "ACSC-.YYYY.-",
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "hidden": 1,
+   "label": "Series",
+   "options": "ACSC-.YYYY.-",
+   "permlevel": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "customer_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Customer Name",
+   "permlevel": 1,
+   "reqd": 1
+  },
+  {
+   "description": "An existing customer with this phone is used; otherwise a new customer is created on save.",
+   "fieldname": "customer_phone",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Customer Phone",
+   "options": "Phone",
+   "permlevel": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "customer",
+   "fieldtype": "Link",
+   "label": "Customer",
+   "options": "Customer",
+   "permlevel": 1,
+   "read_only": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "column_break_c",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Users with the AC Tech role.",
+   "fieldname": "ac_tech",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "AC Tech",
+   "options": "User",
+   "permlevel": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "check_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Check Date",
+   "permlevel": 1
+  },
+  {
+   "default": "Open",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Open\nCompleted\nCancelled",
+   "permlevel": 1
+  },
+  {
+   "fieldname": "address_section",
+   "fieldtype": "Section Break",
+   "label": "Address"
+  },
+  {
+   "fieldname": "area",
+   "fieldtype": "Link",
+   "in_standard_filter": 1,
+   "label": "Area",
+   "options": "Delivery Area",
+   "permlevel": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "block_no",
+   "fieldtype": "Data",
+   "label": "Block No",
+   "permlevel": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "road_no",
+   "fieldtype": "Data",
+   "label": "Road No",
+   "permlevel": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_a",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "building_no",
+   "fieldtype": "Data",
+   "label": "Building No",
+   "permlevel": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "address",
+   "fieldtype": "Link",
+   "label": "Address",
+   "options": "Address",
+   "permlevel": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "rooms_section",
+   "fieldtype": "Section Break",
+   "label": "Rooms"
+  },
+  {
+   "fieldname": "rooms",
+   "fieldtype": "Table",
+   "label": "Rooms",
+   "options": "AC Site Check Room"
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Small Text",
+   "label": "Notes"
+  },
+  {
+   "fieldname": "check_time",
+   "fieldtype": "Time",
+   "label": "Check Time",
+   "permlevel": 1
+  }
+ ],
+ "links": [],
+ "modified": "2026-10-15 11:26:41.401822",
+ "modified_by": "Administrator",
+ "module": "Delivery Management",
+ "name": "AC Site Check",
+ "naming_rule": "By \"Naming Series\" field",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Delivery Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales User",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "AC Tech",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "search_fields": "customer_name,customer_phone",
+ "show_title_field_in_link": 1,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "customer_name",
+ "track_changes": 1
+}

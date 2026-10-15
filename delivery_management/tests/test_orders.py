@@ -187,6 +187,27 @@ class TestOrderFlow(OrdersTestCase):
 		dn_ac = next(i for i in dn.items if i.item_code == self.w.ac)
 		self.assertEqual(get_serial_nos(dn_ac.serial_no), get_serial_nos(ac_row.dm_serial_nos))
 
+	def test_mixed_order_gets_one_delivery_note_per_type(self):
+		self.settings(auto_create_delivery_note=1, auto_delivery_note_company=None)
+		result = self.place([(self.w.ac, 2, 300), (self.w.tv, 1, 100), (self.w.pipe, 3, 2)])
+		names = frappe.get_all("Delivery Note Item", filters={"against_sales_order": result["sales_order"]},
+			pluck="parent", distinct=True)
+		notes = {d.dm_delivery_type: d for d in (frappe.get_doc("Delivery Note", n) for n in names)}
+		self.assertEqual(set(notes), {"AC", "Non AC"})
+		ac, other = notes["AC"], notes["Non AC"]
+		# AC units and their accessories with the AC Tech; the TV with the TV Driver.
+		self.assertEqual(sorted(i.item_code for i in ac.items), sorted([self.w.ac, self.w.pipe]))
+		self.assertEqual([i.item_code for i in other.items], [self.w.tv])
+		# Each note keeps only its own schedule.
+		self.assertEqual((str(ac.dm_ac_installation_date), ac.dm_ac_units, ac.dm_delivery_date, ac.dm_delivery_time),
+			(str(add_days(self.slot_date, 1)), 2, None, None))
+		self.assertEqual((str(other.dm_delivery_date), other.dm_ac_installation_date, other.dm_ac_units),
+			(str(self.slot_date), None, 0))
+		self.assertEqual({ac.dm_delivery_area, other.dm_delivery_area}, {self.area})
+		# Every order line is on exactly one note.
+		so = frappe.get_doc("Sales Order", result["sales_order"])
+		self.assertEqual(sorted(i.so_detail for n in notes.values() for i in n.items), sorted(i.name for i in so.items))
+
 	def test_ac_only_order_needs_no_delivery_slot(self):
 		result = self.place([(self.w.ac, 1, 300), (self.w.pipe, 2, 2)], {**self.delivery, "delivery_date": None,
 			"delivery_time": None})
@@ -562,3 +583,90 @@ class TestSeveralAcGroups(OrdersTestCase):
 		settings.save()
 		p = profile_cart([{"item_code": portable, "qty": 2}, {"item_code": self.w.ac, "qty": 1}])
 		self.assertEqual(p.ac_units, 3)
+
+
+class TestProductBundle(OrdersTestCase):
+	"""A bundle parent is a non-stock item; its serialised components get serials from the
+	store that serves the sale, and the delivery is booked for the components."""
+
+	def setUp(self):
+		super().setUp()
+		self.bundle = "_DM TV + Pipe Bundle"
+		if not frappe.db.exists("Item", self.bundle):
+			frappe.get_doc({"doctype": "Item", "item_code": self.bundle, "item_name": self.bundle,
+				"item_group": "_DM Goods", "stock_uom": "Nos", "is_stock_item": 0, "is_sales_item": 1,
+				"include_item_in_manufacturing": 0}).insert()
+		if not frappe.db.exists("Product Bundle", self.bundle):
+			frappe.get_doc({"doctype": "Product Bundle", "new_item_code": self.bundle,
+				"items": [{"item_code": self.w.tv, "qty": 1}, {"item_code": self.w.pipe, "qty": 2}]}).insert()
+
+	def test_bundle_order_reserves_component_serials_for_the_delivery_note(self):
+		invoice = self.w.draft_invoice([(self.bundle, 1, 150)])
+		result = service.submit_pos_order(invoice, DATA, {**self.delivery, "ac_date": None})
+		so = frappe.get_doc("Sales Order", result["sales_order"])
+		packed_tv = next(p for p in so.packed_items if p.item_code == self.w.tv)
+		self.assertEqual(get_serial_nos(packed_tv.serial_no), ["_DMTV-M-1"])
+		self.assertEqual(serial_status("_DMTV-M-1"), ("Inactive", self.w.main))
+		# The components need a delivery car.
+		self.assertEqual(self.counter(self.area, self.slot_date, "10:00"), 1)
+
+		dn = make_delivery_note(so.name)
+		dn.insert()
+		dn_tv = next(p for p in dn.packed_items if p.item_code == self.w.tv)
+		self.assertEqual(get_serial_nos(dn_tv.serial_no), ["_DMTV-M-1"])
+		self.assertEqual(dn.dm_delivery_type, "Non AC")
+		dn.submit()
+		self.assertEqual(frappe.db.get_value("Serial No", "_DMTV-M-1", "warehouse"), None)
+
+	def test_cancelled_bundle_order_frees_component_serials(self):
+		from delivery_management.orders.events import on_sales_order_cancel
+
+		invoice = self.w.draft_invoice([(self.bundle, 1, 150)])
+		result = service.submit_pos_order(invoice, DATA, {**self.delivery, "ac_date": None})
+		so = frappe.get_doc("Sales Order", result["sales_order"])
+		self.assertEqual(serial_status("_DMTV-M-1"), ("Inactive", self.w.main))
+		# What happens when the order is cancelled (e.g. after the return invoice). The
+		# linked invoice blocks a real cancel here, so do what cancel does: docstatus 2, then the hook.
+		so.db_set("docstatus", 2)
+		so.docstatus = 2
+		on_sales_order_cancel(so)
+		self.assertEqual(serial_status("_DMTV-M-1"), ("Active", self.w.main))
+
+	def test_bundle_branch_invoice_picks_component_serials(self):
+		invoice = self.w.draft_invoice([(self.bundle, 1, 150)])
+		result = service.submit_pos_invoice(invoice, DATA)
+		si = frappe.get_doc("Sales Invoice", result["name"])
+		packed_tv = next(p for p in si.packed_items if p.item_code == self.w.tv)
+		self.assertEqual(get_serial_nos(packed_tv.serial_no), ["_DMTV-B-1"])
+		self.assertEqual(frappe.db.get_value("Serial No", "_DMTV-B-1", "warehouse"), None)
+
+	def test_bundle_stock_checked_by_components(self):
+		# Main store has 3 TVs: 4 bundles cannot be sold.
+		invoice = self.w.draft_invoice([(self.bundle, 4, 150)])
+		self.assertRaises(frappe.ValidationError, service.submit_pos_order, invoice, DATA,
+			{**self.delivery, "ac_date": None})
+
+
+class TestDriverPayment(OrdersTestCase):
+	def test_driver_collects_payment_on_delivery(self):
+		from delivery_management.api import drivers as api
+		from delivery_management.drivers import assignment as asg
+
+		invoice = self.w.draft_invoice([(self.w.tv, 1, 100)])
+		result = service.submit_pos_order(invoice, dict(DATA), {**self.delivery, "ac_date": None}, unpaid=True)
+		dn = make_delivery_note(result["sales_order"])
+		dn.insert()
+		driver = "_dm.pay.driver@example.com"
+		if not frappe.db.exists("User", driver):
+			frappe.get_doc({"doctype": "User", "email": driver, "first_name": "Pay", "send_welcome_email": 0}).insert()
+		frappe.get_doc("User", driver).add_roles(asg.ROLE_TV)
+		asg.assign(dn.name, driver)
+		mop = api.modes_of_payment(dn.company)[0]
+
+		frappe.set_user(driver)
+		self.assertRaises(frappe.ValidationError, api.record_payment, dn.name, 100.5, mop)
+		out = api.record_payment(dn.name, 40, mop)
+		self.assertEqual((out["payment"]["paid"], out["payment"]["outstanding"]), (40, 60))
+		self.assertEqual(frappe.db.get_value("Payment Entry", out["payment_entry"], ["docstatus", "owner"]), (1, driver))
+		self.assertEqual(frappe.session.user, driver)
+		frappe.set_user("Administrator")

@@ -15,6 +15,14 @@ class SlotSettings:
 	ac_excluded_item_groups: tuple[str, ...]
 	ac_excluded_items: tuple[str, ...]
 	main_warehouse: str | None
+	ac_tech_max_orders_per_day: int = 0
+	delivery_charge_item: str | None = None
+	tv_driver_gap_hours: float = 1.0
+	tv_driver_gap_hours_manager: float = 0.5
+	auto_create_delivery_note: bool = True
+	auto_delivery_note_company: str | None = None
+	support_visit_gap_minutes: int = 60
+	support_maint_service_person: str | None = None
 
 
 def get_settings() -> SlotSettings:
@@ -27,4 +35,17 @@ def get_settings() -> SlotSettings:
 		ac_excluded_item_groups=tuple(row.item_group for row in (doc.ac_excluded_item_groups or [])),
 		ac_excluded_items=tuple(row.item_code for row in (doc.ac_excluded_items or [])),
 		main_warehouse=doc.main_warehouse or None,
+		ac_tech_max_orders_per_day=max(cint(doc.get("ac_tech_max_orders_per_day")), 0),
+		delivery_charge_item=doc.get("delivery_charge_item") or None,
+		tv_driver_gap_hours=_non_negative(doc.get("tv_driver_gap_hours"), 1.0),
+		tv_driver_gap_hours_manager=_non_negative(doc.get("tv_driver_gap_hours_manager"), 0.5),
+		auto_create_delivery_note=bool(cint(doc.get("auto_create_delivery_note"))),
+		auto_delivery_note_company=doc.get("auto_delivery_note_company") or None,
+		support_visit_gap_minutes=cint(_non_negative(doc.get("support_visit_gap_minutes"), 60)),
+		support_maint_service_person=doc.get("support_maint_service_person") or None,
 	)
+
+
+def _non_negative(value, default: float) -> float:
+	"""A Float setting; empty (never saved since the field was added) means the default."""
+	return default if value is None or value == "" else max(flt(value), 0.0)

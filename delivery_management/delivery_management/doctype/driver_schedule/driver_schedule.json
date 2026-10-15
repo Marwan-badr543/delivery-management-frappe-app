@@ -1,0 +1,120 @@
+{
+ "actions": [],
+ "creation": "2026-10-10 10:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "delivery_note",
+  "order_type",
+  "driver",
+  "column_break_1",
+  "delivery_date",
+  "delivery_time",
+  "area",
+  "customer_name"
+ ],
+ "fields": [
+  {
+   "fieldname": "delivery_note",
+   "fieldtype": "Link",
+   "options": "Delivery Note",
+   "label": "Delivery Note",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "order_type",
+   "fieldtype": "Select",
+   "options": "AC\nNon AC",
+   "label": "Order Type",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "driver",
+   "fieldtype": "Link",
+   "options": "User",
+   "label": "Driver / AC Tech",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "read_only": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "delivery_date",
+   "fieldtype": "Date",
+   "label": "Delivery / Installation Date",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "read_only": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "delivery_time",
+   "fieldtype": "Time",
+   "label": "Delivery Time",
+   "read_only": 1
+  },
+  {
+   "fieldname": "area",
+   "fieldtype": "Link",
+   "options": "Delivery Area",
+   "label": "Area",
+   "in_standard_filter": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "customer_name",
+   "fieldtype": "Data",
+   "label": "Customer Name",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-10 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Delivery Management",
+ "name": "Driver Schedule",
+ "owner": "Administrator",
+ "row_format": "Dynamic",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "autoname": "field:delivery_note",
+ "in_create": 1,
+ "track_changes": 1,
+ "title_field": "customer_name",
+ "description": "One row per assigned Delivery Note (the old driver_schedule table). Kept in sync by the app; the driver availability check reads it.",
+ "permissions": [
+  {
+   "create": 0,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "print": 1,
+   "role": "Delivery Manager"
+  }
+ ]
+}

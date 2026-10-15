@@ -1,0 +1,40 @@
+{
+ "actions": [],
+ "creation": "2026-10-11 12:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 0,
+ "engine": "InnoDB",
+ "field_order": [
+  "visit_on",
+  "technician",
+  "completion_status",
+  "column_break_1",
+  "maintenance_visit",
+  "warranty_claim",
+  "section_break_1",
+  "report"
+ ],
+ "fields": [
+  {"fieldname": "visit_on", "fieldtype": "Datetime", "label": "Logged On", "in_list_view": 1, "columns": 2, "read_only": 1},
+  {"fieldname": "technician", "fieldtype": "Link", "options": "User", "label": "Technician", "in_list_view": 1, "columns": 2, "read_only": 1},
+  {"fieldname": "completion_status", "fieldtype": "Select", "options": "Fully Completed\nPartially Completed", "label": "Completion Status", "in_list_view": 1, "columns": 2, "read_only": 1},
+  {"fieldname": "column_break_1", "fieldtype": "Column Break"},
+  {"fieldname": "maintenance_visit", "fieldtype": "Link", "options": "Maintenance Visit", "label": "Maintenance Visit", "in_list_view": 1, "columns": 2, "read_only": 1},
+  {"fieldname": "warranty_claim", "fieldtype": "Link", "options": "Warranty Claim", "label": "Warranty Claim", "in_list_view": 1, "columns": 2, "read_only": 1},
+  {"fieldname": "section_break_1", "fieldtype": "Section Break"},
+  {"fieldname": "report", "fieldtype": "Small Text", "label": "Technician Report", "reqd": 1, "read_only": 1}
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-10-11 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Customer Support",
+ "name": "Support Technician Visit",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "creation",
+ "sort_order": "ASC",
+ "states": [],
+ "description": "One visit of the on-site technician on a support ticket (old technician_notes)."
+}

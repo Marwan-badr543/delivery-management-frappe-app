@@ -16,7 +16,23 @@
   "ac_excluded_items",
   "ac_rule_note",
   "stock_section",
-  "main_warehouse"
+  "main_warehouse",
+  "drivers_section",
+  "ac_tech_max_orders_per_day",
+  "tv_driver_gap_hours",
+  "tv_driver_gap_hours_manager",
+  "column_break_3",
+  "delivery_charge_item",
+  "ac_tech_day_limits_section",
+  "ac_tech_day_limits",
+  "delivery_note_section",
+  "auto_create_delivery_note",
+  "column_break_4",
+  "auto_delivery_note_company",
+  "support_section",
+  "support_visit_gap_minutes",
+  "column_break_5",
+  "support_maint_service_person"
  ],
  "fields": [
   {
@@ -100,12 +116,112 @@
    "label": "Main Store (Delivery Orders)",
    "options": "Warehouse",
    "reqd": 1
+  },
+  {
+   "fieldname": "drivers_section",
+   "fieldtype": "Section Break",
+   "label": "Drivers and Delivery Charge"
+  },
+  {
+   "fieldname": "ac_tech_max_orders_per_day",
+   "fieldtype": "Int",
+   "label": "AC Tech Max Orders per Day",
+   "non_negative": 1,
+   "description": "How many AC orders one AC Tech can take on one day. 0 = no limit. Exceptions per technician and day are in the AC Tech Day Limits table below."
+  },
+  {
+   "fieldname": "column_break_3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "delivery_charge_item",
+   "fieldtype": "Link",
+   "options": "Item",
+   "label": "Delivery Charge Item",
+   "description": "Added once to a POS order when it contains an item with <b>Has Delivery Charge</b> ticked. Must be a non-stock item with a price in the POS price list."
+  },
+  {
+   "fieldname": "tv_driver_gap_hours",
+   "fieldtype": "Float",
+   "label": "TV Driver Gap (Hours)",
+   "default": "1",
+   "non_negative": 1,
+   "description": "A TV driver is busy for this many hours before and after each of his orders. Used when a Delivery Manager assigns."
+  },
+  {
+   "fieldname": "tv_driver_gap_hours_manager",
+   "fieldtype": "Float",
+   "label": "TV Driver Gap for System Manager (Hours)",
+   "default": "0.5",
+   "non_negative": 1,
+   "description": "The same gap when a System Manager assigns (the old admin window)."
+  },
+  {
+   "fieldname": "ac_tech_day_limits_section",
+   "fieldtype": "Section Break",
+   "label": "AC Tech Day Limits",
+   "collapsible": 0
+  },
+  {
+   "fieldname": "ac_tech_day_limits",
+   "fieldtype": "Table",
+   "options": "AC Tech Day Limit",
+   "label": "AC Tech Day Limits",
+   "description": "A different limit for one AC Tech on one day, instead of AC Tech Max Orders per Day. 0 = day off. Also editable from the Driver Assignment page (AC tab)."
+  },
+  {
+   "fieldname": "delivery_note_section",
+   "fieldtype": "Section Break",
+   "label": "Delivery Note"
+  },
+  {
+   "fieldname": "auto_create_delivery_note",
+   "fieldtype": "Check",
+   "label": "Create Delivery Note when a Sales Order is submitted",
+   "default": "1",
+   "description": "Replaces the server script \"Delivery Note From Sales Order\": a draft Delivery Note is made from every submitted Sales Order (once)."
+  },
+  {
+   "fieldname": "column_break_4",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "auto_delivery_note_company",
+   "fieldtype": "Link",
+   "options": "Company",
+   "label": "Only for Company",
+   "depends_on": "auto_create_delivery_note",
+   "description": "Empty = every company."
+  },
+  {
+   "fieldname": "support_section",
+   "fieldtype": "Section Break",
+   "label": "Support"
+  },
+  {
+   "fieldname": "support_visit_gap_minutes",
+   "fieldtype": "Int",
+   "label": "Technician Visit Gap (Minutes)",
+   "default": "60",
+   "non_negative": 1,
+   "description": "A technician is unavailable this many minutes before and after another visit on the same day."
+  },
+  {
+   "fieldname": "column_break_5",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "support_maint_service_person",
+   "fieldtype": "Link",
+   "options": "Sales Person",
+   "label": "Default Service Person",
+   "description": "Service Person on Maintenance Visits made from the Technician page, when the technician has no Sales Person of his own."
   }
  ],
  "index_web_pages_for_search": 0,
  "issingle": 1,
  "links": [],
- "modified": "2026-10-07 02:39:48.265104",
+ "modified": "2026-10-11 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Delivery Management",
  "name": "Delivery Settings",

@@ -1,0 +1,1246 @@
+diff --git a/frontend/src/posapp/components/pos/Invoice.vue b/frontend/src/posapp/components/pos/Invoice.vue
+index 526a8b3..cbd4976 100644
+--- a/frontend/src/posapp/components/pos/Invoice.vue
++++ b/frontend/src/posapp/components/pos/Invoice.vue
+@@ -50,35 +50,6 @@
+ 							/>
+ 						</v-card>
+ 
+-						<v-card
+-							v-if="pos_profile.posa_use_delivery_charges"
+-							flat
+-							class="invoice-section-card pos-themed-card"
+-						>
+-							<div class="invoice-section-heading">
+-								<h3 class="invoice-section-heading__title">{{ __("Delivery Charges") }}</h3>
+-							</div>
+-							<DeliveryCharges
+-								ref="deliveryChargesComponent"
+-								:pos_profile="pos_profile"
+-								:delivery_charges="delivery_charges"
+-								:selected_delivery_charge="selected_delivery_charge"
+-								:delivery_charges_rate="delivery_charges_rate"
+-								:deliveryChargesFilter="deliveryChargesFilter"
+-								:formatCurrency="formatCurrency"
+-								:currencySymbol="currencySymbol"
+-								:readonly="readonly"
+-								@update:selected_delivery_charge="
+-									(val) => {
+-										selected_delivery_charge = val;
+-										update_delivery_charges(conversion_rate, currency_precision);
+-									}
+-								"
+-							/>
+-						</v-card>
+-					</div>
+-
+-					<div class="invoice-meta-grid">
+ 						<v-card
+ 							v-if="pos_profile.posa_allow_change_posting_date"
+ 							flat
+@@ -112,6 +83,9 @@
+ 								"
+ 							/>
+ 						</v-card>
++					</div>
++
++					<div class="invoice-meta-grid">
+ 
+ 						<v-card
+ 							v-if="pos_profile.posa_allow_multi_currency"
+@@ -221,6 +195,13 @@
+ 							/>
+ 						</div>
+ 					</v-card>
++
++					<!-- delivery_management: address + delivery slot / AC day for Orders -->
++					<DeliveryPanel
++						v-if="showDeliveryPanel"
++						:customer="customer || ''"
++						:items="items"
++					/>
+ 				</div>
+ 			</div>
+ 		</v-card>
+@@ -328,6 +309,9 @@ import { save_and_clear_invoice as saveAndClearInvoiceAction } from "./invoice_u
+ import { fetchDraftInvoices } from "../../utils/draftInvoices";
+ import { getQuickCashTenderSuggestions } from "../../utils/cashTender";
+ import invoiceService from "../../services/invoiceService";
++import DeliveryPanel from "./delivery/DeliveryPanel.vue";
++import { useDeliveryStore } from "../../stores/deliveryStore";
++import { defaultInvoiceType, isDmOrder } from "../../utils/deliveryManagement";
+ 
+ // Composables
+ import { useOnlineStatus } from "../../composables/core/useOnlineStatus";
+@@ -494,8 +478,12 @@ export default {
+ 		PaymentConfirmationDialog,
+ 		PriceListRateDialog,
+ 		ItemQuickEditDialog,
++		DeliveryPanel,
+ 	},
+ 	computed: {
++		showDeliveryPanel() {
++			return isDmOrder(this.invoiceType, this.pos_profile, this.invoice_doc) && !this.isReturnInvoice;
++		},
+ 		isCounterGridPresentation() {
+ 			return this.presentation === "counter-grid";
+ 		},
+@@ -1044,7 +1032,7 @@ export default {
+ 			this.pos_opening_shift = data.pos_opening_shift;
+ 			this.stock_settings = data.stock_settings;
+ 
+-			this.invoiceType = this.pos_profile.posa_default_sales_order ? "Order" : "Invoice";
++			this.invoiceType = defaultInvoiceType(this.pos_profile);
+ 
+ 			this.fetch_price_lists();
+ 			this.update_price_list();
+@@ -1577,7 +1565,7 @@ export default {
+ 			calc_uom: this.calc_uom,
+ 			recalculate_return_discount: (payload) => this.applyReturnDiscountProration(payload),
+ 			reset_invoice_type_to_invoice: () => {
+-				this.invoiceType = "Invoice";
++				this.invoiceType = defaultInvoiceType(this.pos_profile);
+ 				this.invoiceTypes = ["Invoice", "Order", "Quotation"];
+ 			},
+ 		};
+@@ -1661,6 +1649,10 @@ export default {
+ 	},
+ 	watch: {
+ 		...invoiceWatchers,
++		showDeliveryPanel(show) {
++			// Not a delivery Order any more (Invoice, Return...): drop the chosen schedule.
++			if (!show) useDeliveryStore().clearDelivery();
++		},
+ 		confirm_payment_dialog(val) {
+ 			if (val) {
+ 				this.$nextTick(() => {
+diff --git a/frontend/src/posapp/components/pos/Payments.vue b/frontend/src/posapp/components/pos/Payments.vue
+index ae4bf23..8d6c62e 100644
+--- a/frontend/src/posapp/components/pos/Payments.vue
++++ b/frontend/src/posapp/components/pos/Payments.vue
+@@ -298,6 +298,18 @@
+ 		</v-card>
+ 
+ 		<div :class="['payment-footer', { 'payment-footer--dialog': dialogMode }]">
++			<!-- delivery_management: why Submit is locked for a delivery Order -->
++			<v-alert
++				v-if="deliveryBlockMessage"
++				type="warning"
++				variant="tonal"
++				density="compact"
++				class="mb-2"
++				icon="mdi-truck-alert-outline"
++				data-testid="dm-payment-delivery-alert"
++			>
++				{{ deliveryBlockMessage }}
++			</v-alert>
+ 			<PaymentActionButtons
+ 				ref="submitButton"
+ 				:loading="loading"
+@@ -415,6 +427,8 @@ import PaymentCustomerCreditDetails from "./payments/PaymentCustomerCreditDetail
+ import PaymentOptions from "./payments/PaymentOptions.vue";
+ import PaymentSelectionFields from "./payments/PaymentSelectionFields.vue";
+ import PaymentDialogs from "./payments/PaymentDialogs.vue";
++import { useDeliveryStore } from "../../stores/deliveryStore";
++import { defaultInvoiceType, isDmOrder } from "../../utils/deliveryManagement";
+ 
+ const props = defineProps({
+ 	dialogMode: {
+@@ -616,11 +630,27 @@ const netInvoiceSettlementAmount = computed(() => {
+ 	return invoice_doc.value?.is_return ? Math.min(net, 0) : Math.max(net, 0);
+ });
+ 
++// delivery_management: a delivery Order needs its address and schedule (chosen in the cart).
++const deliveryStore = useDeliveryStore();
++const deliveryBlockMessage = computed(() => {
++	if (!isDmOrder(invoiceType.value, pos_profile.value, invoice_doc.value)) return "";
++	if (deliveryStore.delivery?.valid) return "";
++	const missing = deliveryStore.delivery?.missing || [];
++	return missing.length
++		? __("Close this and finish the Home Delivery details under the items. Still needed: {0}", [
++				missing.join(", "),
++			])
++		: __("Close this and finish the Home Delivery details under the items.");
++});
++
+ const validatePayment = computed(() => {
+ 	const profile = pos_profile.value;
+ 	if (!profile || !profile.posa_allow_sales_order) {
+ 		return false;
+ 	}
++	if (isDmOrder(invoiceType.value, profile, invoice_doc.value)) {
++		return Boolean(deliveryBlockMessage.value);
++	}
+ 	if (invoiceType.value !== "Order") {
+ 		return false;
+ 	}
+@@ -1299,8 +1329,10 @@ const finishSubmissionNavigation = (clearInvoice = false) => {
+ 			eventBus.emit("clear_invoice", { resetCurrency: true });
+ 		}
+ 
+-		if (submittedType !== "Invoice") {
+-			invoiceType.value = "Invoice";
++		// delivery_management: the next sale starts as an Order again.
++		const nextType = defaultInvoiceType(pos_profile.value);
++		if (submittedType !== nextType) {
++			invoiceType.value = nextType;
+ 			if (eventBus && typeof eventBus.emit === "function") {
+ 				eventBus.emit("reset_invoice_type_to_invoice");
+ 			}
+diff --git a/frontend/src/posapp/components/pos/invoice/CartItemRow.vue b/frontend/src/posapp/components/pos/invoice/CartItemRow.vue
+index d30e132..0778464 100644
+--- a/frontend/src/posapp/components/pos/invoice/CartItemRow.vue
++++ b/frontend/src/posapp/components/pos/invoice/CartItemRow.vue
+@@ -32,7 +32,7 @@
+ 						{{ __("Expired") }}
+ 					</v-chip>
+ 					<div
+-						v-if="item.has_batch_no || item.has_serial_no"
++						v-if="item.has_batch_no || (item.has_serial_no && !serialsByServer)"
+ 						class="posa-cart-item-row__tracking-stack"
+ 					>
+ 						<v-chip
+@@ -52,7 +52,7 @@
+ 							<v-icon end size="x-small">mdi-pencil</v-icon>
+ 						</v-chip>
+ 						<v-chip
+-							v-if="item.has_serial_no"
++							v-if="item.has_serial_no && !serialsByServer"
+ 							:color="serialSelectionComplete ? 'info' : 'error'"
+ 							size="x-small"
+ 							variant="tonal"
+@@ -442,6 +442,7 @@ import { computed, nextTick, ref, watch } from "vue";
+ import { getCartGridCellId, getCartGridRowId } from "../../../utils/cartFieldFocus";
+ import { normalizeCartEditQuantity } from "../../../utils/cartQuantity";
+ import { getItemLossRisk, resolveSaleFloorPolicy } from "../../../utils/lossPrevention";
++import { serialsPickedByServer } from "../../../utils/deliveryManagement";
+ 
+ defineOptions({
+ 	name: "CartItemRow",
+@@ -589,6 +590,8 @@ const selectedSerialCount = computed(() => {
+ 		.filter(Boolean).length;
+ });
+ 
++// delivery_management picks serials on submit; the cashier only chooses them on returns.
++const serialsByServer = computed(() => serialsPickedByServer(undefined, props.item));
+ const serialSelectionComplete = computed(() => selectedSerialCount.value === requiredSerialCount.value);
+ 
+ const rowDomId = computed(() => (props.rowIndex >= 0 ? getCartGridRowId(props.rowIndex) : undefined));
+diff --git a/frontend/src/posapp/components/pos/invoice/ItemsTableExpandedRow.vue b/frontend/src/posapp/components/pos/invoice/ItemsTableExpandedRow.vue
+index e75b92f..e7ae06b 100644
+--- a/frontend/src/posapp/components/pos/invoice/ItemsTableExpandedRow.vue
++++ b/frontend/src/posapp/components/pos/invoice/ItemsTableExpandedRow.vue
+@@ -277,7 +277,10 @@
+ 				</div>
+ 
+ 				<!-- Serial Number Section -->
+-				<div class="posa-form-section" v-if="item.has_serial_no || item.serial_no">
++				<div
++					class="posa-form-section"
++					v-if="(item.has_serial_no || item.serial_no) && !serialsPickedByServer(invoice_doc, item)"
++				>
+ 					<div class="posa-section-header">
+ 						<v-icon size="small" class="section-icon">mdi-barcode-scan</v-icon>
+ 						<span class="posa-section-title">{{ __("Serial Numbers") }}</span>
+@@ -392,10 +395,11 @@
+ 					</div>
+ 				</div>
+ 
+-				<!-- Delivery Date Section -->
++				<!-- Delivery Date Section (delivery_management books the slot for the whole order) -->
+ 				<div
+ 					class="posa-form-section"
+ 					v-if="
++						!dmOrdersEnabled(pos_profile) &&
+ 						pos_profile.posa_allow_sales_order &&
+ 						['Order', 'Quotation'].includes(invoiceType || '')
+ 					"
+@@ -432,6 +436,7 @@
+ <script setup lang="ts">
+ import { computed } from "vue";
+ import { getDisplayableBatchOptions } from "../../../composables/pos/shared/useBatchSerial";
++import { dmOrdersEnabled, serialsPickedByServer } from "../../../utils/deliveryManagement";
+ import type { CartItem, POSProfile, InvoiceDoc } from "../../../types/models";
+ 
+ interface Props {
+diff --git a/frontend/src/posapp/components/pos/invoice_utils/actions.ts b/frontend/src/posapp/components/pos/invoice_utils/actions.ts
+index 7b54083..5ac88f4 100644
+--- a/frontend/src/posapp/components/pos/invoice_utils/actions.ts
++++ b/frontend/src/posapp/components/pos/invoice_utils/actions.ts
+@@ -4,6 +4,14 @@ import { _logPriceListDebug, _buildPriceListSnapshot } from "./currency";
+ import { applyReturnDiscountProration } from "./item_updates";
+ import { prepareDocumentFlowAction } from "../../../utils/documentSources";
+ import { shouldFocusCartQtyAfterItemAdd } from "../../../utils/cartFocusSettings";
++import { isOffline } from "../../../../offline/index";
++import { ensureInvoiceClientRequestId } from "../../../../offline/idempotency";
++import {
++	defaultInvoiceType,
++	dmCall,
++	isDmOrder,
++} from "../../../utils/deliveryManagement";
++import { useDeliveryStore } from "../../../stores/deliveryStore";
+ 
+ declare const __: (_text: string, _args?: any[]) => string;
+ declare const frappe: any;
+@@ -192,6 +200,12 @@ export async function cancel_invoice(context: any) {
+ }
+ 
+ export async function save_and_clear_invoice(context: any) {
++	if (
++		isDmOrder(context.invoiceType, context.pos_profile, context.invoice_doc) &&
++		context.items?.length
++	) {
++		return save_delivery_order_unpaid(context);
++	}
+ 	const { clearInvoice } = getItemAdditionApi();
+ 	let old_invoice = null;
+ 	const doc = get_invoice_doc(context);
+@@ -225,6 +239,78 @@ export async function save_and_clear_invoice(context: any) {
+ 	}
+ }
+ 
++/**
++ * delivery_management: "Save & Clear" on an Order places it without payment. The Sales
++ * Order is submitted (slot booked, Delivery Note follows) and the Sales Invoice is
++ * submitted Unpaid; the customer usually pays on delivery.
++ */
++async function save_delivery_order_unpaid(context: any) {
++	const delivery = useDeliveryStore();
++	if (delivery.saving) return null;
++	const fail = (title: string, detail?: string) => {
++		context.toastStore.show({ title, detail, color: "error" });
++		return null;
++	};
++	if (isOffline()) {
++		return fail(
++			__("Delivery orders need an internet connection"),
++			__("The delivery slot is booked on the server. Reconnect, or sell it as an Invoice."),
++		);
++	}
++	if (!context.customer) {
++		return fail(__("Choose the customer first"));
++	}
++	if (!(await context.validate())) return null;
++	if (!delivery.delivery?.valid) {
++		const missing = delivery.delivery?.missing || [];
++		return fail(
++			__("Finish the delivery details first"),
++			missing.length ? __("Still missing: {0}", [missing.join(", ")]) : undefined,
++		);
++	}
++
++	delivery.saving = true;
++	const codes = (context.items || []).map((item: any) => item.item_code);
++	try {
++		const draft = await context.update_invoice(get_invoice_doc(context));
++		if (!draft?.name) {
++			return fail(__("Error saving the current invoice"));
++		}
++		ensureInvoiceClientRequestId(draft);
++		const result: any = await dmCall(
++			"submit",
++			{
++				invoice: draft,
++				data: {},
++				order_type: "Order",
++				delivery: delivery.delivery,
++				unpaid: 1,
++			},
++			{ freeze: true, freeze_message: __("Saving order..."), timeoutMs: 120_000 },
++		);
++		context.toastStore.show({
++			title: __("Order {0} saved", [result?.sales_order || ""]),
++			detail: __("Invoice {0} is unpaid: collect the payment on delivery.", [result?.name || ""]),
++			color: "success",
++		});
++		frappe?.utils?.play_sound?.("submit");
++		context.uiStore?.setLastInvoice?.(result?.name);
++		delivery.clearDelivery();
++		delivery.stockChanged(codes, context.pos_profile?.name);
++		const { clearInvoice } = getItemAdditionApi();
++		clearInvoice(context);
++		context.eventBus?.emit?.("focus_item_search");
++		return result;
++	} catch (error: any) {
++		frappe?.utils?.play_sound?.("error");
++		// A slot may have just been taken: show the current availability.
++		delivery.requestRefresh();
++		return fail(__("The order was not saved"), error?.message || String(error));
++	} finally {
++		delivery.saving = false;
++	}
++}
++
+ export async function new_order(context: any, data: any = {}) {
+ 	if (context.eventBus) context.eventBus.emit("set_customer_readonly", false);
+ 	context.expanded = [];
+@@ -239,7 +325,7 @@ export async function new_order(context: any, data: any = {}) {
+ 		context.invoice_doc = "";
+ 		context.discount_amount = 0;
+ 		context.additional_discount_percentage = 0;
+-		context.invoiceType = "Invoice";
++		context.invoiceType = defaultInvoiceType(context.pos_profile);
+ 		context.invoiceTypes = ["Invoice", "Order", "Quotation"];
+ 	} else {
+ 		if (data.is_return) {
+diff --git a/frontend/src/posapp/components/pos/invoice_utils/document.ts b/frontend/src/posapp/components/pos/invoice_utils/document.ts
+index 1b3c450..5236b6a 100644
+--- a/frontend/src/posapp/components/pos/invoice_utils/document.ts
++++ b/frontend/src/posapp/components/pos/invoice_utils/document.ts
+@@ -183,10 +183,17 @@ export function get_invoice_doc(context: any) {
+ 		const isOrderInvoiceFlow =
+ 			context.invoiceType === "Order" &&
+ 			doc.doctype !== "Sales Order";
++		// A return follows the stock path of the invoice it returns: an invoice that did not
++		// move stock (e.g. a delivery order, where the Delivery Note moves it) cannot be
++		// returned with update_stock (ERPNext refuses it).
++		const returnFollowsOriginal =
++			context.isReturnInvoice &&
++			sourceDoc.return_against &&
++			(sourceDoc.update_stock === 0 || sourceDoc.update_stock === "0" || sourceDoc.update_stock === false);
+ 		doc.update_stock =
+ 			explicitFlowUpdateStock === 0 || explicitFlowUpdateStock === 1
+ 				? explicitFlowUpdateStock
+-				: isOrderInvoiceFlow
++				: isOrderInvoiceFlow || returnFollowsOriginal
+ 					? 0
+ 					: defaultUpdateStock;
+ 	}
+diff --git a/frontend/src/posapp/components/pos/invoice_utils/loader.ts b/frontend/src/posapp/components/pos/invoice_utils/loader.ts
+index fd9198c..1a95bb1 100644
+--- a/frontend/src/posapp/components/pos/invoice_utils/loader.ts
++++ b/frontend/src/posapp/components/pos/invoice_utils/loader.ts
+@@ -186,6 +186,9 @@ export async function load_invoice(
+ 			}
+ 		: null;
+ 
++	// Reloading a draft (e.g. on PAY) must keep the cashier's Invoice / Order choice:
++	// clear_invoice resets the type to the default for a new sale.
++	const previousType = context.invoiceType;
+ 	if (context.clear_invoice) {
+ 		context.clear_invoice({ preserveStickies, preserveExchange });
+ 	}
+@@ -240,6 +243,8 @@ export async function load_invoice(
+ 		if (!context.invoiceTypes.includes("Order")) {
+ 			context.invoiceTypes = ["Invoice", "Order", "Quotation"];
+ 		}
++	} else if (previousType === "Invoice" || previousType === "Order") {
++		context.invoiceType = previousType;
+ 	}
+ 
+ 	context.invoice_doc = data;
+diff --git a/frontend/src/posapp/components/pos/invoice_utils/validation.ts b/frontend/src/posapp/components/pos/invoice_utils/validation.ts
+index eee1140..5e39262 100644
+--- a/frontend/src/posapp/components/pos/invoice_utils/validation.ts
++++ b/frontend/src/posapp/components/pos/invoice_utils/validation.ts
+@@ -1,4 +1,10 @@
+ import { validateCartBatchSerialAssignments } from "../../../composables/pos/shared/batchSerialValidation";
++import {
++	isDeliveryManagementEnabled,
++	serialsPickedByServer,
++} from "../../../utils/deliveryManagement";
++import { useDeliveryRules } from "../../../composables/pos/delivery/useDeliveryRules";
++import { useDeliveryStore } from "../../../stores/deliveryStore";
+ 
+ declare const __: (_text: string, _args?: any[]) => string;
+ declare const frappe: any;
+@@ -146,6 +152,15 @@ export async function validate(context: any) {
+ 		const assignmentIssues = validateCartBatchSerialAssignments(
+ 			context.items,
+ 			{ isReturnInvoice: Boolean(context.isReturnInvoice) },
++		).filter(
++			// delivery_management picks serials on submit: only batches still need a choice.
++			(issue) =>
++				!(
++					issue?.item?.has_serial_no &&
++					!issue?.item?.has_batch_no &&
++					!context.isReturnInvoice &&
++					serialsPickedByServer(context.invoice_doc, issue.item)
++				),
+ 		);
+ 		if (assignmentIssues.length) {
+ 			const issue = assignmentIssues[0];
+@@ -164,6 +179,67 @@ export async function validate(context: any) {
+ 		}
+ 	}
+ 
++	if (!context.isReturnInvoice && !validateDeliveryStock(context)) {
++		return false;
++	}
++
++	if (!context.isReturnInvoice && !validateDeliveryRules(context)) {
++		return false;
++	}
++
++	return true;
++}
++
++/**
++ * delivery_management: in a delivery Order the delivery charge appears once with qty 1 (the server checks the same on submit).
++ */
++function validateDeliveryRules(context: any) {
++	if (!isDeliveryManagementEnabled()) return true;
++	const rules = useDeliveryRules();
++	if (!rules.active(context.invoiceType, context.pos_profile, context.invoiceDoc || context.invoice_doc)) return true;
++	const problem = rules.chargeProblem(context.items);
++	if (problem) {
++		context.toastStore.show({ title: problem, color: "error" });
++		return false;
++	}
++	return true;
++}
++
++/**
++ * delivery_management: the cart may not ask for more than can be sold for this type
++ * (Invoice = this branch, Order = the main store). Unknown qty = no limit; the server
++ * checks again on submit.
++ */
++function validateDeliveryStock(context: any) {
++	if (!isDeliveryManagementEnabled()) return true;
++	const store = useDeliveryStore();
++	const type = context.invoiceType === "Order" ? "Order" : "Invoice";
++	const needed = new Map<string, { qty: number; name: string }>();
++	for (const item of context.items || []) {
++		if (!item?.item_code) continue;
++		const qty =
++			Number(item.stock_qty) ||
++			Number(item.qty || 0) * Number(item.conversion_factor || 1);
++		const row = needed.get(item.item_code) || { qty: 0, name: item.item_name || item.item_code };
++		row.qty += qty;
++		needed.set(item.item_code, row);
++	}
++	for (const [code, row] of needed) {
++		const available = store.qtyFor(code, type);
++		if (available === undefined || available === null) continue;
++		if (row.qty > Number(available)) {
++			context.toastStore.show({
++				title: __("Not enough stock of {0}", [row.name]),
++				detail: __("{0} available in {1}, {2} in the cart.", [
++					available,
++					type === "Order" ? __("the main store") : __("this branch"),
++					row.qty,
++				]),
++				color: "error",
++			});
++			return false;
++		}
++	}
+ 	return true;
+ }
+ 
+diff --git a/frontend/src/posapp/components/pos/items/ItemCard.vue b/frontend/src/posapp/components/pos/items/ItemCard.vue
+index 4975ec1..2edb855 100644
+--- a/frontend/src/posapp/components/pos/items/ItemCard.vue
++++ b/frontend/src/posapp/components/pos/items/ItemCard.vue
+@@ -1,6 +1,6 @@
+ <template>
+ 	<div
+-		:class="['card-item-card', { 'item-highlighted': isItemHighlighted }]"
++		:class="['card-item-card', { 'item-highlighted': isItemHighlighted, 'dm-out-of-stock': dmOut(item) }]"
+ 		data-pos-keyboard-target="item-card"
+ 		:data-testid="`pos-item-card-${item.item_code}`"
+ 		:data-item-code="item.item_code"
+@@ -58,7 +58,11 @@
+ 						</span>
+ 					</div>
+ 				</div>
+-				<div class="card-item-stock">
++				<div v-if="dmOut(item)" class="card-item-stock dm-out-label">
++					<v-icon size="small" class="stock-icon"> mdi-package-variant-remove </v-icon>
++					<span>{{ __("Out of stock") }}</span>
++				</div>
++				<div v-else class="card-item-stock" :title="dmEnabled ? __('Available in {0}', [stockPlace]) : ''">
+ 					<v-icon size="small" class="stock-icon"> mdi-package-variant </v-icon>
+ 					<span
+ 						class="stock-amount"
+@@ -80,6 +84,10 @@ import { computed } from "vue";
+ import placeholderImage from "../placeholder-image.png";
+ import ItemRateInfoMenu from "./ItemRateInfoMenu.vue";
+ import { priceListToSelectedCurrency } from "../../../utils/erpnextCurrency";
++import { useDeliveryStock } from "../../../composables/pos/delivery/useDeliveryStock";
++
++// delivery_management: stock of this branch (Invoice) or of the main store (Order).
++const { enabled: dmEnabled, dmQty, dmOut, stockPlace } = useDeliveryStock();
+ 
+ const props = defineProps({
+ 	item: { type: Object, required: true },
+@@ -160,7 +168,7 @@ const showSecondaryPrice = computed(() => {
+ });
+ 
+ const formattedActualQty = computed(() => {
+-	const numericQty = Number(props.item.actual_qty ?? 0);
++	const numericQty = Number(dmQty(props.item) ?? props.item.actual_qty ?? 0);
+ 	if (!Number.isFinite(numericQty)) {
+ 		return 0;
+ 	}
+@@ -193,6 +201,15 @@ const onDragEnd = (event) => {
+ </script>
+ 
+ <style scoped>
++.card-item-card.dm-out-of-stock {
++	opacity: 0.5;
++	cursor: not-allowed;
++	filter: grayscale(0.6);
++}
++.dm-out-label {
++	color: rgb(var(--v-theme-error));
++	font-weight: 600;
++}
+ .card-item-card {
+ 	background: var(--pos-surface-raised);
+ 	border-radius: var(--pos-radius-md);
+diff --git a/frontend/src/posapp/components/pos/items/ItemsSelector.vue b/frontend/src/posapp/components/pos/items/ItemsSelector.vue
+index 0f9ddb5..7b29f9b 100644
+--- a/frontend/src/posapp/components/pos/items/ItemsSelector.vue
++++ b/frontend/src/posapp/components/pos/items/ItemsSelector.vue
+@@ -217,6 +217,18 @@
+ 								@toggle-selection="toggleItemSelection"
+ 								@select-all="handleSelectAll"
+ 							/>
++							<div v-if="itemsPageCount > 1" class="dm-items-pager">
++								<v-pagination
++									v-model="itemsPage"
++									:length="itemsPageCount"
++									:total-visible="5"
++									density="compact"
++									rounded="circle"
++								/>
++								<span class="dm-items-pager__count">
++									{{ __("{0} items", [allMatchingItems.length]) }}
++								</span>
++							</div>
+ 						</v-col>
+ 					</v-row>
+ 				</v-card>
+@@ -342,6 +354,9 @@ import { useCustomersStore } from "../../../stores/customersStore";
+ import { useToastStore } from "../../../stores/toastStore";
+ import { useUIStore } from "../../../stores/uiStore";
+ import { useInvoiceStore } from "../../../stores/invoiceStore";
++import { useDeliveryStore } from "../../../stores/deliveryStore";
++import { useDeliveryStock } from "../../../composables/pos/delivery/useDeliveryStock";
++import { useDeliveryRules } from "../../../composables/pos/delivery/useDeliveryRules";
+ import { useEmployeeStore } from "../../../stores/employeeStore";
+ 
+ import { parseBooleanSetting, shouldBlockSaleForStock } from "../../../utils/stock";
+@@ -570,7 +585,13 @@ const {
+ 	syncedItemsCount = ref(0),
+ } = itemsIntegration;
+ 
+-const displayedItems = computed(() => {
++// delivery_management: page through the whole filtered list (stock POS Awesome showed
++// only the first page and nothing after it unless the cashier searched).
++const itemsPage = ref(1);
++const pageSizeValue = computed(() =>
++	Math.max(1, Number(enable_custom_items_per_page.value ? items_per_page.value : itemsPerPage.value) || 50),
++);
++const allMatchingItems = computed(() => {
+ 	const baseItems = Array.isArray(filteredItems.value) ? filteredItems.value : [];
+ 	const rawTerm = first_search.value;
+ 	const term = (typeof rawTerm === "string" ? rawTerm : "").trim().toLowerCase();
+@@ -581,9 +602,19 @@ const displayedItems = computed(() => {
+ 		hideZeroRate: hide_zero_rate_items.value,
+ 		hideVariants: pos_profile.value?.posa_hide_variants_items,
+ 		onlyBarcode: showOnlyBarcodeItemsRef.value,
+-		limit: enable_custom_items_per_page.value ? items_per_page.value : itemsPerPage.value,
++		limit: Number.MAX_SAFE_INTEGER,
+ 	});
+ });
++const itemsPageCount = computed(() => Math.max(1, Math.ceil(allMatchingItems.value.length / pageSizeValue.value)));
++const displayedItems = computed(() => {
++	const page = Math.min(itemsPage.value, itemsPageCount.value);
++	const start = (page - 1) * pageSizeValue.value;
++	return allMatchingItems.value.slice(start, start + pageSizeValue.value);
++});
++// A new search, group or page size starts again at page 1.
++watch([first_search, item_group, pageSizeValue], () => {
++	itemsPage.value = 1;
++});
+ 
+ // Item reloads (notably after a customer/price-list change) replace the
+ // catalog objects with fresh raw warehouse quantities. Re-prime the stock
+@@ -597,6 +628,95 @@ watch(
+ 	{ flush: "post" },
+ );
+ 
++// delivery_management: load the sellable stock (branch + main store) of what is shown.
++const deliveryStore = useDeliveryStore();
++const deliveryStock = useDeliveryStock();
++const deliveryRules = useDeliveryRules();
++/** Delivery charge rows this screen added by itself (removed again if the sale becomes an Invoice). */
++const autoChargeRows = new Set<string>();
++let addingCharge = false;
++
++/** An item with "Has Delivery Charge" is in the Order: add the Delivery Charge Item once. */
++async function addDeliveryChargeIfNeeded() {
++	if (addingCharge || isReturnInvoice.value) return;
++	if (!deliveryRules.active(invoiceStore.invoiceType, pos_profile.value, invoiceStore.invoiceDoc)) return;
++	addingCharge = true;
++	try {
++		const cart = invoiceStore.items;
++		await deliveryRules.store.ensureRules(cart.map((r: any) => r.item_code), pos_profile.value?.name);
++		if (!deliveryRules.needsDeliveryCharge(invoiceStore.items)) return;
++		const code = deliveryRules.store.deliveryChargeItem;
++		let chargeItem: any = (items.value || []).find((i: any) => i.item_code === code);
++		if (!chargeItem) {
++			const res: any = await frappe.call({
++				method: "posawesome.posawesome.api.items.get_items",
++				args: {
++					pos_profile: pos_profile.value,
++					price_list: itemsIntegration.active_price_list.value,
++					search_value: code,
++				},
++			});
++			chargeItem = (res?.message || []).find((i: any) => i.item_code === code);
++		}
++		if (!chargeItem) {
++			toastStore.show({
++				title: __("Delivery charge item {0} is not available in this POS Profile", [code]),
++				detail: __("Add its item group to the POS Profile and give it a price."),
++				color: "error",
++			});
++			return;
++		}
++		const line = await add_item(chargeItem, { qty: 1, new_line: true, dmDeliveryCharge: true });
++		if (line) {
++			toastStore.show({
++				title: __("Delivery charge added"),
++				detail: chargeItem.item_name || code,
++				color: "info",
++			});
++		}
++	} catch (error) {
++		console.warn("delivery_management: delivery charge not added", error);
++	} finally {
++		addingCharge = false;
++	}
++}
++
++// Invoice -> Order: add the charge if needed.
++// Order -> Invoice (branch pickup, no delivery): take back the charge this screen added.
++watch(
++	() => invoiceStore.invoiceType,
++	async (type, previous) => {
++		if (!deliveryStock.enabled || type === previous) return;
++		// Fresh qty for the new type's store: branch for Invoice, main store for Order.
++		void deliveryStore.stockChanged(
++			invoiceStore.items.map((r: any) => r.item_code),
++			pos_profile.value?.name,
++		);
++		if (deliveryRules.active(type, pos_profile.value, invoiceStore.invoiceDoc)) {
++			await deliveryRules.store.ensureRules(
++				invoiceStore.items.map((r: any) => r.item_code),
++				pos_profile.value?.name,
++			);
++			void addDeliveryChargeIfNeeded();
++		} else {
++			for (const row of invoiceStore.items.filter((r: any) => autoChargeRows.has(r.posa_row_id))) {
++				invoiceStore.removeItemByRowId(row.posa_row_id);
++				autoChargeRows.delete(row.posa_row_id);
++			}
++		}
++	},
++);
++watch(
++	[displayedItems, () => pos_profile.value?.name],
++	([list, profileName]) => {
++		if (!deliveryStock.enabled || !profileName) return;
++		const codes = (list || []).map((item: any) => item?.item_code).filter(Boolean);
++		deliveryStore.setVisibleCodes(codes);
++		deliveryStore.loadAvailability(codes, profileName);
++	},
++	{ immediate: true },
++);
++
+ const pharmacySearchField = ref("all");
+ // Counter Grid must expose unavailable requested medicines so Enter can offer
+ // same-generic in-stock alternates. Classic item browsing keeps its own policy.
+@@ -951,6 +1071,32 @@ const add_item = async (item, optionsOrQty: any = {}) => {
+ 			requestedQty === "" || requestedQty == null ? 1 : Math.abs(parseFloat(requestedQty) || 1);
+ 
+ 		item = { ...item };
++		if (deliveryStock.dmOut(item)) {
++			toastStore.show({
++				title: __("{0} is out of stock in {1}", [
++					item.item_name || item.item_code,
++					deliveryStock.stockPlace.value,
++				]),
++				detail:
++					deliveryStock.type.value === "Order"
++						? __("Orders are delivered from the main store.")
++						: __("Switch the Type to Order to deliver it from the main store."),
++				color: "error",
++			});
++			return null;
++		}
++		const dmRulesActive = deliveryRules.active(
++			invoiceStore.invoiceType,
++			pos_profile.value,
++			invoiceStore.invoiceDoc,
++		);
++		if (dmRulesActive && !isReturnInvoice.value) {
++			const reason = await deliveryRules.blockReason(item, invoiceStore.items, pos_profile.value);
++			if (reason) {
++				toastStore.show({ title: reason, color: "error" });
++				return null;
++			}
++		}
+ 		if (parseBooleanSetting(item.retailmind_locked_for_sale)) {
+ 			toastStore.show({
+ 				title: __("Item is locked for sale"),
+@@ -1025,6 +1171,12 @@ const add_item = async (item, optionsOrQty: any = {}) => {
+ 				eventBus.emit("apply_pricing_rules");
+ 			}
+ 			qty.value = 1;
++			const addedRowId = (addedLine as any)?.posa_row_id;
++			if (addedLine && options.dmDeliveryCharge && addedRowId) {
++				autoChargeRows.add(addedRowId);
++			} else if (addedLine) {
++				void addDeliveryChargeIfNeeded();
++			}
+ 			if (
+ 				addedLine &&
+ 				props.presentation === "counter-grid-dialog" &&
+@@ -2084,6 +2236,20 @@ defineExpose({
+ 	min-width: 0;
+ }
+ 
++.dm-items-pager {
++	display: flex;
++	align-items: center;
++	justify-content: center;
++	gap: 8px;
++	flex-wrap: wrap;
++	padding: 6px 0 2px;
++}
++
++.dm-items-pager__count {
++	font-size: 0.8rem;
++	color: rgba(var(--v-theme-on-surface), 0.6);
++}
++
+ .dynamic-scroll {
+ 	transition: max-height 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+ 	padding-bottom: var(--dynamic-sm);
+diff --git a/frontend/src/posapp/components/pos/items/ItemsSelectorTable.vue b/frontend/src/posapp/components/pos/items/ItemsSelectorTable.vue
+index a55926a..90f61dd 100644
+--- a/frontend/src/posapp/components/pos/items/ItemsSelectorTable.vue
++++ b/frontend/src/posapp/components/pos/items/ItemsSelectorTable.vue
+@@ -112,8 +112,13 @@
+ 				</div>
+ 			</template>
+ 			<template v-slot:item.actual_qty="{ item }">
+-				<span class="golden--text" :class="{ 'negative-number': isNegative(item.actual_qty) }">
+-					{{ formatActualQty(item.actual_qty) }}
++				<span v-if="dmOut(item)" class="text-error font-weight-medium">{{ __("Out of stock") }}</span>
++				<span
++					v-else
++					class="golden--text"
++					:class="{ 'negative-number': isNegative(dmQty(item) ?? item.actual_qty) }"
++				>
++					{{ formatActualQty(dmQty(item) ?? item.actual_qty) }}
+ 				</span>
+ 			</template>
+ 		</v-data-table-virtual>
+@@ -124,6 +129,9 @@
+ import { ref, computed, nextTick, watch } from "vue";
+ import ItemRateInfoMenu from "./ItemRateInfoMenu.vue";
+ import { priceListToSelectedCurrency } from "../../../utils/erpnextCurrency";
++import { useDeliveryStock } from "../../../composables/pos/delivery/useDeliveryStock";
++
++const { dmQty, dmOut } = useDeliveryStock();
+ 
+ const props = defineProps({
+ 	displayedItems: { type: Array, default: () => [] },
+diff --git a/frontend/src/posapp/components/pos/payments/PaymentAdditionalInfo.vue b/frontend/src/posapp/components/pos/payments/PaymentAdditionalInfo.vue
+index ad68670..f0e293e 100644
+--- a/frontend/src/posapp/components/pos/payments/PaymentAdditionalInfo.vue
++++ b/frontend/src/posapp/components/pos/payments/PaymentAdditionalInfo.vue
+@@ -3,7 +3,10 @@
+ 		<!-- Additional Invoice Information (Delivery, Address, Notes) -->
+ 		<v-row class="pa-1">
+ 			<!-- Delivery Date and Address (if applicable) -->
+-			<v-col cols="6" v-if="posProfile.posa_allow_sales_order && invoiceType === 'Order'">
++			<v-col
++				cols="6"
++				v-if="!dmOrders && posProfile.posa_allow_sales_order && invoiceType === 'Order'"
++			>
+ 				<VueDatePicker
+ 					:model-value="newDeliveryDate"
+ 					model-type="format"
+@@ -28,7 +31,7 @@
+ 				/>
+ 			</v-col>
+ 			<!-- Shipping Address Selection (if delivery date is set) -->
+-			<v-col cols="12" v-if="invoiceDoc.posa_delivery_date">
++			<v-col cols="12" v-if="!dmOrders && invoiceDoc.posa_delivery_date">
+ 				<v-autocomplete
+ 					density="compact"
+ 					clearable
+@@ -115,9 +118,10 @@
+ </template>
+ 
+ <script setup>
+-import { inject } from "vue";
++import { computed, inject } from "vue";
++import { dmOrdersEnabled } from "../../../utils/deliveryManagement";
+ 
+-defineProps({
++const props = defineProps({
+ 	invoiceDoc: {
+ 		type: Object,
+ 		required: true,
+@@ -158,6 +162,8 @@ defineProps({
+ 
+ defineEmits(["update:newDeliveryDate", "update:returnValidUptoDate", "new-address"]);
+ 
++// delivery_management: the delivery address and slot are chosen in the cart.
++const dmOrders = computed(() => dmOrdersEnabled(props.posProfile));
+ const $frappe = inject("frappe", window.frappe);
+ const $__ = inject("__", window.__);
+ </script>
+diff --git a/frontend/src/posapp/components/pos/payments/PaymentSelectionFields.vue b/frontend/src/posapp/components/pos/payments/PaymentSelectionFields.vue
+index 537ccb8..f4f98b2 100644
+--- a/frontend/src/posapp/components/pos/payments/PaymentSelectionFields.vue
++++ b/frontend/src/posapp/components/pos/payments/PaymentSelectionFields.vue
+@@ -1,7 +1,7 @@
+ <template>
+ 	<div class="selection-fields">
+-		<!-- Sales Person Selection -->
+-		<v-row class="pb-0 mb-2" align="start">
++		<!-- Sales Person Selection (delivery_management: the salesman is the cashier, set on the server) -->
++		<v-row v-if="!dmEnabled" class="pb-0 mb-2" align="start">
+ 			<v-col cols="12">
+ 				<p v-if="salesPersons && salesPersons.length > 0" class="mt-1 mb-1 text-subtitle-2">
+ 					{{ salesPersons.length }} {{ $__("sales persons found") }}
+@@ -48,6 +48,9 @@
+ 
+ <script setup>
+ import { inject } from "vue";
++import { isDeliveryManagementEnabled } from "../../../utils/deliveryManagement";
++
++const dmEnabled = isDeliveryManagementEnabled();
+ 
+ defineProps({
+ 	salesPersons: {
+diff --git a/frontend/src/posapp/composables/pos/items/addition/useItemCreation.ts b/frontend/src/posapp/composables/pos/items/addition/useItemCreation.ts
+index 9fb9f8e..c5ae8ed 100644
+--- a/frontend/src/posapp/composables/pos/items/addition/useItemCreation.ts
++++ b/frontend/src/posapp/composables/pos/items/addition/useItemCreation.ts
+@@ -1,4 +1,5 @@
+ import { toCompanyCurrency } from "../../../../utils/erpnextCurrency";
++import { serialsPickedByServer } from "../../../../utils/deliveryManagement";
+ 
+ declare const __: (_text: string, _args?: any[]) => string;
+ declare const frappe: any;
+@@ -125,7 +126,8 @@ export function useItemCreation() {
+ 		if (
+ 			(!context?.pos_profile?.posa_auto_set_batch &&
+ 				new_item.has_batch_no) ||
+-			new_item.has_serial_no
++			(new_item.has_serial_no &&
++				!serialsPickedByServer(context?.invoice_doc, new_item))
+ 		) {
+ 			// Only store the row ID to keep expanded array consistent
+ 			if (Array.isArray(context.expanded)) {
+diff --git a/frontend/src/posapp/composables/pos/items/useItemAddition.ts b/frontend/src/posapp/composables/pos/items/useItemAddition.ts
+index 57b0964..810a4a0 100644
+--- a/frontend/src/posapp/composables/pos/items/useItemAddition.ts
++++ b/frontend/src/posapp/composables/pos/items/useItemAddition.ts
+@@ -16,6 +16,11 @@ import { useItemBundles } from "./addition/useItemBundles";
+ import { collectUsedSerialsForItem } from "./addition/serialSelection";
+ import { useBatchSerial } from "../shared/useBatchSerial";
+ import { getRequiredStockQuantity } from "../shared/batchSerialValidation";
++import {
++	defaultInvoiceType,
++	dmOrdersEnabled,
++	serialsPickedByServer,
++} from "../../../utils/deliveryManagement";
+ import {
+ 	allocateBatchStockQty,
+ 	getItemConversionFactor,
+@@ -132,6 +137,12 @@ export function useItemAddition() {
+ 
+ 	const autoAssignSerials = (item: any, context: any) => {
+ 		if (!item?.has_serial_no) return;
++		// delivery_management picks the serials on the server (branch or main store).
++		if (
++			context?.invoiceType !== "Return" &&
++			serialsPickedByServer(context?.invoice_doc, item)
++		)
++			return;
+ 		if (item._batch_serial_assignment_source === "manual") {
+ 			callSetSerialNo(context, item);
+ 			return;
+@@ -1060,11 +1071,9 @@ export function useItemAddition() {
+ 
+ 		context.eventBus.emit("set_customer_readonly", false);
+ 		context.invoiceType =
+-			wasReturn || wasQuotation
++			(wasReturn || wasQuotation) && !dmOrdersEnabled(context.pos_profile)
+ 				? "Invoice"
+-				: context.pos_profile.posa_default_sales_order
+-					? "Order"
+-					: "Invoice";
++				: defaultInvoiceType(context.pos_profile);
+ 		context.invoiceTypes = ["Invoice", "Order", "Quotation"];
+ 
+ 		if (Object.prototype.hasOwnProperty.call(context, "itemSearch")) {
+diff --git a/frontend/src/posapp/composables/pos/payments/usePaymentSubmission.ts b/frontend/src/posapp/composables/pos/payments/usePaymentSubmission.ts
+index 319e5e2..100e715 100644
+--- a/frontend/src/posapp/composables/pos/payments/usePaymentSubmission.ts
++++ b/frontend/src/posapp/composables/pos/payments/usePaymentSubmission.ts
+@@ -16,6 +16,11 @@ import {
+ import stockCoordinator from "../../../utils/stockCoordinator";
+ import { parseBooleanSetting } from "../../../utils/stock";
+ import { resolvePosDocumentDoctype } from "../../../utils/posDocumentMode";
++import {
++	isDeliveryManagementEnabled,
++	isDmOrder,
++} from "../../../utils/deliveryManagement";
++import { useDeliveryStore } from "../../../stores/deliveryStore";
+ import { toCompanyCurrency } from "../../../utils/erpnextCurrency";
+ import { shouldApplyReturnRefundCap } from "../../../utils/paymentInitialization";
+ import {
+@@ -279,7 +284,7 @@ export function usePaymentSubmission(options: PaymentSubmissionOptions) {
+ 			} catch (error) {
+ 				if (
+ 					getSubmissionErrorCode(error) !== "TERMINAL_LOCKED" ||
+-					type !== "Invoice" ||
++					!(type === "Invoice" || isDmOrder(type, profile, submissionDoc)) ||
+ 					!stores?.employeeStore?.requestTerminalUnlock
+ 				) {
+ 					throw error;
+@@ -997,6 +1002,31 @@ export function usePaymentSubmission(options: PaymentSubmissionOptions) {
+ 			onScheduleBackgroundCheck,
+ 		} = callbacks;
+ 
++		// delivery_management: submitted through its own endpoint (serials picked and, for
++		// Orders, Sales Order + slot booked on the server). Never through the offline outbox:
++		// replaying it later through POS Awesome's submit would skip all of that.
++		const viaDeliveryManagement =
++			isDeliveryManagementEnabled() &&
++			!(unref(options.exchangeSession)?.stage === "sale" && unref(options.exchangeSession)?.returnDoc);
++		const deliveryOrder = isDmOrder(type, profile, doc);
++		const deliveryStore = viaDeliveryManagement ? useDeliveryStore() : null;
++		if (deliveryOrder) {
++			if (isOffline()) {
++				throw new Error(
++					__("Delivery orders need an internet connection. Reconnect, or sell it as an Invoice."),
++				);
++			}
++			const delivery = deliveryStore?.delivery;
++			if (!delivery?.valid) {
++				const missing = delivery?.missing || [];
++				throw new Error(
++					missing.length
++						? __("Finish the delivery details first. Still missing: {0}", [missing.join(", ")])
++						: __("Finish the delivery details first (address and schedule, under the items)."),
++				);
++			}
++		}
++
+ 		if (doc.is_return) {
+ 			ensureReturnPaymentsAreNegative();
+ 		}
+@@ -1110,6 +1140,7 @@ export function usePaymentSubmission(options: PaymentSubmissionOptions) {
+ 			);
+ 		const hasPostSubmitPaymentWork =
+ 			!isExchangeSubmission &&
++			!viaDeliveryManagement && // always submitted synchronously
+ 			Boolean(profile?.posa_allow_submissions_in_background_job) &&
+ 			(formatFloat(unref(redeemedCustomerCredit) || 0, prec) > 0 ||
+ 				hasGiftCardRedemption ||
+@@ -1117,6 +1148,13 @@ export function usePaymentSubmission(options: PaymentSubmissionOptions) {
+ 				cChange > 0);
+ 
+ 		if (isOffline()) {
++			if (viaDeliveryManagement) {
++				// Queued sales are later submitted by POS Awesome itself, which would skip the
++				// server-side serial picking and stock check of delivery_management.
++				throw new Error(
++					__("No internet connection: the sale was not submitted. Reconnect and press Submit again."),
++				);
++			}
+ 			if (isExchangeSubmission) {
+ 				throw new Error(
+ 					__("Item exchanges require an online connection"),
+@@ -1162,8 +1200,9 @@ export function usePaymentSubmission(options: PaymentSubmissionOptions) {
+ 		try {
+ 			await validateStockBeforeOnlineSubmission(doc, profile, type);
+ 			const intent = { data, invoice: submissionDoc };
+-			if (!isExchangeSubmission) persistInvoiceIntentJournal(intent);
+-			const outboxPersistPromise = isExchangeSubmission
++			const skipOutbox = isExchangeSubmission || viaDeliveryManagement;
++			if (!skipOutbox) persistInvoiceIntentJournal(intent);
++			const outboxPersistPromise = skipOutbox
+ 				? Promise.resolve()
+ 				: enqueueInvoiceOutboxEntry(intent).catch((error) => {
+ 						console.warn(
+@@ -1229,7 +1268,14 @@ export function usePaymentSubmission(options: PaymentSubmissionOptions) {
+ 				docstatus === 1 ||
+ 				status === 1 ||
+ 				(docstatus === undefined && status === undefined);
+-			if (wasSubmitted && !isExchangeSubmission) {
++			if (wasSubmitted && viaDeliveryManagement && deliveryStore) {
++				deliveryStore.clearDelivery();
++				deliveryStore.stockChanged(
++					(doc?.items || []).map((item: any) => item.item_code),
++					profile?.name,
++				);
++			}
++			if (wasSubmitted && !skipOutbox) {
+ 				void outboxPersistPromise.then(() =>
+ 					removeInvoiceOutboxEntry(
+ 						submissionDoc.posa_client_request_id,
+@@ -1243,6 +1289,7 @@ export function usePaymentSubmission(options: PaymentSubmissionOptions) {
+ 			}
+ 			const waitForInvoiceProcessing =
+ 				!isExchangeSubmission &&
++				!viaDeliveryManagement &&
+ 				Boolean(profile?.posa_allow_submissions_in_background_job) &&
+ 				!wasSubmitted;
+ 			const submittedDoctype =
+@@ -1392,8 +1439,12 @@ export function usePaymentSubmission(options: PaymentSubmissionOptions) {
+ 					invoiceType: type,
+ 					posProfile: profile,
+ 				});
+-				const submittedTitle =
+-					submittedDocumentType === "Sales Order"
++				const submittedTitle = r.message?.sales_order
++					? __("Order {0} placed (Invoice {1})", [
++							r.message.sales_order,
++							responseInvoiceName,
++						])
++					: submittedDocumentType === "Sales Order"
+ 						? __("Sales Order {0} is Submitted", [
+ 								responseInvoiceName,
+ 							])
+@@ -1590,9 +1641,12 @@ export function usePaymentSubmission(options: PaymentSubmissionOptions) {
+ 			stores?.toastStore?.show(
+ 				buildSubmissionFailureToast(exc, errorMsg),
+ 			);
++			// A slot may have just been taken: show the current availability.
++			if (deliveryOrder) deliveryStore?.requestRefresh();
+ 
+ 			if (
+ 				!isExchangeSubmission &&
++				!viaDeliveryManagement &&
+ 				profile?.posa_allow_submissions_in_background_job
+ 			) {
+ 				if (onFinishNavigation) onFinishNavigation(true);
+diff --git a/frontend/src/posapp/services/invoiceService.ts b/frontend/src/posapp/services/invoiceService.ts
+index 4fdc939..094d33f 100644
+--- a/frontend/src/posapp/services/invoiceService.ts
++++ b/frontend/src/posapp/services/invoiceService.ts
+@@ -2,6 +2,12 @@ import api from "./api";
+ import { unwrapApiResult, type ApiEnvelope } from "./api";
+ import type { InvoiceDoc, POSProfile } from "../types/models";
+ import { resolvePosDocumentDoctype } from "../utils/posDocumentMode";
++import {
++	DM_API,
++	dmOrderType,
++	isDeliveryManagementEnabled,
++} from "../utils/deliveryManagement";
++import { useDeliveryStore } from "../stores/deliveryStore";
+ 
+ function getSubmitInvoiceCall(
+ 	data: any,
+@@ -13,6 +19,27 @@ function getSubmitInvoiceCall(
+ 		invoiceType,
+ 		posProfile,
+ 	});
++	if (
++		isDeliveryManagementEnabled() &&
++		(doctype === "Sales Invoice" || doctype === "POS Invoice") &&
++		invoiceDoc &&
++		typeof invoiceDoc === "object"
++	) {
++		// delivery_management picks serials, books the slot / AC day and, for Orders,
++		// creates the Sales Order, then submits through POS Awesome's own submit_invoice
++		// (always synchronously).
++		const orderType = dmOrderType(invoiceType, posProfile, invoiceDoc);
++		return {
++			method: `${DM_API}.submit`,
++			args: {
++				data,
++				invoice: invoiceDoc,
++				order_type: orderType,
++				delivery: orderType === "Order" ? useDeliveryStore().delivery : {},
++			},
++		};
++	}
++
+ 	const method =
+ 		doctype === "Sales Order"
+ 			? "posawesome.posawesome.api.sales_orders.submit_sales_order"
+@@ -78,7 +105,9 @@ const invoiceService = {
+ 			invoiceType,
+ 			posProfile,
+ 		);
+-		return api.callEnvelope(method, args);
++		// A delivery Order creates several documents in one request: allow it more time.
++		const options = method.startsWith(DM_API) ? { timeoutMs: 120_000 } : undefined;
++		return api.callEnvelope(method, args, options);
+ 	},
+ 
+ 	async submitInvoiceData(
+diff --git a/frontend/src/posapp/utils/posDocumentMode.ts b/frontend/src/posapp/utils/posDocumentMode.ts
+index 9cc5350..9440440 100644
+--- a/frontend/src/posapp/utils/posDocumentMode.ts
++++ b/frontend/src/posapp/utils/posDocumentMode.ts
+@@ -1,4 +1,5 @@
+ import { parseBooleanSetting } from "./stock";
++import { dmOrdersEnabled } from "./deliveryManagement";
+ 
+ export type PosDocumentMode = "Invoice" | "Order" | "Quotation" | "Return" | string;
+ 
+@@ -15,6 +16,12 @@ export function resolvePosDocumentDoctype({
+ 		return "Quotation";
+ 	}
+ 
++	// delivery_management: an Order stays a Sales Invoice draft; the server creates the
++	// Sales Order on submit (see utils/deliveryManagement.ts).
++	if (invoiceType === "Order" && dmOrdersEnabled(posProfile)) {
++		return "Sales Invoice";
++	}
++
+ 	if (
+ 		invoiceType === "Order" &&
+ 		(parseBooleanSetting(posProfile?.posa_allow_sales_order) ||
+diff --git a/yarn.lock b/yarn.lock
+index ea4eadd..951039e 100644
+--- a/yarn.lock
++++ b/yarn.lock
+@@ -1745,6 +1745,8 @@ ansi-styles@^4.0.0, ansi-styles@^4.1.0:
+   version "4.3.0"
+   resolved "https://registry.npmjs.org/ansi-styles/-/ansi-styles-4.3.0.tgz"
+   integrity sha512-zbB9rCJAT1rbjiVDb2hqKFHNYLxgtk8NURxZ3IZwD3F6NtxbXZQCnnSi1Lkx+IDohdPlFp222wVALIheZJQSEg==
++  dependencies:
++    color-convert "^2.0.1"
+ 
+ ansi-styles@^6.1.0:
+   version "6.2.1"
+@@ -2320,23 +2322,11 @@ color-convert@^1.9.0:
+   dependencies:
+     color-name "1.1.3"
+ 
+-color-convert@^2.0.1:
+-  version "2.0.1"
+-  resolved "https://registry.yarnpkg.com/color-convert/-/color-convert-2.0.1.tgz#72d3a68d598c9bdb3af2ad1e84f21d896abd4de3"
+-  integrity sha512-RRECPsj7iu/xb5oKYcsFHSppFNnsj/52OVTRKb4zP5onXwVF3zVmmToNcOfGC+CRDpfK/U584fMg38ZHCaElKQ==
+-  dependencies:
+-    color-name "~1.1.4"
+-
+ color-name@1.1.3:
+   version "1.1.3"
+   resolved "https://registry.npmjs.org/color-name/-/color-name-1.1.3.tgz"
+   integrity sha512-72fSenhMw2HZMTVHeCA9KCmpEIbzWiQsjN+BHcBbS9vr1mtt+vJjPdksIBNUmKAW8TFUDPJK5SUU3QhE9NEXDw==
+ 
+-color-name@~1.1.4:
+-  version "1.1.4"
+-  resolved "https://registry.yarnpkg.com/color-name/-/color-name-1.1.4.tgz#c2a09a87acbde69543de6f63fa3995c826c536a2"
+-  integrity sha512-dOy+3AuW3a2wNbZHIuMZpTcgjGuLU/uBL/ubcZF9OXbDo8ff4O8yVp5Bf0efS8uEoYo5q4Fx7dY9OgQGXgAsQA==
+-
+ color-support@^1.1.3:
+   version "1.1.3"
+   resolved "https://registry.yarnpkg.com/color-support/-/color-support-1.1.3.tgz#93834379a1cc9a0c61f82f52f0d04322251bd5a2"

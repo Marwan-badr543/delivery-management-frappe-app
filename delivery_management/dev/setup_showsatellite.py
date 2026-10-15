@@ -62,6 +62,7 @@ def run():
 	_cashier_pin(log)
 	_server_scripts(snap, log)
 	_delivery(log)
+	_drivers_and_extras(log)
 	frappe.db.commit()
 	_opening_stock(snap, company, log)
 	frappe.db.commit()
@@ -238,8 +239,11 @@ def _customers(log):
 
 
 def _server_scripts(snap, log):
+	from delivery_management.patches.disable_replaced_server_scripts import REPLACED
+
+	# The app does what the replaced ones did (DN from SO, serial reservation); never recreate them.
 	for s in snap["server_scripts"]:
-		if not frappe.db.exists("Server Script", s["name"]):
+		if s["name"] not in REPLACED and not frappe.db.exists("Server Script", s["name"]):
 			frappe.get_doc({"doctype": "Server Script", "name": s["name"], "script_type": s["script_type"],
 				"reference_doctype": s["reference_doctype"], "doctype_event": s["doctype_event"],
 				"script": s["script"]}).insert()
@@ -268,6 +272,96 @@ def _delivery(log):
 	if not frappe.db.exists("Has Role", {"parent": "Administrator", "role": "Delivery Manager"}):
 		frappe.get_doc("User", "Administrator").add_roles("Delivery Manager")
 	log.append(f"{len(SAMPLE_AREAS)} sample delivery areas x {len(SAMPLE_HOURS)} slots, Delivery Settings")
+
+
+# Local dev only: test drivers / AC techs (login with DEV_DRIVER_PASSWORD) and the
+# delivery-charge + bundle samples of phase 3.
+DEV_DRIVER_PASSWORD = "Driver@12345"
+DEV_DRIVERS = [
+	("tv.driver1@showsatellite.test", "Ahmed TV Driver", "TV Driver"),
+	("tv.driver2@showsatellite.test", "Hassan TV Driver", "TV Driver"),
+	("ac.tech1@showsatellite.test", "Ali AC Tech", "AC Tech"),
+	("ac.tech2@showsatellite.test", "Yousef AC Tech", "AC Tech"),
+]
+DELIVERY_CHARGE_ITEM = "DELIVERY CHARGE"
+# Support pages: customer service, on-site technicians and the workshop (same dev password).
+DEV_SUPPORT_USERS = [
+	("cs.agent1@showsatellite.test", "CS Agent One", "Support Team"),
+	("tech1@showsatellite.test", "Tech One", "Technician"),
+	("tech2@showsatellite.test", "Tech Two", "Technician"),
+	("maint1@showsatellite.test", "Workshop One", "Maintenance Technician"),
+]
+# Issue types used on production (read-only snapshot).
+SUPPORT_ISSUE_TYPES = ["Black Screen", "Screen Line", "No Power", "Keeps Restarting", "Sound Problem", "TV Stuck",
+	"Screen Broken", "Channel Stuck", "WIFI Not working", "Sensor", "Standby mode", "Stand not work", "Warranty",
+	"Maintenance", "Another Problem"]
+SAMPLE_BUNDLES = {
+	"TV 43 + HDMI CABLE BUNDLE": (80, [("Magic TV 43  Full HD Frameless MG43Y24FSBT2/14 2 YEARS WARRANTY.", 1),
+		("HDTV 2.0 PREMIUM 3m", 1)]),
+	"AC 1.5 TON + COPPER PIPE BUNDLE": (220, [("Air Conditioner Magic 1.5 TON 10 Years Compressor Warranty 7 Years indoor Unit", 1),
+		("Copper Pipe", 1)]),
+}
+
+
+def _drivers_and_extras(log):
+	from frappe.utils.password import update_password
+
+	for email, full_name, role in DEV_DRIVERS + DEV_SUPPORT_USERS:
+		if not frappe.db.exists("User", email):
+			first, _, last = full_name.partition(" ")
+			user = frappe.get_doc({"doctype": "User", "email": email, "first_name": first, "last_name": last,
+				"send_welcome_email": 0, "user_type": "System User"})
+			user.insert(ignore_permissions=True)
+			update_password(email, DEV_DRIVER_PASSWORD)
+			log.append(f"user {email} ({role})")
+		frappe.get_doc("User", email).add_roles(role)
+
+	if not frappe.db.exists("Item Group", "Services"):
+		frappe.get_doc({"doctype": "Item Group", "item_group_name": "Services", "parent_item_group": "All Item Groups"}).insert()
+	_sample_item(DELIVERY_CHARGE_ITEM, "Services", 2)
+	settings = frappe.get_single("Delivery Settings")
+	settings.delivery_charge_item = DELIVERY_CHARGE_ITEM
+	if not settings.ac_tech_max_orders_per_day:
+		settings.ac_tech_max_orders_per_day = 3
+	# This site also hosts the "marwan" company of another project: no automatic Delivery Notes there.
+	settings.auto_create_delivery_note = 1
+	if not settings.get("support_maint_service_person") and frappe.db.exists("Sales Person", "Sales Team"):
+		settings.support_maint_service_person = "Sales Team"  # as production's Maintenance Visits
+	settings.auto_delivery_note_company = frappe.db.get_value("Warehouse", settings.main_warehouse, "company") \
+		if settings.main_warehouse else None
+	settings.flags.ignore_mandatory = True
+	settings.save(ignore_permissions=True)
+	for name in SUPPORT_ISSUE_TYPES:
+		if not frappe.db.exists("Issue Type", name):
+			frappe.get_doc({"doctype": "Issue Type", "__newname": name}).insert(ignore_permissions=True)
+	for name in ("Low", "Medium", "High"):
+		if not frappe.db.exists("Issue Priority", name):
+			frappe.get_doc({"doctype": "Issue Priority", "__newname": name}).insert(ignore_permissions=True)
+	# TVs bring the delivery charge.
+	for code in frappe.get_all("Item", filters={"item_group": ["in", ["Magic Clasic", "Magic Pro"]]}, pluck="name"):
+		frappe.db.set_value("Item", code, "dm_has_delivery_charge", 1)
+
+	for bundle, (rate, components) in SAMPLE_BUNDLES.items():
+		group = frappe.db.get_value("Item", components[0][0], "item_group")
+		_sample_item(bundle, group, rate)
+		if not frappe.db.exists("Product Bundle", bundle):
+			frappe.get_doc({"doctype": "Product Bundle", "new_item_code": bundle,
+				"items": [{"item_code": code, "qty": qty} for code, qty in components]}).insert()
+	frappe.db.set_value("Item", "TV 43 + HDMI CABLE BUNDLE", "dm_has_delivery_charge", 1)
+
+	if frappe.db.exists("Print Format", "POS Invoice Salesman"):
+		for profile in frappe.get_all("POS Profile", filters={"company": json.load(open(SNAPSHOT))["company"]["company_name"]}, pluck="name"):
+			frappe.db.set_value("POS Profile", profile, "print_format", "POS Invoice Salesman")
+	log.append("drivers, delivery charge item, sample bundles, salesman print format")
+
+
+def _sample_item(code, group, rate):
+	if not frappe.db.exists("Item", code):
+		frappe.get_doc({"doctype": "Item", "item_code": code, "item_name": code, "item_group": group,
+			"stock_uom": "Nos", "is_stock_item": 0, "is_sales_item": 1, "include_item_in_manufacturing": 0}).insert()
+	if not frappe.db.exists("Item Price", {"item_code": code, "price_list": PRICE_LIST}):
+		frappe.get_doc({"doctype": "Item Price", "item_code": code, "price_list": PRICE_LIST,
+			"price_list_rate": rate}).insert()
 
 
 def _opening_stock(snap, company, log):

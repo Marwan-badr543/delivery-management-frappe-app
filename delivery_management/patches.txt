@@ -1,0 +1,8 @@
+[pre_model_sync]
+
+[post_model_sync]
+delivery_management.patches.backfill_delivery_note_schedule
+delivery_management.patches.ac_tech_day_limits_into_settings
+delivery_management.patches.disable_replaced_server_scripts
+delivery_management.patches.disable_posawesome_delivery_charges
+delivery_management.patches.pos_profiles_start_as_order

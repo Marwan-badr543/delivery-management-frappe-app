@@ -21,3 +21,14 @@ def stamp_schedule(reference_doctype: str, reference_name: str) -> None:
 		pluck="parent", distinct=True)
 	for invoice in invoices:
 		frappe.db.set_value("Sales Invoice", invoice, values)
+	# Draft Delivery Notes of the order show the same schedule; keep their driver row in step.
+	from delivery_management.drivers.assignment import sync_assignment
+	from delivery_management.drivers.delivery_note import OTHER_TYPE_FIELDS
+
+	notes = frappe.get_all("Delivery Note Item", filters={"against_sales_order": reference_name, "docstatus": 0},
+		pluck="parent", distinct=True)
+	for note in notes:
+		# The AC note of a split order keeps no delivery slot, the Non AC note no AC day.
+		skip = OTHER_TYPE_FIELDS.get(frappe.db.get_value("Delivery Note", note, "dm_delivery_type"), ())
+		frappe.db.set_value("Delivery Note", note, {k: v for k, v in values.items() if k not in skip})
+		sync_assignment(frappe.get_doc("Delivery Note", note))

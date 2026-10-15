@@ -6,9 +6,9 @@
 
 ``Order``: delivery to the customer.
     1. A Sales Order from the main store, with serials picked and reserved
-       (marked Inactive). On submit, the existing server script creates the
-       draft Delivery Note, and ``events.copy_allocated_serials_to_delivery_note``
-       puts the same serials on it.
+       (marked Inactive). On submit, ``orders.delivery_note`` creates the draft
+       Delivery Note (it replaced the production server script), and
+       ``events.copy_allocated_serials_to_delivery_note`` puts the same serials on it.
     2. The delivery slot and/or AC capacity, booked against the Sales Order.
     3. The POS Sales Invoice (``update_stock = 0``), linked line by line to the
        Sales Order with the same serials, then paid and submitted by POS
@@ -31,9 +31,9 @@ from delivery_management.orders import address as address_utils
 from delivery_management.orders.stock import (
 	MODE_INVOICE,
 	MODE_ORDER,
+	allocate_packed_serials,
 	allocate_serials,
 	assert_in_stock,
-	set_serial_status,
 )
 from delivery_management.slots import profile_cart
 from delivery_management.slots.settings import get_settings
@@ -134,7 +134,11 @@ def submit_pos_order(invoice: dict, data: dict, delivery: dict | None, unpaid: b
 	so = _make_sales_order(invoice, items, main_store, booking, profile, address_name, delivery)
 	allocate_serials(so.items, main_store, target_field="dm_serial_nos")
 	so.insert(ignore_permissions=True)
-	set_serial_status(_serials_of(so.items, "dm_serial_nos"), "Inactive")
+	# Bundle components exist only after insert (ERPNext builds the packing list on validate).
+	allocate_packed_serials(so, main_store)
+	for row in so.packed_items:
+		if row.serial_no:
+			row.db_set("serial_no", row.serial_no, update_modified=False)
 	# Books the slot / AC day from the schedule fields (sales_order.before_submit).
 	with quiet_messages():
 		so.submit()
@@ -282,10 +286,10 @@ def _apply_address(invoice: dict, delivery: dict | None, required: bool = False)
 class quiet_messages:
 	"""Drop informational pop-ups raised during a POS submit.
 
-	The production server script "Delivery Note From Sales Order" calls
-	``frappe.msgprint("Delivery Note ... has been created")``. In the POS that desk
-	dialog fights POS Awesome V15 for keyboard focus and freezes the browser. Errors
-	still raise as usual; only the informational messages are removed.
+	The automatic Delivery Note (``orders.delivery_note``, formerly the server script
+	"Delivery Note From Sales Order") announces itself with ``frappe.msgprint``. In the
+	POS a desk dialog fights POS Awesome V15 for keyboard focus and freezes the browser.
+	Errors still raise as usual; only the informational messages are removed.
 	"""
 
 	def __enter__(self):
@@ -341,12 +345,6 @@ def _schedule_fields(booking: dict, profile: dict) -> dict:
 	if not fields["dm_delivery_area"]:
 		del fields["dm_delivery_area"]
 	return fields
-
-
-def _serials_of(rows, field: str) -> list[str]:
-	from erpnext.stock.doctype.serial_no.serial_no import get_serial_nos
-
-	return [sn for row in rows for sn in get_serial_nos(row.get(field) or "")]
 
 
 def _submit_with_posawesome(invoice: dict, data: dict) -> dict:

@@ -1,0 +1,48 @@
+{
+ "actions": [],
+ "creation": "2026-10-13 10:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "room",
+  "size",
+  "recommendations"
+ ],
+ "fields": [
+  {
+   "fieldname": "room",
+   "fieldtype": "Data",
+   "label": "Room",
+   "in_list_view": 1,
+   "reqd": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "size",
+   "fieldtype": "Data",
+   "label": "Size",
+   "in_list_view": 1,
+   "columns": 2,
+   "description": "e.g. 4 x 5 m"
+  },
+  {
+   "fieldname": "recommendations",
+   "fieldtype": "Small Text",
+   "label": "Recommendations",
+   "in_list_view": 1,
+   "columns": 6
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-10-13 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Delivery Management",
+ "name": "AC Site Check Room",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "creation",
+ "sort_order": "ASC",
+ "states": []
+}

@@ -5,12 +5,29 @@ app_description = "Delivery slots engine, AC capacity and POS order fulfilment"
 app_email = "marwanbadr514@gmail.com"
 app_license = "mit"
 
+add_to_apps_screen = [
+	{
+		"name": "delivery_management",
+		"logo": "/assets/delivery_management/images/delivery-logo.svg",
+		"title": "Delivery Management",
+		"route": "/desk/delivery-management",
+	}
+]
+
 # Includes in <head>
 # ------------------
 
 # include js, css files in header of desk.html
-app_include_css = "/assets/delivery_management/css/header_search.css"
-app_include_js = "/assets/delivery_management/js/header_search.js"
+app_include_css = [
+	"/assets/delivery_management/css/header_search.css",
+	"/assets/delivery_management/css/drivers_pages.css",
+]
+app_include_js = [
+	"/assets/delivery_management/js/header_search.js",
+	"/assets/delivery_management/js/drivers_common.js",
+	"/assets/delivery_management/js/support_pages.js",
+	"/assets/delivery_management/js/pos_reload_qty.js",
+]
 
 # include js, css files in header of web template
 # web_include_css = "/assets/delivery_management/css/delivery_management.css"
@@ -116,126 +133,62 @@ app_include_js = "/assets/delivery_management/js/header_search.js"
 # ---------------
 # Hook on document methods and events
 
-# doc_events = {
-# 	"*": {
-# 		"on_update": "method",
-# 		"on_cancel": "method",
-# 		"on_trash": "method"
-# 	}
-# }
-
-# Scheduled Tasks
-# ---------------
-
-# scheduler_events = {
-# 	"all": [
-# 		"delivery_management.tasks.all"
-# 	],
-# 	"daily": [
-# 		"delivery_management.tasks.daily"
-# 	],
-# 	"hourly": [
-# 		"delivery_management.tasks.hourly"
-# 	],
-# 	"weekly": [
-# 		"delivery_management.tasks.weekly"
-# 	],
-# 	"monthly": [
-# 		"delivery_management.tasks.monthly"
-# 	],
-# }
-
-# Testing
-# -------
-
-# before_tests = "delivery_management.install.before_tests"
-
-# Overriding Methods
-# ------------------------------
-#
-# override_whitelisted_methods = {
-# 	"frappe.desk.doctype.event.event.get_events": "delivery_management.event.get_events"
-# }
-#
-# each overriding function accepts a `data` argument;
-# generated from the base implementation of the doctype dashboard,
-# along with any modifications made in other Frappe apps
-# override_doctype_dashboards = {
-# 	"Task": "delivery_management.task.get_dashboard_data"
-# }
-
-# exempt linked doctypes from being automatically cancelled
-#
-# auto_cancel_exempted_doctypes = ["Auto Repeat"]
-
-# Ignore links to specified DocTypes when deleting documents
-# -----------------------------------------------------------
-
-# ignore_links_on_delete = ["Communication", "ToDo"]
-
-# Request Events
-# ----------------
-# before_request = ["delivery_management.utils.before_request"]
-# after_request = ["delivery_management.utils.after_request"]
-
-# Job Events
-# ----------
-# before_job = ["delivery_management.utils.before_job"]
-# after_job = ["delivery_management.utils.after_job"]
-
-# User Data Protection
-# --------------------
-
-# user_data_fields = [
-# 	{
-# 		"doctype": "{doctype_1}",
-# 		"filter_by": "{filter_by}",
-# 		"redact_fields": ["{field_1}", "{field_2}"],
-# 		"partial": 1,
-# 	},
-# 	{
-# 		"doctype": "{doctype_2}",
-# 		"filter_by": "{filter_by}",
-# 		"partial": 1,
-# 	},
-# 	{
-# 		"doctype": "{doctype_3}",
-# 		"strict": False,
-# 	},
-# 	{
-# 		"doctype": "{doctype_4}"
-# 	}
-# ]
-
-# Authentication and authorization
-# --------------------------------
-
-# auth_hooks = [
-# 	"delivery_management.auth.validate"
-# ]
-
-# ---------------------------------------------------------------------------
-# Delivery Management
-# ---------------------------------------------------------------------------
+doc_events = {
+	"Sales Invoice": {
+		# POS branch sale of a Product Bundle: serials of its serialised components.
+		"validate": "delivery_management.orders.events.pick_packed_serials_for_branch_sale",
+	},
+	"Sales Order": {
+		"validate": "delivery_management.orders.sales_order.validate",
+		"before_submit": "delivery_management.orders.sales_order.before_submit",
+		# Replaces the server script "Delivery Note From Sales Order".
+		"on_submit": "delivery_management.orders.delivery_note.create_from_sales_order",
+		"on_cancel": "delivery_management.orders.events.on_sales_order_cancel",
+		"on_trash": "delivery_management.orders.events.on_sales_order_trash",
+	},
+	"Delivery Note": {
+		"before_insert": [
+			"delivery_management.orders.events.copy_allocated_serials_to_delivery_note",
+			"delivery_management.drivers.delivery_note.before_insert",
+		],
+		"validate": [
+			"delivery_management.drivers.delivery_note.validate",
+			"delivery_management.orders.events.copy_packed_serials_to_delivery_note",
+		],
+		"before_submit": "delivery_management.drivers.delivery_note.before_submit",
+		"on_update": "delivery_management.drivers.delivery_note.on_update",
+		"on_cancel": "delivery_management.drivers.delivery_note.on_cancel",
+		"on_trash": "delivery_management.drivers.delivery_note.on_trash",
+	},
+	"Issue": {
+		# A pickup slot booked for a support ticket is freed with it.
+		"on_trash": "delivery_management.customer_support.permissions.on_issue_trash",
+	},
+}
 
 required_apps = ["erpnext"]
 
 after_install = "delivery_management.install.after_install"
 after_migrate = "delivery_management.install.after_migrate"
 
-doctype_js = {"Sales Order": "public/js/sales_order.js"}
+doctype_js = {
+	"Sales Order": "public/js/sales_order.js",
+	"Delivery Note": "public/js/delivery_note.js",
+	"Issue": "public/js/issue.js",
+}
+
+fixtures = [{"dt": "Role", "filters": [["role_name", "in",
+	["AC Tech", "TV Driver", "Technician", "Maintenance Technician"]]]}]
+
+permission_query_conditions = {
+	"Delivery Note": "delivery_management.drivers.delivery_note.get_permission_query_conditions",
+	"Issue": "delivery_management.customer_support.permissions.get_permission_query_conditions",
+}
+has_permission = {
+	"Delivery Note": "delivery_management.drivers.delivery_note.has_permission",
+	"Issue": "delivery_management.customer_support.permissions.has_permission",
+}
 
 extend_bootinfo = "delivery_management.api.pos.extend_bootinfo"
 
-doc_events = {
-	"Sales Order": {
-		"validate": "delivery_management.orders.sales_order.validate",
-		"before_submit": "delivery_management.orders.sales_order.before_submit",
-		"on_cancel": "delivery_management.orders.events.on_sales_order_cancel",
-		"on_trash": "delivery_management.orders.events.on_sales_order_trash",
-	},
-	"Delivery Note": {
-		# Runs before stock_solution / the server script mark serials Inactive on after_insert.
-		"before_insert": "delivery_management.orders.events.copy_allocated_serials_to_delivery_note",
-	},
-}
+

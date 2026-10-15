@@ -1,0 +1,343 @@
+{
+ "app": "delivery_management",
+ "charts": [],
+ "content": "[{\"id\": \"u8jzPde0Ig\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Today &amp; Attention</b></span>\", \"col\": 12}}, {\"id\": \"xLd6GncfBA\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Non AC Deliveries Today\", \"col\": 3}}, {\"id\": \"epfJBd0Kh8\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"AC Installations Today\", \"col\": 3}}, {\"id\": \"oOOL8dKLzd\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Orders Without Driver\", \"col\": 3}}, {\"id\": \"ocJ2isAjIh\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Orders Without Order Type\", \"col\": 3}}, {\"id\": \"KtJ0RlgLKO\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Overdue Deliveries\", \"col\": 3}}, {\"id\": \"mxgJTeKdNn\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Overdue AC Installations\", \"col\": 3}}, {\"id\": \"FRIBXuDL7D\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Delivered This Month\", \"col\": 3}}, {\"id\": \"xtpYlSXpfK\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Open Delivery Orders\", \"col\": 3}}, {\"id\": \"tHF4vUCsMe\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Open Support Tickets\", \"col\": 3}}, {\"id\": \"hGAkWvj7FA\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Open AC Site Checks\", \"col\": 3}}, {\"id\": \"c9QeWJKY40\", \"type\": \"spacer\", \"data\": {\"col\": 12}}, {\"id\": \"uvSwMFLZDe\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Pages</b></span>\", \"col\": 12}}, {\"id\": \"1f8rESQedU\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Delivery Schedule\", \"col\": 3}}, {\"id\": \"StPKR0CsTy\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Driver Assignment\", \"col\": 3}}, {\"id\": \"4Qwb8DwkNh\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Delivery Slots\", \"col\": 3}}, {\"id\": \"FdnXsiVpzz\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Installation Statistics\", \"col\": 3}}, {\"id\": \"63FfkCzJr4\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Sales Statistics\", \"col\": 3}}, {\"id\": \"i0B3JrTAwR\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Support Tickets\", \"col\": 3}}, {\"id\": \"4y9ojfljoQ\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Technician Issues\", \"col\": 3}}, {\"id\": \"oaF1Llqsaj\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Maintenance Issues\", \"col\": 3}}, {\"id\": \"AIxNKu8iS2\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"AC Site Check\", \"col\": 3}}, {\"id\": \"G8NPRVdD53\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Delivery Note\", \"col\": 3}}, {\"id\": \"X83RZJzzzz\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Delivery Settings\", \"col\": 3}}, {\"id\": \"gEOzdmenCk\", \"type\": \"spacer\", \"data\": {\"col\": 12}}, {\"id\": \"hvMdgaKjIg\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Masters &amp; Setup</b></span>\", \"col\": 12}}, {\"id\": \"8xNbe3nNyj\", \"type\": \"card\", \"data\": {\"card_name\": \"Delivery\", \"col\": 3}}, {\"id\": \"Oq9wMxEhh2\", \"type\": \"card\", \"data\": {\"card_name\": \"Capacity\", \"col\": 3}}, {\"id\": \"FDEEtfjgVv\", \"type\": \"card\", \"data\": {\"card_name\": \"Customer Service\", \"col\": 3}}, {\"id\": \"VqE1SkHbn8\", \"type\": \"card\", \"data\": {\"card_name\": \"Reports & Setup\", \"col\": 3}}]",
+ "creation": "2026-10-13 12:00:00.000000",
+ "custom_blocks": [],
+ "docstatus": 0,
+ "doctype": "Workspace",
+ "for_user": "",
+ "hide_custom": 0,
+ "icon": "truck",
+ "idx": 0,
+ "is_hidden": 0,
+ "label": "Delivery Management",
+ "links": [
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Delivery",
+   "link_count": 4,
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Delivery Schedule",
+   "link_count": 0,
+   "link_to": "delivery-schedule",
+   "link_type": "Page",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Driver Assignment",
+   "link_count": 0,
+   "link_to": "driver-assignment",
+   "link_type": "Page",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Delivery Note",
+   "link_count": 0,
+   "link_to": "Delivery Note",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Sales Order",
+   "link_count": 0,
+   "link_to": "Sales Order",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Capacity",
+   "link_count": 4,
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Delivery Slots",
+   "link_count": 0,
+   "link_to": "delivery-slots",
+   "link_type": "Page",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Delivery Area",
+   "link_count": 0,
+   "link_to": "Delivery Area",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "AC Day Capacity",
+   "link_count": 0,
+   "link_to": "AC Day Capacity",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Delivery Slot Reservation",
+   "link_count": 0,
+   "link_to": "Delivery Slot Reservation",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Customer Service",
+   "link_count": 5,
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Support Tickets",
+   "link_count": 0,
+   "link_to": "support-tickets",
+   "link_type": "Page",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Technician Issues",
+   "link_count": 0,
+   "link_to": "technician-issues",
+   "link_type": "Page",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Maintenance Issues",
+   "link_count": 0,
+   "link_to": "maintenance-issues",
+   "link_type": "Page",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "AC Site Check",
+   "link_count": 0,
+   "link_to": "AC Site Check",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Issue",
+   "link_count": 0,
+   "link_to": "Issue",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Reports & Setup",
+   "link_count": 4,
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Installation Statistics",
+   "link_count": 0,
+   "link_to": "installation-statistics",
+   "link_type": "Page",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Sales Statistics",
+   "link_count": 0,
+   "link_to": "sales-statistics",
+   "link_type": "Page",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Delivery Settings",
+   "link_count": 0,
+   "link_to": "Delivery Settings",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Serial No",
+   "link_count": 0,
+   "link_to": "Serial No",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  }
+ ],
+ "modified": "2026-10-13 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Delivery Management",
+ "name": "Delivery Management",
+ "number_cards": [
+  {
+   "label": "Non AC Deliveries Today",
+   "number_card_name": "Non AC Deliveries Today"
+  },
+  {
+   "label": "AC Installations Today",
+   "number_card_name": "AC Installations Today"
+  },
+  {
+   "label": "Orders Without Driver",
+   "number_card_name": "Orders Without Driver"
+  },
+  {
+   "label": "Orders Without Order Type",
+   "number_card_name": "Orders Without Order Type"
+  },
+  {
+   "label": "Overdue Deliveries",
+   "number_card_name": "Overdue Deliveries"
+  },
+  {
+   "label": "Overdue AC Installations",
+   "number_card_name": "Overdue AC Installations"
+  },
+  {
+   "label": "Delivered This Month",
+   "number_card_name": "Delivered This Month"
+  },
+  {
+   "label": "Open Delivery Orders",
+   "number_card_name": "Open Delivery Orders"
+  },
+  {
+   "label": "Open Support Tickets",
+   "number_card_name": "Open Support Tickets"
+  },
+  {
+   "label": "Open AC Site Checks",
+   "number_card_name": "Open AC Site Checks"
+  }
+ ],
+ "owner": "Administrator",
+ "parent_page": "",
+ "public": 1,
+ "quick_lists": [],
+ "roles": [],
+ "sequence_id": 30.0,
+ "shortcuts": [
+  {
+   "label": "Delivery Schedule",
+   "link_to": "delivery-schedule",
+   "type": "Page",
+   "color": "Blue"
+  },
+  {
+   "label": "Driver Assignment",
+   "link_to": "driver-assignment",
+   "type": "Page",
+   "color": "Blue"
+  },
+  {
+   "label": "Delivery Slots",
+   "link_to": "delivery-slots",
+   "type": "Page",
+   "color": "Blue"
+  },
+  {
+   "label": "Installation Statistics",
+   "link_to": "installation-statistics",
+   "type": "Page",
+   "color": "Blue"
+  },
+  {
+   "label": "Sales Statistics",
+   "link_to": "sales-statistics",
+   "type": "Page",
+   "color": "Blue"
+  },
+  {
+   "label": "Support Tickets",
+   "link_to": "support-tickets",
+   "type": "Page",
+   "color": "Blue"
+  },
+  {
+   "label": "Technician Issues",
+   "link_to": "technician-issues",
+   "type": "Page",
+   "color": "Blue"
+  },
+  {
+   "label": "Maintenance Issues",
+   "link_to": "maintenance-issues",
+   "type": "Page",
+   "color": "Blue"
+  },
+  {
+   "label": "AC Site Check",
+   "link_to": "AC Site Check",
+   "type": "DocType",
+   "color": "Cyan",
+   "stats_filter": "{\"status\":\"Open\"}"
+  },
+  {
+   "label": "Delivery Note",
+   "link_to": "Delivery Note",
+   "type": "DocType",
+   "color": "Grey",
+   "stats_filter": "{\"docstatus\":0}"
+  },
+  {
+   "label": "Delivery Settings",
+   "link_to": "Delivery Settings",
+   "type": "DocType",
+   "color": "Grey"
+  }
+ ],
+ "title": "Delivery Management",
+ "type": "Workspace"
+}

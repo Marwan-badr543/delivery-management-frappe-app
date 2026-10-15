@@ -3,13 +3,11 @@
 import frappe
 from erpnext.stock.doctype.serial_no.serial_no import get_serial_nos
 
-from delivery_management.orders.stock import set_serial_status
 from delivery_management.slots import release
 
 
 def on_sales_order_cancel(doc, method=None):
 	release(doc.doctype, doc.name)
-	_reactivate_reserved_serials(doc)
 
 
 def on_sales_order_trash(doc, method=None):
@@ -19,9 +17,8 @@ def on_sales_order_trash(doc, method=None):
 def copy_allocated_serials_to_delivery_note(doc, method=None):
 	"""Put the serials picked for the Sales Order on its Delivery Note.
 
-	The production server script builds the Delivery Note without serials. Filling
-	them here, before insert, also lets the existing after-insert hooks mark them
-	Inactive as before.
+	ERPNext's mapper does not copy ``dm_serial_nos`` (a custom field of the order).
+	Filling them here, before insert, keeps the order's serials and not a FIFO pick.
 	"""
 	_inherit_header_from_sales_order(doc)
 	for item in doc.items:
@@ -33,14 +30,48 @@ def copy_allocated_serials_to_delivery_note(doc, method=None):
 			item.serial_no = "\n".join(serials)
 
 
+def copy_packed_serials_to_delivery_note(doc, method=None):
+	"""Bundle components: copy the serials reserved on the Sales Order's packing list.
+
+	Runs on validate, after ERPNext has (re)built ``packed_items``; rows that already
+	have serials keep them.
+	"""
+	if doc.docstatus != 0 or not doc.get("packed_items"):
+		return
+	so_detail = {i.name: (i.get("against_sales_order"), i.get("so_detail")) for i in doc.items}
+	for row in doc.packed_items:
+		if row.serial_no:
+			continue
+		so, detail = so_detail.get(row.parent_detail_docname) or (None, None)
+		if not (so and detail):
+			continue
+		reserved = frappe.db.get_value("Packed Item", {"parent": so, "parenttype": "Sales Order",
+			"parent_detail_docname": detail, "item_code": row.item_code}, "serial_no")
+		serials = get_serial_nos(reserved or "")
+		if serials and len(serials) == int(row.qty or 0):
+			row.serial_no = "\n".join(serials)
+			row.use_serial_batch_fields = 1
+
+
+def pick_packed_serials_for_branch_sale(doc, method=None):
+	"""A POS branch Invoice (stock leaves the branch now) of a bundle: pick its components' serials."""
+	if doc.docstatus != 0 or not doc.get("update_stock") or doc.get("is_return"):
+		return
+	if doc.get("dm_order_type") != "Invoice" or not doc.get("packed_items"):
+		return
+	from delivery_management.orders.stock import allocate_packed_serials
+
+	allocate_packed_serials(doc)
+
+
 def _inherit_header_from_sales_order(dn):
 	"""Make a Delivery Note built from one POS order agree with that order.
 
-	The production server script sets ``customer = doc.customer_name`` (the
-	*name*, not the ID) and leaves currency and price list to the defaults. That
-	breaks for two customers with the same name (IDs "Ali", "Ali-1") and for any
-	non-default price list. This only applies to DNs of orders placed through
-	this app (``dm_order_type`` set); other DNs are untouched.
+	Kept from when the production server script built the Delivery Note with
+	``customer = doc.customer_name`` (the name, not the ID) and default price list.
+	The app's own Delivery Note (ERPNext mapper) already agrees; this still fixes a
+	Delivery Note made by hand from one POS order. Only DNs of orders placed through
+	this app (``dm_order_type`` set) are touched.
 	"""
 	orders = {i.get("against_sales_order") for i in dn.items if i.get("against_sales_order")}
 	if len(orders) != 1:
@@ -64,21 +95,3 @@ def _inherit_header_from_sales_order(dn):
 		"customer_address": dn.customer_address or so.customer_address,
 		"shipping_address_name": dn.shipping_address_name or so.shipping_address_name,
 	})
-
-
-def _reactivate_reserved_serials(so):
-	"""Return the order's reserved serials to sale, unless another live document still holds them."""
-	serials = [sn for item in so.items for sn in get_serial_nos(item.get("dm_serial_nos") or "")]
-	if not serials:
-		return
-	still_held = set(
-		frappe.db.sql_list(
-			"""select sn.name from `tabSerial No` sn
-			where sn.name in %(serials)s and (
-				ifnull(sn.warehouse, '') = '' or sn.status != 'Inactive'
-				or exists (select 1 from `tabDelivery Note Item` dni join `tabDelivery Note` dn on dn.name = dni.parent
-					where dn.docstatus < 2 and dni.serial_no like concat('%%', sn.name, '%%')))""",
-			{"serials": tuple(serials)},
-		)
-	)
-	set_serial_status([sn for sn in serials if sn not in still_held], "Active")

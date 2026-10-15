@@ -6,11 +6,11 @@ The POS no longer lets the cashier choose serials. They are picked here
 * **Invoice** (customer takes the goods at the branch): the POS profile's branch warehouse.
 * **Order** (delivery): the main store from Delivery Settings.
 
-Business convention, shared with the ``stock_solution`` app and the production
-server scripts: a serial with status ``Inactive`` that is still in a warehouse
-is *reserved* for an open order and must not be sold again. An order marks its
-serials Inactive as soon as they are picked; cancelling the order makes them
-Active again.
+Business convention (from the old ``stock_solution`` app and server scripts): a
+serial with status ``Inactive`` that is still in a warehouse is *reserved* for an
+open order and must not be sold again. An order marks its serials Inactive as soon
+as they are picked; cancelling the order makes them Active again. ``orders.serials``
+enforces it on every outward movement (ERPNext itself ignores the status).
 """
 
 from __future__ import annotations
@@ -88,7 +88,7 @@ def get_sellable_qty(item_codes, warehouse: str, mode: str = MODE_INVOICE) -> di
 
 
 def pick_serials(item_code: str, warehouse: str, qty, exclude=()) -> list[str]:
-	"""Lock and return ``qty`` pickable serials, oldest first. Raises if short.
+	"""Lock and return ``qty`` free serials, oldest first. Raises if short.
 
 	``FOR UPDATE`` makes a concurrent sale of the same item wait for this
 	transaction, and then see these serials as taken.
@@ -142,9 +142,12 @@ def allocate_serials(rows, warehouse: str, target_field: str = "serial_no") -> l
 
 
 def assert_in_stock(rows, warehouse: str, mode: str) -> None:
-	"""Server-side twin of the POS out-of-stock check (never trust the UI)."""
+	"""Server-side twin of the POS out-of-stock check (never trust the UI).
+	A Product Bundle is checked by its components."""
+	from delivery_management.slots.cart import component_rows
+
 	needed: dict[str, float] = {}
-	for row in rows:
+	for row in component_rows(rows):
 		qty = stock_qty(row)
 		needed[row.get("item_code")] = needed.get(row.get("item_code"), 0) + flt(qty)
 
@@ -159,6 +162,33 @@ def assert_in_stock(rows, warehouse: str, mode: str) -> None:
 			_("Out of stock in {0}:").format(frappe.bold(warehouse)) + "<br>" + "<br>".join(short),
 			title=_("Out of Stock"),
 		)
+
+
+def allocate_packed_serials(doc, warehouse: str | None = None) -> list[str]:
+	"""Serials for the serialised components of Product Bundles (``doc.packed_items``).
+
+	Serials already on the document's own item rows are never picked twice. Returns the
+	serials picked here.
+	"""
+	packed = [p for p in (doc.get("packed_items") or []) if p.item_code]
+	if not packed:
+		return []
+	taken = [sn for row in doc.items for sn in get_serial_nos(row.get("serial_no") or row.get("dm_serial_nos") or "")]
+	serialised = set(frappe.get_all("Item", filters={"name": ["in", [p.item_code for p in packed]], "has_serial_no": 1},
+		pluck="name"))
+	picked: list[str] = []
+	for row in packed:
+		if row.item_code not in serialised:
+			continue
+		existing = get_serial_nos(row.serial_no or "")
+		if existing:
+			taken.extend(existing)
+			continue
+		serials = pick_serials(row.item_code, warehouse or row.warehouse, stock_qty(row), exclude=taken + picked)
+		picked.extend(serials)
+		row.serial_no = "\n".join(serials)
+		row.use_serial_batch_fields = 1
+	return picked
 
 
 def set_serial_status(serials, status: str) -> None:
