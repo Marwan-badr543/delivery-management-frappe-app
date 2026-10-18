@@ -134,28 +134,31 @@ app_include_js = [
 # Hook on document methods and events
 
 doc_events = {
-	"Sales Invoice": {
-		# POS branch sale of a Product Bundle: serials of its serialised components.
-		"validate": "delivery_management.orders.events.pick_packed_serials_for_branch_sale",
-	},
 	"Sales Order": {
 		"validate": "delivery_management.orders.sales_order.validate",
 		"before_submit": "delivery_management.orders.sales_order.before_submit",
 		# Replaces the server script "Delivery Note From Sales Order".
-		"on_submit": "delivery_management.orders.delivery_note.create_from_sales_order",
+		"on_submit": [
+			"delivery_management.orders.bundle_reservation.reserve",
+			"delivery_management.orders.delivery_note.create_from_sales_order",
+		],
 		"on_cancel": "delivery_management.orders.events.on_sales_order_cancel",
 		"on_trash": "delivery_management.orders.events.on_sales_order_trash",
 	},
 	"Delivery Note": {
 		"before_insert": [
-			"delivery_management.orders.events.copy_allocated_serials_to_delivery_note",
+			"delivery_management.orders.events.inherit_header_from_sales_order",
 			"delivery_management.drivers.delivery_note.before_insert",
 		],
 		"validate": [
 			"delivery_management.drivers.delivery_note.validate",
-			"delivery_management.orders.events.copy_packed_serials_to_delivery_note",
+			"delivery_management.orders.bundle_reservation.fill_serials",
 		],
-		"before_submit": "delivery_management.drivers.delivery_note.before_submit",
+		"before_submit": [
+			"delivery_management.drivers.delivery_note.before_submit",
+			"delivery_management.orders.bundle_reservation.deliver",
+		],
+		"before_cancel": "delivery_management.orders.bundle_reservation.undeliver",
 		"on_update": "delivery_management.drivers.delivery_note.on_update",
 		"on_cancel": "delivery_management.drivers.delivery_note.on_cancel",
 		"on_trash": "delivery_management.drivers.delivery_note.on_trash",
@@ -183,10 +186,12 @@ fixtures = [{"dt": "Role", "filters": [["role_name", "in",
 permission_query_conditions = {
 	"Delivery Note": "delivery_management.drivers.delivery_note.get_permission_query_conditions",
 	"Issue": "delivery_management.customer_support.permissions.get_permission_query_conditions",
+	"AC Site Check": "delivery_management.delivery_management.doctype.ac_site_check.ac_site_check.get_permission_query_conditions",
 }
 has_permission = {
 	"Delivery Note": "delivery_management.drivers.delivery_note.has_permission",
 	"Issue": "delivery_management.customer_support.permissions.has_permission",
+	"AC Site Check": "delivery_management.delivery_management.doctype.ac_site_check.ac_site_check.has_permission",
 }
 
 extend_bootinfo = "delivery_management.api.pos.extend_bootinfo"

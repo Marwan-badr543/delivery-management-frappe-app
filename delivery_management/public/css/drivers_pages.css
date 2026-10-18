@@ -126,9 +126,7 @@
 .dd-btn-row .btn { display: flex !important; align-items: center; justify-content: center !important; gap: 8px; height: 38px; text-align: center; }
 .dd-pay-row { display: flex; gap: 8px; flex-wrap: wrap; }
 .dd-pay-row .form-control { flex: 1 1 110px; height: 34px; }
-.dd-sign { border: 2px dashed var(--border-color); border-radius: 10px; background: #fff; position: relative; touch-action: none; }
-.dd-sign canvas { width: 100%; height: 180px; display: block; cursor: crosshair; }
-.dd-sign-hint { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #b0b7c3; font-weight: 600; pointer-events: none; }
+.dd-sign { touch-action: none; }
 .dd-files a { display: block; font-size: 12px; }
 
 /* stats */

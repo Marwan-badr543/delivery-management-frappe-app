@@ -9,7 +9,7 @@ from frappe.utils import add_days, getdate, nowdate
 
 from delivery_management.orders import address as address_utils
 from delivery_management.orders import service
-from delivery_management.orders.stock import MODE_INVOICE, MODE_ORDER, get_sellable_qty, pick_serials
+from delivery_management.orders.stock import get_sellable_qty
 from delivery_management.slots import SlotUnavailableError, get_reservations, profile_cart
 from delivery_management.slots import engine
 from delivery_management.tests.fixtures import PosWorld
@@ -21,6 +21,14 @@ DATA = {"total_change": 0, "paid_change": 0, "credit_change": 0, "redeemed_custo
 
 def serial_status(sn):
 	return frappe.db.get_value("Serial No", sn, ["status", "warehouse"])
+
+
+def reserved_serials(sales_order, item_code):
+	"""Serials ERPNext's Stock Reservation holds for a Sales Order item."""
+	return frappe.get_all("Serial and Batch Entry", filters={"parenttype": "Stock Reservation Entry",
+		"parent": ["in", frappe.get_all("Stock Reservation Entry", filters={"voucher_no": sales_order,
+			"item_code": item_code, "docstatus": 1, "status": ["!=", "Cancelled"]}, pluck="name") or [""]]},
+		pluck="serial_no", order_by="serial_no")
 
 
 class OrdersTestCase(DeliveryTestCase):
@@ -83,27 +91,16 @@ class TestCartProfile(OrdersTestCase):
 
 
 class TestStock(OrdersTestCase):
-	def test_sellable_qty_per_mode(self):
-		order = get_sellable_qty([self.w.ac, self.w.tv, self.w.pipe, self.w.service], self.w.main, MODE_ORDER)
+	def test_sellable_qty_per_warehouse(self):
+		order = get_sellable_qty([self.w.ac, self.w.tv, self.w.pipe, self.w.service], self.w.main)
 		self.assertEqual((order[self.w.ac], order[self.w.tv], order[self.w.pipe]), (4, 3, 50))
 		self.assertIsNone(order[self.w.service])
-		branch = get_sellable_qty([self.w.ac, self.w.tv], self.w.branch, MODE_INVOICE)
+		branch = get_sellable_qty([self.w.ac, self.w.tv], self.w.branch)
 		self.assertEqual((branch[self.w.ac], branch[self.w.tv]), (1, 2))
 
-	def test_reserved_serials_are_not_sellable(self):
-		frappe.db.set_value("Serial No", "_DMAC-M-OLD1", "status", "Inactive")
-		self.assertEqual(get_sellable_qty([self.w.ac], self.w.main, MODE_ORDER)[self.w.ac], 3)
-
-	def test_pick_oldest_first_and_skip_reserved(self):
-		self.assertEqual(pick_serials(self.w.ac, self.w.main, 2), ["_DMAC-M-OLD1", "_DMAC-M-OLD2"])
-		frappe.db.set_value("Serial No", "_DMAC-M-OLD1", "status", "Inactive")
-		self.assertEqual(pick_serials(self.w.ac, self.w.main, 1), ["_DMAC-M-OLD2"])
-		self.assertEqual(pick_serials(self.w.ac, self.w.main, 1, exclude=["_DMAC-M-OLD2"]), ["_DMAC-M-NEW1"])
-
-	def test_pick_short_raises(self):
-		self.assertRaises(frappe.ValidationError, pick_serials, self.w.ac, self.w.branch, 2)
-		self.assertRaises(frappe.ValidationError, pick_serials, self.w.ac, self.w.branch, 1.5)
-
+	def test_reserved_stock_is_not_sellable(self):
+		frappe.db.set_value("Bin", {"item_code": self.w.ac, "warehouse": self.w.main}, "reserved_stock", 1)
+		self.assertEqual(get_sellable_qty([self.w.ac], self.w.main)[self.w.ac], 3)
 
 class TestAddress(OrdersTestCase):
 	def test_same_address_is_reused_changed_address_is_added(self):
@@ -160,16 +157,12 @@ class TestOrderFlow(OrdersTestCase):
 		self.assertEqual({i.warehouse for i in so.items}, {self.w.main})
 		self.assertEqual((so.dm_delivery_area, str(so.dm_delivery_date)), (self.area, str(self.slot_date)))
 		self.assertEqual((so.dm_ac_units, so.dm_order_type), (2, "Order"))
-		ac_row = next(i for i in so.items if i.item_code == self.w.ac)
-		self.assertEqual(get_serial_nos(ac_row.dm_serial_nos), ["_DMAC-M-OLD1", "_DMAC-M-OLD2"])
-		self.assertEqual(serial_status("_DMAC-M-OLD1"), ("Inactive", self.w.main))
+		self.assertEqual(len(reserved_serials(so.name, self.w.ac)), 2)
 
-		# Invoice: no stock movement, linked line by line, same serials.
+		# Invoice: no stock movement, linked line by line.
 		self.assertEqual((si.docstatus, si.update_stock, si.dm_order_type), (1, 0, "Order"))
 		for row in si.items:
 			self.assertEqual((row.sales_order, row.warehouse), (so.name, self.w.main))
-		si_ac = next(i for i in si.items if i.item_code == self.w.ac)
-		self.assertEqual(get_serial_nos(si_ac.serial_no), get_serial_nos(ac_row.dm_serial_nos))
 		self.assertEqual(frappe.db.get_value("Sales Order", so.name, "per_billed"), 100)
 
 		# Capacity: one delivery slot and 2 AC units, both owned by the Sales Order.
@@ -181,11 +174,6 @@ class TestOrderFlow(OrdersTestCase):
 		# Address saved on the customer.
 		self.assertEqual(frappe.db.get_value("Address", so.customer_address, "dm_road_no"), "512")
 
-		# The Delivery Note (prod: server script) receives the same serials.
-		dn = make_delivery_note(so.name)
-		dn.insert()
-		dn_ac = next(i for i in dn.items if i.item_code == self.w.ac)
-		self.assertEqual(get_serial_nos(dn_ac.serial_no), get_serial_nos(ac_row.dm_serial_nos))
 
 	def test_mixed_order_gets_one_delivery_note_per_type(self):
 		self.settings(auto_create_delivery_note=1, auto_delivery_note_company=None)
@@ -232,9 +220,8 @@ class TestOrderFlow(OrdersTestCase):
 	def test_order_takes_stock_from_main_not_branch(self):
 		# Branch has 1 AC; the main store has 4, so 3 must work for an Order.
 		result = self.place([(self.w.ac, 3, 300)])
-		so = frappe.get_doc("Sales Order", result["sales_order"])
-		self.assertEqual(len(get_serial_nos(so.items[0].dm_serial_nos)), 3)
-		self.assertEqual(serial_status("_DMAC-B-1"), ("Active", self.w.branch))
+		self.assertEqual(len(reserved_serials(result["sales_order"], self.w.ac)), 3)
+		self.assertEqual(get_sellable_qty([self.w.ac], self.w.branch)[self.w.ac], 1)
 
 	def test_order_out_of_main_stock(self):
 		with self.assertRaises(frappe.ValidationError):
@@ -243,9 +230,12 @@ class TestOrderFlow(OrdersTestCase):
 	def test_second_order_gets_different_serials(self):
 		first = self.place([(self.w.ac, 1, 300)])
 		second = self.place([(self.w.ac, 1, 300)], {**self.delivery, "delivery_time": "16:00"})
-		s1 = frappe.db.get_value("Sales Order Item", {"parent": first["sales_order"]}, "dm_serial_nos")
-		s2 = frappe.db.get_value("Sales Order Item", {"parent": second["sales_order"]}, "dm_serial_nos")
+		s1 = reserved_serials(first["sales_order"], self.w.ac)
+		s2 = reserved_serials(second["sales_order"], self.w.ac)
+		self.assertEqual((len(s1), len(s2)), (1, 1))
 		self.assertNotEqual(s1, s2)
+		# Main store has 4 ACs; 2 are reserved now.
+		self.assertEqual(get_sellable_qty([self.w.ac], self.w.main)[self.w.ac], 2)
 
 	def test_full_slot_leaves_nothing_behind(self):
 		self.make_area("_DM Area", cars=0, hours=("10:00",))
@@ -255,7 +245,6 @@ class TestOrderFlow(OrdersTestCase):
 		frappe.db.rollback(save_point="before_order")
 		self.assertEqual(frappe.db.count("Sales Order", {"customer": self.w.customer, "docstatus": 1}), 0)
 		self.assertEqual(frappe.db.count(engine.LEDGER, {"customer": self.w.customer}), 0)
-		self.assertEqual(serial_status("_DMTV-M-1"), ("Active", self.w.main))
 
 	def test_discount_and_tax_do_not_break_billing(self):
 		result = self.place([(self.w.tv, 2, 100)], discount=10)
@@ -277,16 +266,7 @@ class TestOrderFlow(OrdersTestCase):
 		self.assertEqual(get_reservations("Sales Order", so_name), [])
 		self.assertEqual(self.counter(self.area, self.slot_date, "10:00"), 0)
 		self.assertEqual(self.ac_reserved(add_days(self.slot_date, 1)), 0)
-		self.assertEqual(serial_status("_DMAC-M-OLD1"), ("Active", self.w.main))
-
-	def test_cancel_keeps_serials_held_by_open_delivery_note(self):
-		result = self.place([(self.w.ac, 1, 300)])
-		so_name = result["sales_order"]
-		make_delivery_note(so_name).insert()
-		frappe.get_doc("Sales Invoice", result["name"]).cancel()
-		frappe.get_doc("Sales Order", so_name).cancel()
-		# The draft DN still lists the serial; it stays reserved until the DN is deleted.
-		self.assertEqual(serial_status("_DMAC-M-OLD1")[0], "Inactive")
+		self.assertEqual(reserved_serials(so_name, self.w.ac), [])
 
 	def test_return_invoice_frees_capacity(self):
 		"""Production cancel path: a POS return; order_cancellation then cancels the SO."""
@@ -386,23 +366,13 @@ class TestUnpaidOrder(OrdersTestCase):
 
 
 class TestClientSerialsIgnored(OrdersTestCase):
-	"""POS Awesome V15 pre-fills serials in the browser; the server must pick its own."""
-
-	def test_invoice_ignores_a_reserved_serial_sent_by_the_pos(self):
-		frappe.db.set_value("Serial No", "_DMTV-B-1", "status", "Inactive")  # held by an open order
-		invoice = self.w.draft_invoice([(self.w.tv, 1, 100)])
-		invoice["items"][0]["serial_no"] = "_DMTV-B-1"
-		# Also saved on the draft itself, as V15 does when the cashier touches the line.
-		frappe.db.set_value("Sales Invoice Item", invoice["items"][0]["name"], "serial_no", "_DMTV-B-1")
-		si = frappe.get_doc("Sales Invoice", service.submit_pos_invoice(invoice, dict(DATA), {})["name"])
-		self.assertEqual(si.items[0].serial_no, "_DMTV-B-2")
+	"""POS Awesome V15 pre-fills serials in the browser; ERPNext picks them instead."""
 
 	def test_order_ignores_serials_sent_by_the_pos(self):
 		invoice = self.w.draft_invoice([(self.w.tv, 1, 100)])
 		invoice["items"][0]["serial_no"] = "_DMTV-B-1"  # a branch serial: Orders ship from the main store
 		result = service.submit_pos_order(invoice, dict(DATA), self.delivery)
-		si = frappe.get_doc("Sales Invoice", result["name"])
-		self.assertTrue(si.items[0].serial_no.startswith("_DMTV-M-"))
+		self.assertTrue(reserved_serials(result["sales_order"], self.w.tv)[0].startswith("_DMTV-M-"))
 
 
 class TestQuietOrderMessages(OrdersTestCase):
@@ -586,8 +556,7 @@ class TestSeveralAcGroups(OrdersTestCase):
 
 
 class TestProductBundle(OrdersTestCase):
-	"""A bundle parent is a non-stock item; its serialised components get serials from the
-	store that serves the sale, and the delivery is booked for the components."""
+	"""A bundle parent is a non-stock item: stock and the delivery are counted by its components."""
 
 	def setUp(self):
 		super().setUp()
@@ -600,44 +569,79 @@ class TestProductBundle(OrdersTestCase):
 			frappe.get_doc({"doctype": "Product Bundle", "new_item_code": self.bundle,
 				"items": [{"item_code": self.w.tv, "qty": 1}, {"item_code": self.w.pipe, "qty": 2}]}).insert()
 
-	def test_bundle_order_reserves_component_serials_for_the_delivery_note(self):
+	def test_bundle_order_is_delivered_by_its_components(self):
 		invoice = self.w.draft_invoice([(self.bundle, 1, 150)])
 		result = service.submit_pos_order(invoice, DATA, {**self.delivery, "ac_date": None})
 		so = frappe.get_doc("Sales Order", result["sales_order"])
-		packed_tv = next(p for p in so.packed_items if p.item_code == self.w.tv)
-		self.assertEqual(get_serial_nos(packed_tv.serial_no), ["_DMTV-M-1"])
-		self.assertEqual(serial_status("_DMTV-M-1"), ("Inactive", self.w.main))
 		# The components need a delivery car.
 		self.assertEqual(self.counter(self.area, self.slot_date, "10:00"), 1)
 
 		dn = make_delivery_note(so.name)
 		dn.insert()
-		dn_tv = next(p for p in dn.packed_items if p.item_code == self.w.tv)
-		self.assertEqual(get_serial_nos(dn_tv.serial_no), ["_DMTV-M-1"])
 		self.assertEqual(dn.dm_delivery_type, "Non AC")
 		dn.submit()
 		self.assertEqual(frappe.db.get_value("Serial No", "_DMTV-M-1", "warehouse"), None)
 
-	def test_cancelled_bundle_order_frees_component_serials(self):
-		from delivery_management.orders.events import on_sales_order_cancel
+	def bundle_order(self, lines=None):
+		invoice = self.w.draft_invoice(lines or [(self.bundle, 1, 150)])
+		return service.submit_pos_order(invoice, DATA, {**self.delivery, "ac_date": None})["sales_order"]
 
+	def reserved_qty(self, sales_order, item_code):
+		return sum(frappe.get_all("Stock Reservation Entry", filters={"voucher_no": sales_order,
+			"item_code": item_code, "docstatus": 1}, pluck="reserved_qty"))
+
+	def test_bundle_order_reserves_its_components(self):
+		before = get_sellable_qty([self.w.tv, self.w.pipe], self.w.main)
+		so = self.bundle_order()
+		self.assertEqual(reserved_serials(so, self.w.tv), ["_DMTV-M-1"])
+		self.assertEqual(self.reserved_qty(so, self.w.pipe), 2)
+		after = get_sellable_qty([self.w.tv, self.w.pipe], self.w.main)
+		self.assertEqual((before[self.w.tv] - after[self.w.tv], before[self.w.pipe] - after[self.w.pipe]), (1, 2))
+
+	def test_two_bundle_orders_never_share_a_serial(self):
+		first, second = self.bundle_order(), self.bundle_order()
+		self.assertEqual((reserved_serials(first, self.w.tv), reserved_serials(second, self.w.tv)),
+			(["_DMTV-M-1"], ["_DMTV-M-2"]))
+
+	def test_mixed_order_reserves_items_and_components(self):
+		so = self.bundle_order([(self.w.tv, 1, 100), (self.bundle, 1, 150)])
+		self.assertEqual(reserved_serials(so, self.w.tv), ["_DMTV-M-1", "_DMTV-M-2"])
+
+	def test_delivery_note_delivers_the_reserved_serial(self):
+		self.bundle_order()  # holds _DMTV-M-1
+		so = self.bundle_order()
+		dn = make_delivery_note(so)
+		dn.insert()
+		tv_row = next(r for r in dn.packed_items if r.item_code == self.w.tv)
+		self.assertEqual(get_serial_nos(tv_row.serial_no), ["_DMTV-M-2"])
+		reserved = frappe.db.get_value("Bin", {"item_code": self.w.tv, "warehouse": self.w.main}, "reserved_stock")
+
+		dn.submit()
+		self.assertEqual(frappe.db.get_value("Serial No", "_DMTV-M-2", "warehouse"), None)
+		self.assertEqual(frappe.db.get_value("Bin", {"item_code": self.w.tv, "warehouse": self.w.main},
+			"reserved_stock"), reserved - 1)
+		self.assertEqual(set(frappe.get_all("Stock Reservation Entry", filters={"voucher_no": so, "docstatus": 1},
+			pluck="status")), {"Delivered"})
+
+		dn.cancel()
+		self.assertEqual(frappe.db.get_value("Serial No", "_DMTV-M-2", "warehouse"), self.w.main)
+		self.assertEqual(set(frappe.get_all("Stock Reservation Entry", filters={"voucher_no": so, "docstatus": 1},
+			pluck="status")), {"Reserved"})
+
+	def test_cancelled_bundle_order_frees_its_serial(self):
 		invoice = self.w.draft_invoice([(self.bundle, 1, 150)])
 		result = service.submit_pos_order(invoice, DATA, {**self.delivery, "ac_date": None})
-		so = frappe.get_doc("Sales Order", result["sales_order"])
-		self.assertEqual(serial_status("_DMTV-M-1"), ("Inactive", self.w.main))
-		# What happens when the order is cancelled (e.g. after the return invoice). The
-		# linked invoice blocks a real cancel here, so do what cancel does: docstatus 2, then the hook.
-		so.db_set("docstatus", 2)
-		so.docstatus = 2
-		on_sales_order_cancel(so)
-		self.assertEqual(serial_status("_DMTV-M-1"), ("Active", self.w.main))
+		so = result["sales_order"]
+		frappe.get_doc("Sales Invoice", result["name"]).cancel()
+		frappe.get_doc("Sales Order", so).cancel()
+		self.assertEqual(reserved_serials(so, self.w.tv), [])
+		self.assertEqual(reserved_serials(self.bundle_order(), self.w.tv), ["_DMTV-M-1"])
 
 	def test_bundle_branch_invoice_picks_component_serials(self):
 		invoice = self.w.draft_invoice([(self.bundle, 1, 150)])
 		result = service.submit_pos_invoice(invoice, DATA)
 		si = frappe.get_doc("Sales Invoice", result["name"])
-		packed_tv = next(p for p in si.packed_items if p.item_code == self.w.tv)
-		self.assertEqual(get_serial_nos(packed_tv.serial_no), ["_DMTV-B-1"])
+		self.assertEqual(si.docstatus, 1)
 		self.assertEqual(frappe.db.get_value("Serial No", "_DMTV-B-1", "warehouse"), None)
 
 	def test_bundle_stock_checked_by_components(self):
@@ -670,3 +674,4 @@ class TestDriverPayment(OrdersTestCase):
 		self.assertEqual(frappe.db.get_value("Payment Entry", out["payment_entry"], ["docstatus", "owner"]), (1, driver))
 		self.assertEqual(frappe.session.user, driver)
 		frappe.set_user("Administrator")
+

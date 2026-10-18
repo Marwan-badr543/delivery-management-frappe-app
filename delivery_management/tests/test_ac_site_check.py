@@ -32,3 +32,17 @@ class TestACSiteCheck(DeliveryTestCase):
 	def test_tech_needs_ac_tech_role(self):
 		other = user("_dm.tv1@example.com", "TV Driver")
 		self.assertRaises(frappe.ValidationError, self.check, "39990003", ac_tech=other)
+
+	def test_ac_tech_sees_only_his_checks(self):
+		mine = self.check("39990004")
+		other_tech = user("_dm.ac2@example.com", ROLE_AC)
+		theirs = self.check("39990005", ac_tech=other_tech)
+		frappe.set_user(self.tech)
+		try:
+			names = frappe.get_list("AC Site Check", pluck="name")
+			self.assertIn(mine.name, names)
+			self.assertNotIn(theirs.name, names)
+			self.assertFalse(frappe.has_permission("AC Site Check", "read", theirs.name))
+		finally:
+			frappe.set_user("Administrator")
+		self.assertIn(theirs.name, frappe.get_list("AC Site Check", pluck="name"))

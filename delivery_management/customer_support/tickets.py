@@ -343,8 +343,7 @@ def move_to_technician(ticket, technician: str) -> None:
 
 
 def log_technician_visit(ticket, completion_status: str, report: str, user: str | None = None) -> dict:
-	"""Old ``create_maintenance_visit_and_warranty``: Maintenance Visit, warranty claim
-	when the serial is under warranty (never blocking), and the visit row."""
+	"""The Maintenance Visit and the visit row. No Warranty Claim is opened."""
 	user = user or frappe.session.user
 	report = cstr(report).strip()
 	if not report:
@@ -356,15 +355,10 @@ def log_technician_visit(ticket, completion_status: str, report: str, user: str 
 	require_open(ticket, _("Can not move resolved or completed issue ticket"))
 	if ticket.sm_stage == STAGE_CS:
 		frappe.throw(_("This ticket in customer service, move it first."))
-	if not ticket.sm_item_code:
-		frappe.throw(_("No item code associated with this ticket."))
-
+	# Only a Maintenance Visit is made (no Warranty Claim); the item is optional.
 	technician = ticket.sm_technician or user
 	visit = make_maintenance_visit(ticket, completion_status, report, technician)
-
-	claim = next((r.warranty_claim for r in ticket.get("sm_tech_visits") or [] if r.warranty_claim), None)
-	if not claim:
-		claim = open_warranty_claim(ticket, report)
+	claim = None
 
 	ticket.append("sm_tech_visits", {
 		"visit_on": now_datetime(),
@@ -521,8 +515,8 @@ def make_maintenance_visit(ticket, completion_status: str, report: str, technici
 		"completion_status": completion_status,
 		"customer_feedback": strip_html(cstr(ticket.description))[:500] or None,
 		"purposes": [{
-			"item_code": ticket.sm_item_code,
-			"serial_no": ticket.sm_serial_no or None,
+			"item_code": ticket.sm_item_code or None,
+			"serial_no": (ticket.sm_item_code and ticket.sm_serial_no) or None,
 			"service_person": service_person_of(technician),
 			"description": report,
 			"work_done": report,

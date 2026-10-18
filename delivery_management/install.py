@@ -134,11 +134,6 @@ def get_custom_fields() -> dict:
 		# On the Details tab, just above the items.
 		"Sales Order": _delivery_fields("ignore_pricing_rule", editable=True),
 		"Sales Invoice": _delivery_fields("ignore_pricing_rule", editable=False),
-		"Sales Order Item": [
-			{"fieldname": "dm_serial_nos", "fieldtype": "Small Text", "label": "Allocated Serial Nos",
-				"insert_after": "warehouse", "read_only": 1, "no_copy": 1,
-				"description": "Serials picked from the main store when the POS order was placed."},
-		],
 	}
 
 

@@ -274,10 +274,9 @@ class DeliverySchedulePage {
 					: ""}</div>
 			</div>
 			<div class="dd-box" style="margin-top:12px"><h5>${__("Customer signature")}</h5>
-				<div class="dd-sign"><canvas></canvas><div class="dd-sign-hint">${__("Sign here")}</div></div>
+				<div class="dd-sign"></div>
 				<div class="dd-actions" style="justify-content:flex-end">
-					<button class="btn btn-default btn-sm" data-clear-sign>${__("Clear")}</button>
-					<button class="btn btn-primary btn-sm" data-save-sign disabled>${frappe.utils.icon("upload", "xs")} ${__("Upload signature")}</button>
+					<button class="btn btn-primary btn-sm" data-save-sign>${frappe.utils.icon("upload", "xs")} ${__("Upload signature")}</button>
 				</div>
 			</div>`);
 
@@ -308,81 +307,34 @@ class DeliverySchedulePage {
 			});
 		});
 
-		const upload = (file, target, done) => {
-			if (file.size > 25 * 1024 * 1024) return frappe.msgprint(__("The file is too large (max 25 MB)."));
-			const reader = new FileReader();
-			reader.onload = async () => {
-				const r = await D.call("upload_attachment", {
-					delivery_note: o.name, filename: file.name, filedata: reader.result, target,
-				}, { post: true, freeze: true });
-				frappe.show_alert({ message: __("Attached to {0}", [r.attached_to]), indicator: "green" });
-				done && done();
-			};
-			reader.readAsDataURL(file);
+		// Files and the signature are attached to the Delivery Note; the order is reloaded to list them.
+		const upload = async (filename, filedata) => {
+			const r = await D.call("upload_attachment", { delivery_note: o.name, filename, filedata }, { post: true, freeze: true });
+			frappe.show_alert({ message: __("Attached to {0}", [r.attached_to]), indicator: "green" });
+			d.hide();
+			this.openDetail(name);
 		};
 		$b.find("[data-upload]").on("click", () => $b.find("[data-file]").trigger("click"));
 		$b.find("[data-file]").on("change", (e) => {
 			const file = e.target.files[0];
 			e.target.value = "";
-			// As in the old system, photos and files go to the customer's record.
-			if (file) upload(file, "customer");
+			if (!file) return;
+			if (file.size > 25 * 1024 * 1024) return frappe.msgprint(__("The file is too large (max 25 MB)."));
+			const reader = new FileReader();
+			reader.onload = () => upload(file.name, reader.result);
+			reader.readAsDataURL(file);
 		});
-		this.signaturePad($b, (file) => upload(file, "delivery_note", () => { d.hide(); this.openDetail(name); }), o.customer_name);
-	}
 
-	signaturePad($b, onSave, customerName) {
-		const canvas = $b.find(".dd-sign canvas")[0];
-		const ctx = canvas.getContext("2d");
-		let drawing = false;
-		let drawn = false;
-		const size = () => {
-			const ratio = window.devicePixelRatio || 1;
-			canvas.width = canvas.clientWidth * ratio;
-			canvas.height = canvas.clientHeight * ratio;
-			ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-			ctx.fillStyle = "#fff";
-			ctx.fillRect(0, 0, canvas.width, canvas.height);
-		};
-		setTimeout(size, 50);
-		const pos = (e) => {
-			const r = canvas.getBoundingClientRect();
-			const p = e.touches ? e.touches[0] : e;
-			return { x: p.clientX - r.left, y: p.clientY - r.top };
-		};
-		const start = (e) => {
-			e.preventDefault();
-			drawing = true;
-			drawn = true;
-			$b.find(".dd-sign-hint").hide();
-			$b.find("[data-save-sign]").prop("disabled", false);
-			const { x, y } = pos(e);
-			ctx.beginPath();
-			ctx.moveTo(x, y);
-		};
-		const move = (e) => {
-			if (!drawing) return;
-			e.preventDefault();
-			const { x, y } = pos(e);
-			Object.assign(ctx, { lineWidth: 2.5, lineCap: "round", lineJoin: "round", strokeStyle: "#0e3556" });
-			ctx.lineTo(x, y);
-			ctx.stroke();
-		};
-		const stop = () => (drawing = false);
-		$(canvas).on("mousedown touchstart", (e) => start(e.originalEvent))
-			.on("mousemove touchmove", (e) => move(e.originalEvent))
-			.on("mouseup mouseleave touchend", stop);
-		$b.find("[data-clear-sign]").on("click", () => {
-			size();
-			drawn = false;
-			$b.find(".dd-sign-hint").show();
-			$b.find("[data-save-sign]").prop("disabled", true);
+		const sign = frappe.ui.form.make_control({
+			parent: $b.find(".dd-sign"),
+			df: { fieldtype: "Signature", fieldname: "signature", label: __("Sign here") },
+			render_input: true,
 		});
 		$b.find("[data-save-sign]").on("click", () => {
-			if (!drawn) return;
-			canvas.toBlob((blob) => {
-				const safe = String(customerName || "customer").replace(/[^\w؀-ۿ-]+/g, "_");
-				onSave(new File([blob], `signature_${safe}_${Date.now()}.png`, { type: "image/png" }));
-			}, "image/png");
+			const data = sign.get_value();
+			if (!data) return frappe.msgprint(__("Ask the customer to sign first."));
+			const safe = String(o.customer_name || "customer").replace(/[^\w\u0600-\u06FF-]+/g, "_");
+			upload(`signature_${safe}_${Date.now()}.png`, data);
 		});
 	}
 }

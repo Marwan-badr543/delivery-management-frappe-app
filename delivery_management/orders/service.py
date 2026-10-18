@@ -2,21 +2,19 @@
 
 ``Invoice``: the customer takes the goods at the branch.
     One Sales Invoice with ``update_stock = 1`` from the branch warehouse.
-    Serials are picked automatically from that warehouse. No delivery slot.
+    No delivery slot.
 
 ``Order``: delivery to the customer.
-    1. A Sales Order from the main store, with serials picked and reserved
-       (marked Inactive). On submit, ``orders.delivery_note`` creates the draft
-       Delivery Note (it replaced the production server script), and
-       ``events.copy_allocated_serials_to_delivery_note`` puts the same serials on it.
+    1. A Sales Order from the main store (ERPNext reserves its stock and serials). On
+       submit, ``orders.delivery_note`` creates the draft Delivery Note.
     2. The delivery slot and/or AC capacity, booked against the Sales Order.
     3. The POS Sales Invoice (``update_stock = 0``), linked line by line to the
-       Sales Order with the same serials, then paid and submitted by POS
+       Sales Order, then paid and submitted by POS
        Awesome's own ``submit_invoice``, so payments, credit and change behave
        exactly as before.
 
 Everything runs in the request transaction. If any step fails (slot just got
-full, serial gone, payment error), none of the documents or bookings persist.
+full, out of stock, payment error), none of the documents or bookings persist.
 """
 
 from __future__ import annotations
@@ -28,13 +26,7 @@ from frappe import _
 from frappe.utils import cint, flt, getdate, nowdate
 
 from delivery_management.orders import address as address_utils
-from delivery_management.orders.stock import (
-	MODE_INVOICE,
-	MODE_ORDER,
-	allocate_packed_serials,
-	allocate_serials,
-	assert_in_stock,
-)
+from delivery_management.orders.stock import assert_in_stock
 from delivery_management.slots import profile_cart
 from delivery_management.slots.settings import get_settings
 from delivery_management.slots.timeutils import to_time_str
@@ -91,8 +83,7 @@ def submit_pos_invoice(invoice: dict, data: dict, delivery: dict | None = None) 
 		_drop_client_serials(row)
 	invoice.update(set_warehouse=warehouse, update_stock=1, posa_delivery_date=None, dm_order_type=ORDER_TYPE_INVOICE)
 
-	assert_in_stock(items, warehouse, MODE_INVOICE)
-	allocate_serials(items, warehouse)
+	assert_in_stock(items, warehouse)
 	_apply_address(invoice, delivery)
 	invoice["sales_team"] = sales_team_of_current_user()
 	return _submit_with_posawesome(invoice, data)
@@ -127,18 +118,12 @@ def submit_pos_order(invoice: dict, data: dict, delivery: dict | None, unpaid: b
 		frappe.throw(_("There are no items."))
 
 	profile, booking = build_booking(items, delivery)
-	assert_in_stock(items, main_store, MODE_ORDER)
+	assert_in_stock(items, main_store)
 	address_name = _apply_address(invoice, delivery, required=bool(booking))
 
 	invoice["sales_team"] = sales_team_of_current_user()
 	so = _make_sales_order(invoice, items, main_store, booking, profile, address_name, delivery)
-	allocate_serials(so.items, main_store, target_field="dm_serial_nos")
 	so.insert(ignore_permissions=True)
-	# Bundle components exist only after insert (ERPNext builds the packing list on validate).
-	allocate_packed_serials(so, main_store)
-	for row in so.packed_items:
-		if row.serial_no:
-			row.db_set("serial_no", row.serial_no, update_modified=False)
 	# Books the slot / AC day from the schedule fields (sales_order.before_submit).
 	with quiet_messages():
 		so.submit()
@@ -150,7 +135,6 @@ def submit_pos_order(invoice: dict, data: dict, delivery: dict | None, unpaid: b
 			sales_order=so.name,
 			so_detail=so_item.name,
 			warehouse=main_store,
-			serial_no=so_item.dm_serial_nos or None,
 		)
 	invoice.update(
 		update_stock=0,
@@ -302,8 +286,8 @@ class quiet_messages:
 
 
 def _drop_client_serials(row: dict) -> None:
-	"""Serials are picked here, never by the POS: POS Awesome V15 pre-fills serials from
-	its own list, which knows nothing about orders that reserved them (Inactive)."""
+	"""POS Awesome V15 pre-fills serials from its own list, which knows nothing about
+	reservations; ERPNext picks them instead (unreserved, FIFO)."""
 	# Set to empty (not removed): the saved draft may already hold serials in the database.
 	row.update(serial_no=None, serial_and_batch_bundle=None, use_serial_batch_fields=1)
 	row.pop("serial_no_selected", None)

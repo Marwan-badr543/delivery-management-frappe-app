@@ -7,7 +7,7 @@ the page can pick it up (realtime event ``dm_sales_stats``, with polling as a
 fallback); the stored copy is deleted after an hour and is never served for
 another run.
 
-Managers see every salesman; anyone else with page access sees only their own sales.
+Only System Manager sees every salesman; anyone else with page access sees only their own sales.
 """
 
 import frappe
@@ -23,7 +23,8 @@ EVENT = "dm_sales_stats"
 
 
 def _is_manager() -> bool:
-	return bool(set(MANAGER_ROLES) & set(frappe.get_roles()))
+	"""Only a System Manager sees every salesman's sales."""
+	return frappe.session.user == "Administrator" or "System Manager" in frappe.get_roles()
 
 
 def _filters(from_date, to_date, company=None, user=None) -> dict:

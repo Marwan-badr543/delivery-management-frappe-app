@@ -117,6 +117,15 @@ class TestOrderType(DriversTestCase):
 		self.assertEqual(unit_counts([{"item_code": bundle, "qty": 2}]), (0, 6))
 		self.assertEqual(asg.order_type_of([{"item_code": bundle, "qty": 1}]), "Non AC")
 
+	def test_service_item_groups_are_not_units(self):
+		item_group("_DM Services", is_group=1)
+		item_group("_DM Install Fee", parent="_DM Services")
+		item_group("_DM AC Service", parent="_DM AC")
+		fee = item("_DM Install Fee Item", "_DM Install Fee")
+		ac_service = item("_DM AC Cleaning", "_DM AC Service", stock=0)
+		self.assertEqual(unit_counts([{"item_code": self.ac, "qty": 1}, {"item_code": ac_service, "qty": 3},
+			{"item_code": self.tv, "qty": 2}, {"item_code": fee, "qty": 5}]), (1, 2))
+
 
 class TestAvailability(DriversTestCase):
 	def test_tv_conflict_window(self):
@@ -219,6 +228,16 @@ class TestDriverAccess(DriversTestCase):
 		self.assertEqual(frappe.db.get_value("Delivery Note", mine.name, ["docstatus", "modified_by"]), (1, self.tv1))
 		self.assertEqual(frappe.db.get_value("Delivery Note", other.name, "docstatus"), 0)
 
+	def test_driver_attaches_files_and_signature_to_the_delivery_note(self):
+		mine = self.dn([(self.tv, 1)], time="10:00")
+		asg.assign(mine.name, self.tv1)
+		frappe.set_user(self.tv1)
+		png = "data:image/png;base64,iVBORw0KGgo="
+		api.upload_attachment(mine.name, "photo.png", png)
+		api.upload_attachment(mine.name, "signature_x.png", png)
+		names = [f["file_name"] for f in api.get_order_detail(mine.name).attachments]
+		self.assertEqual(sorted(names), ["photo.png", "signature_x.png"])
+
 
 class TestInstallationStats(DriversTestCase):
 	def test_units_per_driver_from_submitted_notes(self):
@@ -239,6 +258,13 @@ class TestInstallationStats(DriversTestCase):
 		# A driver sees only himself.
 		frappe.set_user(self.tv1)
 		self.assertEqual([r["technician"] for r in api.get_installation_stats(str(DAY), str(DAY))["rows"]], [self.tv1])
+		# A Delivery Manager is not a System Manager: only his own numbers.
+		frappe.set_user("Administrator")
+		manager = user("_dm.dmgr@example.com", "Delivery Manager")
+		frappe.set_user(manager)
+		self.assertEqual(api.get_installation_stats(str(DAY), str(DAY))["rows"], [])
+		frappe.set_user("Administrator")
+		self.assertEqual(len(api.get_installation_stats(str(DAY), str(DAY))["rows"]), 2)
 
 
 class TestPosOrderRules(DriversTestCase):

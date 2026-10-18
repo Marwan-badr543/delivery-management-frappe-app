@@ -121,7 +121,7 @@ class TestTechnicianStage(SupportTestCase):
 		api.move_to_technician(second, self.tech2)
 		self.assertTrue(first)
 
-	def test_visit_creates_maintenance_visit_and_warranty_claim(self):
+	def test_visit_creates_only_a_maintenance_visit(self):
 		invoice = self.sold_tv()
 		name = self.at_technician(sales_invoice=invoice, item_code=self.w.tv)
 		frappe.set_user(self.tech2)
@@ -133,21 +133,15 @@ class TestTechnicianStage(SupportTestCase):
 		self.assertEqual((mv.customer, mv.maintenance_type, mv.completion_status, mv.docstatus),
 			(self.w.customer, "Breakdown", "Partially Completed", 0))
 		self.assertEqual(mv.purposes[0].item_code, self.w.tv)
-		claim = frappe.get_doc("Warranty Claim", result["warranty_claim"])
-		self.assertEqual((claim.status, claim.item_code), ("Work In Progress", self.w.tv))
-		# A second visit reuses the claim.
-		frappe.set_user(self.tech1)
-		again = api.log_visit(name, "Fully Completed", "Done")
-		self.assertEqual(again["warranty_claim"], claim.name)
+		self.assertIsNone(result["warranty_claim"])
+		self.assertFalse(frappe.db.exists("Warranty Claim", {"complaint": ["like", f"%{name}%"]}))
 
-	def test_no_warranty_claim_when_expired(self):
-		invoice = self.sold_tv()
-		serial = frappe.get_all("Serial No", filters={"item_code": self.w.tv, "warehouse": ["is", "not set"]},
-			pluck="name", order_by="modified desc", limit=1)[0]
-		frappe.db.set_value("Serial No", serial, "warranty_expiry_date", "2020-01-01")
-		name = self.at_technician(sales_invoice=invoice, item_code=self.w.tv)
+	def test_visit_without_item_code(self):
+		name = self.at_technician()
 		frappe.set_user(self.tech1)
-		self.assertIsNone(api.log_visit(name, "Fully Completed", "Fixed")["warranty_claim"])
+		result = api.log_visit(name, "Fully Completed", "Fixed on site")
+		frappe.set_user("Administrator")
+		self.assertFalse(frappe.db.get_value("Maintenance Visit Purpose", {"parent": result["maintenance_visit"]}, "item_code"))
 
 	def test_technician_sees_only_his_tickets(self):
 		name = self.at_technician()
@@ -185,15 +179,14 @@ class TestMaintenanceStage(SupportTestCase):
 		invoice = self.sold_tv()
 		name = self.at_technician(sales_invoice=invoice, item_code=self.w.tv)
 		frappe.set_user(self.tech1)
-		claim = api.log_visit(name, "Partially Completed", "Workshop")["warranty_claim"]
+		api.log_visit(name, "Partially Completed", "Workshop")
 		api.move_to_maintenance(name, self.maint)
 		self.assertRaises(frappe.ValidationError, api.resolve, name)  # no maintenance report yet
 		frappe.set_user(self.maint)
 		api.save_maint_report(name, "Panel replaced, tested 2h")
-		self.assertEqual(api.resolve(name)["warranty_claims_closed"], [claim])
+		self.assertEqual(api.resolve(name)["warranty_claims_closed"], [])
 		frappe.set_user("Administrator")
 		self.assertEqual(frappe.db.get_value("Issue", name, "status"), "Resolved")
-		self.assertEqual(frappe.db.get_value("Warranty Claim", claim, "status"), "Closed")
 		frappe.set_user(self.maint)
 		self.assertRaises(frappe.ValidationError, api.save_maint_report, name, "again")
 

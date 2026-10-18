@@ -171,14 +171,30 @@ def _add(bucket: list, code: str) -> None:
 		bucket.append(code)
 
 
+def service_item_codes(item_codes) -> set[str]:
+	"""Items whose Item Group is a service group (name contains "service", e.g. ``Services``,
+	``auto services``) or any group under one."""
+	codes = list({c for c in item_codes if c})
+	if not codes:
+		return set()
+	return set(frappe.db.sql_list(
+		"""select i.name from `tabItem` i join `tabItem Group` g on g.name = i.item_group
+		where i.name in %(codes)s and exists (select 1 from `tabItem Group` s
+			where s.name like '%%service%%' and g.lft >= s.lft and g.rgt <= s.rgt)""",
+		{"codes": tuple(codes)},
+	))
+
+
 def unit_counts(items) -> tuple[int, float]:
 	"""``(ac_units, non_ac_units)`` of order lines, bundles counted by their components.
 
 	Non-AC units are the stock lines that need a normal delivery: AC accessories count
 	only when there is no AC unit (otherwise they go with the installation). Non-stock
-	lines (delivery charge, services) are not units.
+	lines (delivery charge) and items of a service Item Group are not units, AC or not.
 	"""
 	lines = expand_bundles([(it.get("item_code"), stock_qty(it)) for it in items if it.get("item_code")])
+	services = service_item_codes(code for code, _qty in lines)
+	lines = [(code, qty) for code, qty in lines if code not in services]
 	codes = [code for code, _qty in lines]
 	kinds = classify_items(codes)
 	stock_codes = set(

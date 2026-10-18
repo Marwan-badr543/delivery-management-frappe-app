@@ -58,3 +58,25 @@ def ac_tech_query(doctype, txt, searchfield, start, page_len, filters):
 		order by u.full_name limit %(start)s, %(page_len)s""",
 		{"role": ROLE_AC, "txt": f"%{txt}%", "start": start, "page_len": page_len},
 	)
+
+
+def _restricted(user: str) -> bool:
+	"""An AC Tech (not System Manager) sees only the checks assigned to him."""
+	if user == "Administrator":
+		return False
+	roles = frappe.get_roles(user)
+	return ROLE_AC in roles and "System Manager" not in roles
+
+
+def get_permission_query_conditions(user=None):
+	user = user or frappe.session.user
+	if not _restricted(user):
+		return ""
+	return f"`tabAC Site Check`.`ac_tech` = {frappe.db.escape(user)}"
+
+
+def has_permission(doc, ptype=None, user=None, debug=False):
+	user = user or frappe.session.user
+	if not _restricted(user):
+		return True
+	return doc.get("ac_tech") == user

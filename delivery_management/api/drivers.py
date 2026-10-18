@@ -4,7 +4,7 @@ Access (System Manager = admin in the old system):
 * Driver Assignment: System Manager / Delivery Manager.
 * Delivery Schedule: drivers see only the Delivery Notes assigned to them; System
   Manager / Delivery Manager see all.
-* Installation Statistics: drivers see only their own numbers.
+* Installation Statistics: only System Manager sees everyone; others see their own numbers.
 """
 
 from __future__ import annotations
@@ -393,30 +393,25 @@ def submit_delivery_note(delivery_note):
 
 
 @frappe.whitelist(methods=["POST"])
-def upload_attachment(delivery_note, filename, filedata, target="delivery_note"):
-	"""Attach a photo / file to the customer, or the signature to the Delivery Note."""
+def upload_attachment(delivery_note, filename, filedata):
+	"""Attach a photo / file or the customer's signature to the Delivery Note."""
 	_require_order_access(delivery_note)
-	if target not in ("delivery_note", "customer"):
-		frappe.throw(_("Unknown target"))
 	if "," in filedata[:100]:
 		filedata = filedata.split(",", 1)[1]
 	content = base64.b64decode(filedata)
 	if len(content) > MAX_ATTACHMENT_BYTES:
 		frappe.throw(_("The file is too large (max 25 MB)."))
-	doctype, name = DN, delivery_note
-	if target == "customer":
-		doctype, name = "Customer", frappe.db.get_value(DN, delivery_note, "customer")
 	file = frappe.get_doc({
 		"doctype": "File",
 		"file_name": filename,
-		"attached_to_doctype": doctype,
-		"attached_to_name": name,
+		"attached_to_doctype": DN,
+		"attached_to_name": delivery_note,
 		"content": content,
 		"is_private": 1,
 	})
 	file.flags.ignore_permissions = True
 	file.insert()
-	return {"file_url": file.file_url, "attached_to": f"{doctype} {name}"}
+	return {"file_url": file.file_url, "attached_to": f"{DN} {delivery_note}"}
 
 
 # ---------------------------------------------------------------------------
@@ -427,15 +422,16 @@ def upload_attachment(delivery_note, filename, filedata, target="delivery_note")
 @frappe.whitelist()
 def get_installation_stats(start_date, end_date, technician=None, unit="all"):
 	_require_staff()
-	if not asg.can_manage():
-		# A driver sees only his own numbers.
+	see_all = asg.is_admin()
+	if not see_all:
+		# Only a System Manager sees everyone; any other user sees only his own numbers.
 		if technician and technician != frappe.session.user:
 			frappe.throw(_("You can only view your own installation statistics."), frappe.PermissionError)
 		technician = frappe.session.user
 	return {
 		"rows": stats.installation_stats(getdate(start_date), getdate(end_date), technician, unit),
-		"technicians": [] if not asg.can_manage() else sorted(
+		"technicians": [] if not see_all else sorted(
 			{d.user: d for d in asg.drivers_for(asg.TYPE_NON_AC) + asg.drivers_for(asg.TYPE_AC)}.values(),
 			key=lambda d: (d.full_name or "").lower()),
-		"can_manage": asg.can_manage(),
+		"can_manage": see_all,
 	}

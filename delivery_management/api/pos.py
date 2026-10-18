@@ -7,7 +7,7 @@ from frappe import _
 
 from delivery_management.orders import address as address_utils
 from delivery_management.orders import service
-from delivery_management.orders.stock import MODE_INVOICE, MODE_ORDER, get_sellable_qty
+from delivery_management.orders.stock import get_sellable_qty
 from delivery_management.slots import engine, profile_cart
 from delivery_management.slots.cart import KIND_AC as KIND_AC_ITEM, KIND_OTHER as KIND_OTHER_ITEM, classify_items
 from delivery_management.slots.settings import get_settings
@@ -67,25 +67,25 @@ def get_items_availability(item_codes, pos_profile, rules=1):
 	settings = get_settings()
 	main = settings.main_warehouse
 	return {
-		"invoice": with_bundles(item_codes, branch, MODE_INVOICE),
-		"order": with_bundles(item_codes, main, MODE_ORDER) if main else {},
+		"invoice": with_bundles(item_codes, branch),
+		"order": with_bundles(item_codes, main) if main else {},
 		# Rules do not change with stock: the refresh after a sale skips them (rules=0).
 		"rules": item_rules(item_codes) if frappe.utils.cint(rules) else {},
 		"delivery_charge_item": settings.delivery_charge_item,
 	}
 
 
-def with_bundles(item_codes, warehouse, mode) -> dict:
+def with_bundles(item_codes, warehouse) -> dict:
 	"""Sellable qty per item; a Product Bundle can be sold as many times as its scarcest
 	stock component allows (non-stock components do not limit it)."""
-	qty = get_sellable_qty(item_codes, warehouse, mode)
+	qty = get_sellable_qty(item_codes, warehouse)
 	bundles = dict(frappe.get_all("Product Bundle", filters={"new_item_code": ["in", list(item_codes) or [""]],
 		"disabled": 0}, fields=["new_item_code", "name"], as_list=True))
 	if not bundles:
 		return qty
 	rows = frappe.get_all("Product Bundle Item", filters={"parent": ["in", list(bundles.values())],
 		"parenttype": "Product Bundle"}, fields=["parent", "item_code", "qty"])
-	comp_qty = get_sellable_qty([r.item_code for r in rows], warehouse, mode)
+	comp_qty = get_sellable_qty([r.item_code for r in rows], warehouse)
 	for code, bundle in bundles.items():
 		limits = [frappe.utils.flt(comp_qty.get(r.item_code)) // frappe.utils.flt(r.qty)
 			for r in rows if r.parent == bundle and comp_qty.get(r.item_code) is not None and frappe.utils.flt(r.qty) > 0]

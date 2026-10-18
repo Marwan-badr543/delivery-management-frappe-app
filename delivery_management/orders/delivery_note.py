@@ -15,10 +15,8 @@ the ``disable_replaced_server_scripts`` patch). Differences from the script:
   and one ``Non AC`` note (the other goods, delivery charge, services) for the TV
   Driver in the delivery slot. Each note carries only its own schedule.
 
-The serials reserved by a POS order are put on the Delivery Note by
-``events.copy_allocated_serials_to_delivery_note`` (before_insert), its packed bundle
-components by ``events.copy_packed_serials_to_delivery_note`` (validate), and the
-schedule / Order Type by ``drivers.delivery_note.before_insert``.
+The schedule / Order Type are put on it by ``drivers.delivery_note.before_insert``;
+ERPNext picks the serials reserved for the order.
 """
 
 from __future__ import annotations

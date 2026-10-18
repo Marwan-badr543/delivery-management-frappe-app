@@ -8,8 +8,8 @@ Port of the old ``InstallationStatsService``:
 * The date is the day the order was worked: the AC installation day for AC orders,
   the delivery day for Non AC orders (the posting date when the order had none).
 * AC units = quantity of AC items; Non AC units = quantity of the other stock items
-  (AC accessories count only when the order has no AC unit; services and the
-  delivery charge are not units). Bundles count by their components.
+  (AC accessories count only when the order has no AC unit; items of a service
+  Item Group and the delivery charge are never units). Bundles count by their components.
 * ``unit`` = ``ac`` / ``non_ac`` keeps only drivers with units of that kind.
 * No caching: every call reads the database.
 """

@@ -18,6 +18,27 @@
 	const fromInput = (v) => (v ? moment(v, "YYYY-MM-DDTHH:mm").format("YYYY-MM-DD HH:mm:00") : "");
 	const nowInput = () => moment().format("YYYY-MM-DDTHH:mm");
 
+	// Each hidden ``[data-dt]`` input gets a Frappe Datetime control (the user's date/time
+	// format and picker); the control writes back to the hidden input, which the page reads.
+	function mountDatetime($root) {
+		$root.find("input[data-dt]").each((_, el) => {
+			const $h = $(el);
+			const ctl = frappe.ui.form.make_control({
+				parent: $("<div class='dm-sup-dt'>").insertAfter($h),
+				render_input: true,
+				df: {
+					fieldtype: "Datetime", fieldname: `dm_${$h.data("k")}`, read_only: $h.prop("disabled") ? 1 : 0,
+					change: () => {
+						const v = toInput(ctl.get_value());
+						if (v !== $h.val()) $h.val(v).trigger("change");
+					},
+				},
+			});
+			if ($h.val()) ctl.set_value(moment($h.val(), "YYYY-MM-DDTHH:mm").format("YYYY-MM-DD HH:mm:ss"));
+			if ($h.data("min-now")) ctl.datepicker && ctl.datepicker.update({ minDate: new Date() });
+		});
+	}
+
 	function pill(text, color) {
 		return `<span class="dd-pill dd-pill-${color}">${esc(text)}</span>`;
 	}
@@ -185,7 +206,7 @@
 						<div class="dd-field"><label>${__("Visit Location Address")}</label>
 							<input class="form-control" data-k="address" placeholder="${__("Building, Road, Block, Area")}"></div>
 						<div class="dd-field"><label>${__("Scheduled Visit Date/Time")}</label>
-							<input class="form-control" type="datetime-local" data-k="visit_datetime" min="${nowInput()}"></div>
+							<input type="hidden" data-dt="1" data-min-now="1" data-k="visit_datetime"></div>
 						<div class="dd-field"><label>${__("Issue Description")} *</label>
 							<textarea class="form-control" rows="3" data-k="description" placeholder="${__("Describe the problem in detail...")}"></textarea></div>
 						<div class="dd-field"><label>${__("Internal CS Note / Report")} *</label>
@@ -195,6 +216,7 @@
 					<div class="dd-box dm-sup-orders"><h5>${__("Customer Past Orders")}</h5>
 						<div class="dd-muted small">${__("Type the customer's phone (8 digits or more) to see the orders. Click an item to fill the ticket.")}</div></div>
 				</div>`);
+			mountDatetime($b);
 			const val = (k) => ($b.find(`[data-k=${k}]`).val() || "").trim();
 			const state = { customer: null, sales_invoice: null };
 			frappe.db.get_list("Issue Type", { pluck: "name", limit: 200 }).then((types) =>
@@ -343,7 +365,7 @@
 				right += `<div class="dd-box"><h5>${__("Schedule & address")}</h5>
 					<div class="dd-field"><label>${__("Visit Address")}</label><input class="form-control" data-k="address" value="${esc(t.address)}"
 						${t.can.update_schedule ? "" : "disabled"}></div>
-					<div class="dd-field"><label>${__("Scheduled Visit Time")}</label><input class="form-control" type="datetime-local"
+					<div class="dd-field"><label>${__("Scheduled Visit Time")}</label><input type="hidden" data-dt="1"
 						data-k="visit_datetime" value="${toInput(t.visit_datetime)}" ${t.can.update_schedule ? "" : "disabled"}></div>
 					${t.can.update_schedule ? `<div><button class="btn btn-default btn-sm" data-act="schedule">${__("Update Schedule / Address")}</button></div>` : ""}
 				</div>`;
@@ -397,6 +419,7 @@
 			$b.html(`${header}<div class="dd-detail">
 				<div class="dm-sup-col">${left}</div><div class="dm-sup-col">${right}</div></div>
 				<div class="dd-btn-row dm-sup-foot">${issueBtn}${resolveBtn}</div>`);
+			mountDatetime($b);
 			const val = (k) => ($b.find(`[data-k=${k}]`).val() || "").trim();
 			const act = (a, fn) => $b.find(`[data-act=${a}]`).on("click", fn);
 
