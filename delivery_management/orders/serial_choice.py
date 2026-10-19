@@ -1,10 +1,11 @@
-"""Serials the cashier chose at the POS (scanned or picked from the list).
+"""Serials of the stock that leaves: chosen at the POS for an Invoice, scanned on the
+Delivery Note of an Order (whose reservation holds only the quantity).
 
 A cart row brings its own serials in ``serial_no``; a bundle line brings the serials of
 its components in ``dm_component_serials`` (``{component item: [serials]}``). Each chosen
 serial must belong to the item, be in the sale's warehouse and not be reserved for
-another order; a serial is used once per cart. Rows without a choice are left to the
-automatic picking (oldest free serial first).
+another order; a serial is used once per cart. When nothing is chosen, ERPNext picks the
+oldest free serials.
 """
 
 from __future__ import annotations
@@ -104,18 +105,18 @@ def _free(item_code, warehouse, count, exclude) -> list[str]:
 	return free[:count]
 
 
-def plan(items, warehouse, complete: bool) -> dict[str, dict[str, list[str]]]:
-	"""Check the chosen serials. Returns ``{row id: {item: serials}}`` for the rows that
-	have a choice; with ``complete``, every serialised item of the cart gets a full list
+def plan(items, warehouse) -> dict[str, dict[str, list[str]]]:
+	"""Check the chosen serials of an Invoice cart. When any is chosen, returns
+	``{row id: {item: serials}}`` with a full list for every serialised item of the cart
 	(missing serials are the oldest free ones), so nothing is left to pick later."""
 	needs = _needs(items)
 	_check(needs, warehouse)
-	if complete and not any(sns for *_x, sns in needs):
+	if not any(sns for *_x, sns in needs):
 		return {}
 	taken = {sn for *_x, sns in needs for sn in sns}
 	out: dict[str, dict] = {}
 	for row_id, code, qty, sns in needs:
-		if complete and len(sns) < qty:
+		if len(sns) < qty:
 			extra = _free(code, warehouse, qty - len(sns), taken)
 			taken.update(extra)
 			sns = sns + extra
@@ -137,3 +138,56 @@ def apply_to_packed_items(doc, method=None):
 			packed.serial_no = "\n".join(serials[: cint(packed.qty)])
 			packed.use_serial_batch_fields = 1
 			packed.serial_and_batch_bundle = None
+
+
+def _order_rows(dn) -> list:
+	"""Item and packed rows of a Delivery Note made from an order (returns excluded)."""
+	if cint(dn.get("is_return")):
+		return []
+	from_order = {r.name for r in dn.items if r.get("against_sales_order")}
+	return [r for r in dn.items if r.name in from_order] + [p for p in dn.get("packed_items") or []
+		if p.parent_detail_docname in from_order]
+
+
+def _key(row) -> tuple:
+	# Packed rows are rebuilt during validate, so they are known by their bundle row and item.
+	return (row.parent_detail_docname, row.item_code) if row.doctype == "Packed Item" else (row.name,)
+
+
+def clear_order_serials(dn, method=None):
+	"""Delivery Note ``before_insert``: a note made from an order starts without serials.
+	ERPNext fills in the oldest free ones, which are not the boxes the stock keeper takes."""
+	for row in _order_rows(dn):
+		row.serial_no = None
+		row.serial_and_batch_bundle = None
+
+
+def keep_scanned(dn, method=None):
+	"""Delivery Note ``before_validate``: note what the stock keeper scanned (ERPNext's
+	validate fills empty serials again), and on submit require every serial."""
+	rows = _order_rows(dn)
+	dn.flags.dm_scanned = {_key(r): (r.serial_no, r.serial_and_batch_bundle) for r in rows}
+	if dn.get("_action") != "submit":
+		return
+	serialised = set(frappe.get_all("Item", filters={"name": ["in", [r.item_code for r in rows] or [""]],
+		"has_serial_no": 1}, pluck="name"))
+	missing = [_("Row {0}: {1} needs {2} serials, {3} scanned.").format(r.idx, r.item_code, cint(qty), count)
+		for r in rows if r.item_code in serialised
+		for qty in [flt(r.get("stock_qty") or r.qty)]
+		for count in [len(_scanned(r))] if count != cint(qty)]
+	if missing:
+		frappe.throw("<br>".join(missing), title=_("Scan the Serial Numbers"))
+
+
+def restore_scanned(dn, method=None):
+	"""Delivery Note ``validate``: drop the serials ERPNext picked, keep the scanned ones."""
+	scanned = dn.flags.get("dm_scanned") or {}
+	for row in _order_rows(dn):
+		row.serial_no, row.serial_and_batch_bundle = scanned.get(_key(row), (None, None))
+
+
+def _scanned(row) -> list[str]:
+	if row.get("serial_and_batch_bundle"):
+		return frappe.get_all("Serial and Batch Entry", filters={"parent": row.serial_and_batch_bundle},
+			pluck="serial_no")
+	return get_serial_nos(row.serial_no or "")

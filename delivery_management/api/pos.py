@@ -76,12 +76,11 @@ def get_items_availability(item_codes, pos_profile, rules=1):
 
 
 @frappe.whitelist()
-def get_free_serials(item_code, pos_profile, order_type="Invoice"):
-	"""Serials the cashier can choose for a cart line: ``{item: [serials]}`` for the item, or
-	for each serialised component of a bundle. Invoice: the branch; Order: the main store."""
+def get_free_serials(item_code, pos_profile):
+	"""Serials of the branch the cashier can choose for an Invoice line: ``{item: [serials]}``
+	for the item, or for each serialised component of a bundle."""
 	_require_pos_user()
-	warehouse = get_settings().main_warehouse if order_type == "Order" else \
-		frappe.db.get_value("POS Profile", pos_profile, "warehouse")
+	warehouse = frappe.db.get_value("POS Profile", pos_profile, "warehouse")
 	bundle = frappe.db.get_value("Product Bundle", {"new_item_code": item_code, "disabled": 0})
 	codes = frappe.get_all("Product Bundle Item", filters={"parent": bundle, "parenttype": "Product Bundle"},
 		pluck="item_code", order_by="idx asc") if bundle else [item_code]

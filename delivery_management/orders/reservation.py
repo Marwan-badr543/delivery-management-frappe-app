@@ -1,19 +1,15 @@
 """Stock reservation of a Sales Order, done the ERPNext way (Stock Reservation Entries).
 
-ERPNext reserves only the order's own stock lines, and only the oldest free serials. This
-module adds what it cannot do:
+Reservations hold a quantity, never a serial (Stock Settings "Auto Reserve Serial and
+Batch Nos" is off): the stock keeper scans the serials of the boxes that actually leave on
+the Delivery Note (see :mod:`serial_choice`).
 
-* **Bundles:** the stock items inside a Product Bundle (its Packed Items) are reserved
-  against the bundle's order row.
-* **Chosen serials:** an order placed at the POS is reserved here, line by line
-  (ERPNext's own reservation is switched off on its rows): the serials the cashier chose
-  first, then the rest, which ERPNext picks (oldest first, skipping held serials).
-* **Delivery Note validate:** the reserved serials are written into the note's empty
-  lines (item rows and packed rows), so exactly those serials leave the store.
-* **Delivery Note submit / cancel:** the bundle entries are marked delivered / reserved
-  again, *before* ERPNext posts the stock ledger (which refuses to take reserved stock)
-  and before ERPNext updates entries of the bundle row (which expects the row to have
-  serials). Item rows are updated by ERPNext itself.
+ERPNext reserves only the order's own stock lines. This module adds the stock items inside
+a Product Bundle (its Packed Items), reserved against the bundle's order row:
+
+* **Sales Order submit:** the components are reserved.
+* **Delivery Note submit / cancel:** their entries are marked delivered / reserved again,
+  *before* ERPNext posts the stock ledger (which refuses to take reserved stock).
 * **Sales Order cancel:** ERPNext cancels every entry of the order, these included.
 """
 
@@ -24,7 +20,6 @@ from collections import defaultdict
 import frappe
 from frappe.utils import cint, flt
 
-from erpnext.stock.doctype.serial_no.serial_no import get_serial_nos
 from erpnext.stock.doctype.stock_reservation_entry.stock_reservation_entry import (
 	get_available_qty_to_reserve,
 )
@@ -44,43 +39,31 @@ def _stock_items(item_codes) -> dict:
 
 
 def _lines(so) -> tuple[dict, dict]:
-	"""``{(order row, item, warehouse): [qty, chosen serials]}`` of what this module reserves,
-	and the stock items involved."""
-	chosen = so.flags.get("dm_chosen_serials")
-	row_ids = {r.name: r.get("posa_row_id") for r in so.items}
-	rows = [(r.name, r.item_code, r.warehouse, flt(r.stock_qty)) for r in so.items] if chosen is not None else []
-	rows += [(p.parent_detail_docname, p.item_code, p.warehouse, flt(p.qty)) for p in so.get("packed_items") or []]
+	"""``{(order row, item, warehouse): qty}`` of the bundle components, and their stock items."""
+	rows = [(p.parent_detail_docname, p.item_code, p.warehouse, flt(p.qty)) for p in so.get("packed_items") or []]
 	items = _stock_items(code for _r, code, _w, _q in rows)
-	lines: dict = {}
+	lines: dict = defaultdict(float)
 	for so_detail, code, warehouse, qty in rows:
-		if code not in items or not warehouse:
-			continue
-		line = lines.setdefault((so_detail, code, warehouse), [0.0, []])
-		line[0] += qty
-		line[1] = ((chosen or {}).get(row_ids.get(so_detail)) or {}).get(code) or line[1]
+		if code in items and warehouse:
+			lines[(so_detail, code, warehouse)] += qty
 	return lines, items
 
 
 def reserve(so, method=None):
-	"""Sales Order ``on_submit``: reserve the bundle components, and every line of a POS order."""
+	"""Sales Order ``on_submit``: reserve the bundle components."""
 	if not so.get("reserve_stock") or not _enabled():
 		return
 	lines, items = _lines(so)
 	partial = cint(frappe.get_single_value("Stock Settings", "allow_partial_reservation"))
-	# Chosen serials first, so the automatic picks of the other lines cannot take them.
-	for (so_detail, code, warehouse), (qty, serials) in lines.items():
-		if serials:
-			_make_entry(so, so_detail, items[code], warehouse, qty, len(serials), serials)
-	for (so_detail, code, warehouse), (qty, serials) in lines.items():
-		left = qty - len(serials)
+	for (so_detail, code, warehouse), qty in lines.items():
 		available = get_available_qty_to_reserve(code, warehouse)
-		if left <= 0 or (available < left and not partial):
+		if available < qty and not partial:
 			continue
-		if min(left, available) > 0:
-			_make_entry(so, so_detail, items[code], warehouse, qty, min(left, available))
+		if min(qty, available) > 0:
+			_make_entry(so, so_detail, items[code], warehouse, qty, min(qty, available))
 
 
-def _make_entry(so, so_detail, item, warehouse, voucher_qty, qty, serials=None) -> None:
+def _make_entry(so, so_detail, item, warehouse, voucher_qty, qty) -> None:
 	sre = frappe.get_doc({
 		"doctype": SRE,
 		"item_code": item.name,
@@ -96,9 +79,7 @@ def _make_entry(so, so_detail, item, warehouse, voucher_qty, qty, serials=None) 
 		"company": so.company,
 		"stock_uom": item.stock_uom,
 		"project": so.get("project"),
-		"reservation_based_on": "Serial and Batch" if item.has_serial_no or item.has_batch_no else "Qty",
-		# Given serials are reserved as they are; without them ERPNext picks (oldest free first).
-		"sb_entries": [{"serial_no": sn, "qty": 1, "warehouse": warehouse} for sn in serials or []],
+		"reservation_based_on": "Qty",
 	})
 	sre.flags.ignore_permissions = True
 	sre.insert()
@@ -123,34 +104,6 @@ def _entries(sales_order, so_detail, item_code, warehouse=None, delivered=False)
 	return [d for d in docs if flt(d.delivered_qty) < flt(d.reserved_qty)]
 
 
-def fill_serials(dn, method=None):
-	"""Delivery Note ``validate``: put the order's reserved serials into empty lines."""
-	if dn.docstatus != 0 or cint(dn.get("is_return")):
-		return
-	links = _order_rows(dn)
-	rows = [(r, links.get(r.name), r.stock_qty) for r in dn.items]
-	rows += [(p, links.get(p.parent_detail_docname), p.qty) for p in dn.get("packed_items") or []]
-	taken = {sn for r, _l, _q in rows for sn in get_serial_nos(r.serial_no or "")}
-	for row, link, qty in rows:
-		if not link or row.serial_no or row.get("serial_and_batch_bundle"):
-			continue
-		free = [e.serial_no for sre in _entries(*link, row.item_code, row.warehouse)
-			if sre.has_serial_no for e in sre.sb_entries
-			if e.serial_no and not flt(e.delivered_qty) and e.serial_no not in taken]
-		picked = free[: cint(qty)]
-		if picked:
-			row.serial_no = "\n".join(picked)
-			row.use_serial_batch_fields = 1
-			taken.update(picked)
-
-
-def _packed_serials(row) -> list[str]:
-	if row.get("serial_and_batch_bundle"):
-		return frappe.get_all("Serial and Batch Entry", filters={"parent": row.serial_and_batch_bundle},
-			pluck="serial_no")
-	return get_serial_nos(row.serial_no or "")
-
-
 def _update_delivered(dn, deliver: bool) -> None:
 	if cint(dn.get("is_return")):
 		return
@@ -160,19 +113,10 @@ def _update_delivered(dn, deliver: bool) -> None:
 		if not link:
 			continue
 		qty = flt(row.qty)
-		serials = _packed_serials(row)
 		for sre in _entries(*link, row.item_code, row.warehouse, delivered=not deliver):
 			if qty <= 0:
 				break
-			moved = 0
-			if sre.has_serial_no:
-				for entry in sre.sb_entries:
-					if entry.serial_no in serials and bool(entry.delivered_qty) != deliver:
-						entry.delivered_qty = 1 if deliver else 0
-						entry.db_update()
-						moved += 1
-			else:
-				moved = min(flt(sre.reserved_qty) - flt(sre.delivered_qty) if deliver else flt(sre.delivered_qty), qty)
+			moved = min(flt(sre.reserved_qty) - flt(sre.delivered_qty) if deliver else flt(sre.delivered_qty), qty)
 			sre.delivered_qty = flt(sre.delivered_qty) + (moved if deliver else -moved)
 			sre.db_update()
 			sre.update_reserved_qty_in_voucher()

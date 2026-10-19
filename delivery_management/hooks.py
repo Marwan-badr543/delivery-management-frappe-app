@@ -146,13 +146,15 @@ doc_events = {
 		"on_trash": "delivery_management.orders.events.on_sales_order_trash",
 	},
 	"Delivery Note": {
+		"before_validate": "delivery_management.orders.serial_choice.keep_scanned",
 		"before_insert": [
 			"delivery_management.orders.events.inherit_header_from_sales_order",
 			"delivery_management.drivers.delivery_note.before_insert",
+			"delivery_management.orders.serial_choice.clear_order_serials",
 		],
 		"validate": [
 			"delivery_management.drivers.delivery_note.validate",
-			"delivery_management.orders.reservation.fill_serials",
+			"delivery_management.orders.serial_choice.restore_scanned",
 		],
 		"before_submit": [
 			"delivery_management.drivers.delivery_note.before_submit",

@@ -7,3 +7,4 @@ delivery_management.patches.disable_replaced_server_scripts
 delivery_management.patches.disable_posawesome_delivery_charges
 delivery_management.patches.pos_profiles_start_as_order
 delivery_management.patches.drop_dm_serial_nos
+delivery_management.patches.reserve_qty_not_serials

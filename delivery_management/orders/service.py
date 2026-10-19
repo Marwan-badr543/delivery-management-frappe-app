@@ -5,9 +5,9 @@
     No delivery slot.
 
 ``Order``: delivery to the customer.
-    1. A Sales Order from the main store (``orders.reservation`` reserves its stock and
-       serials, the ones the cashier chose first). On
-       submit, ``orders.delivery_note`` creates the draft Delivery Note.
+    1. A Sales Order from the main store (its stock quantity is reserved; the serials
+       are scanned on the Delivery Note). On submit, ``orders.delivery_note`` creates
+       the draft Delivery Note.
     2. The delivery slot and/or AC capacity, booked against the Sales Order.
     3. The POS Sales Invoice (``update_stock = 0``), linked line by line to the
        Sales Order, then paid and submitted by POS
@@ -83,7 +83,7 @@ def submit_pos_invoice(invoice: dict, data: dict, delivery: dict | None = None) 
 	assert_in_stock(items, warehouse)
 	# Chosen serials (and, when any is chosen, all the others of the cart) go on the
 	# invoice; otherwise ERPNext picks them.
-	chosen = serial_choice.plan(items, warehouse, complete=True)
+	chosen = serial_choice.plan(items, warehouse)
 	for row in items:
 		row["warehouse"] = warehouse
 		_set_client_serials(row, (chosen.get(row.get("posa_row_id")) or {}).get(row.get("item_code")))
@@ -128,15 +128,10 @@ def submit_pos_order(invoice: dict, data: dict, delivery: dict | None, unpaid: b
 
 	profile, booking = build_booking(items, delivery)
 	assert_in_stock(items, main_store)
-	chosen = serial_choice.plan(items, main_store, complete=False)
 	address_name = _apply_address(invoice, delivery, required=bool(booking))
 
 	invoice["sales_team"] = sales_team_of_current_user()
 	so = _make_sales_order(invoice, items, main_store, booking, profile, address_name, delivery)
-	# The app reserves every line (orders.reservation), chosen serials first.
-	so.flags.dm_chosen_serials = chosen
-	for so_item in so.items:
-		so_item.reserve_stock = 0
 	so.insert(ignore_permissions=True)
 	# Books the slot / AC day from the schedule fields (sales_order.before_submit).
 	with quiet_messages():
