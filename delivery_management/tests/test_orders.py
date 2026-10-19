@@ -365,16 +365,6 @@ class TestUnpaidOrder(OrdersTestCase):
 		self.assertEqual({r.slot_type for r in get_reservations("Sales Order", so.name)}, {"AC", "Delivery"})
 
 
-class TestClientSerialsIgnored(OrdersTestCase):
-	"""POS Awesome V15 pre-fills serials in the browser; ERPNext picks them instead."""
-
-	def test_order_ignores_serials_sent_by_the_pos(self):
-		invoice = self.w.draft_invoice([(self.w.tv, 1, 100)])
-		invoice["items"][0]["serial_no"] = "_DMTV-B-1"  # a branch serial: Orders ship from the main store
-		result = service.submit_pos_order(invoice, dict(DATA), self.delivery)
-		self.assertTrue(reserved_serials(result["sales_order"], self.w.tv)[0].startswith("_DMTV-M-"))
-
-
 class TestQuietOrderMessages(OrdersTestCase):
 	"""The SO -> DN server script's msgprint must not reach the POS (it froze V15)."""
 
@@ -555,19 +545,25 @@ class TestSeveralAcGroups(OrdersTestCase):
 		self.assertEqual(p.ac_units, 3)
 
 
+def tv_bundle(w):
+	"""A TV + 2 pipes bundle (the bundle item itself is not a stock item)."""
+	bundle = "_DM TV + Pipe Bundle"
+	if not frappe.db.exists("Item", bundle):
+		frappe.get_doc({"doctype": "Item", "item_code": bundle, "item_name": bundle,
+			"item_group": "_DM Goods", "stock_uom": "Nos", "is_stock_item": 0, "is_sales_item": 1,
+			"include_item_in_manufacturing": 0}).insert()
+	if not frappe.db.exists("Product Bundle", bundle):
+		frappe.get_doc({"doctype": "Product Bundle", "new_item_code": bundle,
+			"items": [{"item_code": w.tv, "qty": 1}, {"item_code": w.pipe, "qty": 2}]}).insert()
+	return bundle
+
+
 class TestProductBundle(OrdersTestCase):
 	"""A bundle parent is a non-stock item: stock and the delivery are counted by its components."""
 
 	def setUp(self):
 		super().setUp()
-		self.bundle = "_DM TV + Pipe Bundle"
-		if not frappe.db.exists("Item", self.bundle):
-			frappe.get_doc({"doctype": "Item", "item_code": self.bundle, "item_name": self.bundle,
-				"item_group": "_DM Goods", "stock_uom": "Nos", "is_stock_item": 0, "is_sales_item": 1,
-				"include_item_in_manufacturing": 0}).insert()
-		if not frappe.db.exists("Product Bundle", self.bundle):
-			frappe.get_doc({"doctype": "Product Bundle", "new_item_code": self.bundle,
-				"items": [{"item_code": self.w.tv, "qty": 1}, {"item_code": self.w.pipe, "qty": 2}]}).insert()
+		self.bundle = tv_bundle(self.w)
 
 	def test_bundle_order_is_delivered_by_its_components(self):
 		invoice = self.w.draft_invoice([(self.bundle, 1, 150)])
@@ -649,6 +645,102 @@ class TestProductBundle(OrdersTestCase):
 		invoice = self.w.draft_invoice([(self.bundle, 4, 150)])
 		self.assertRaises(frappe.ValidationError, service.submit_pos_order, invoice, DATA,
 			{**self.delivery, "ac_date": None})
+
+
+class TestChosenSerials(OrdersTestCase):
+	"""Serials the cashier scanned or picked are the ones sold; the tests always choose a
+	serial that is *not* the oldest, so automatic picking cannot pass them by accident."""
+
+	def setUp(self):
+		super().setUp()
+		self.bundle = tv_bundle(self.w)
+
+	def invoice(self, lines, serials=None, components=None):
+		"""A POS draft; ``serials`` / ``components``: {line index: serials} for item / bundle lines."""
+		invoice = self.w.draft_invoice(lines)
+		for i, sns in (serials or {}).items():
+			invoice["items"][i]["serial_no"] = "\n".join(sns)
+		for i, sns in (components or {}).items():
+			invoice["items"][i]["dm_component_serials"] = {self.w.tv: sns}
+		return invoice
+
+	def order(self, invoice):
+		return service.submit_pos_order(invoice, DATA, {**self.delivery, "ac_date": None})["sales_order"]
+
+	def delivered(self, so):
+		dn = make_delivery_note(so)
+		dn.insert()
+		dn.submit()
+		return dn
+
+	def test_invoice_sells_the_scanned_serial(self):
+		result = service.submit_pos_invoice(self.invoice([(self.w.tv, 1, 100)], serials={0: ["_DMTV-B-2"]}), DATA)
+		self.assertEqual(frappe.db.get_value("Sales Invoice", result["name"], "docstatus"), 1)
+		self.assertEqual(serial_status("_DMTV-B-2")[1], None)
+		self.assertEqual(serial_status("_DMTV-B-1")[1], self.w.branch)
+
+	def test_invoice_completes_a_partial_choice(self):
+		invoice = self.invoice([(self.w.tv, 2, 100)], serials={0: ["_DMTV-B-2"]})
+		service.submit_pos_invoice(invoice, DATA)
+		self.assertEqual((serial_status("_DMTV-B-1")[1], serial_status("_DMTV-B-2")[1]), (None, None))
+
+	def test_invoice_bundle_uses_the_chosen_component_serial(self):
+		service.submit_pos_invoice(self.invoice([(self.bundle, 1, 150)], components={0: ["_DMTV-B-2"]}), DATA)
+		self.assertEqual(serial_status("_DMTV-B-2")[1], None)
+		self.assertEqual(serial_status("_DMTV-B-1")[1], self.w.branch)
+
+	def test_order_reserves_and_delivers_the_chosen_serial(self):
+		so = self.order(self.invoice([(self.w.tv, 1, 100)], serials={0: ["_DMTV-M-3"]}))
+		self.assertEqual(reserved_serials(so, self.w.tv), ["_DMTV-M-3"])
+		self.delivered(so)
+		self.assertEqual(serial_status("_DMTV-M-3")[1], None)
+		self.assertEqual(serial_status("_DMTV-M-1")[1], self.w.main)
+		self.assertEqual(set(frappe.get_all("Stock Reservation Entry", filters={"voucher_no": so, "docstatus": 1},
+			pluck="status")), {"Delivered"})
+
+	def test_order_partial_choice_reserves_the_rest_automatically(self):
+		so = self.order(self.invoice([(self.w.tv, 2, 100)], serials={0: ["_DMTV-M-3"]}))
+		self.assertEqual(reserved_serials(so, self.w.tv), ["_DMTV-M-1", "_DMTV-M-3"])
+
+	def test_order_without_choice_still_picks_the_oldest(self):
+		so = self.order(self.invoice([(self.w.tv, 1, 100)]))
+		self.assertEqual(reserved_serials(so, self.w.tv), ["_DMTV-M-1"])
+
+	def test_order_bundle_reserves_and_delivers_the_chosen_component_serial(self):
+		so = self.order(self.invoice([(self.bundle, 1, 150)], components={0: ["_DMTV-M-3"]}))
+		self.assertEqual(reserved_serials(so, self.w.tv), ["_DMTV-M-3"])
+		self.delivered(so)
+		self.assertEqual(serial_status("_DMTV-M-3")[1], None)
+		self.assertEqual(serial_status("_DMTV-M-1")[1], self.w.main)
+
+	def test_two_bundle_lines_keep_their_own_serials(self):
+		so = self.order(self.invoice([(self.bundle, 1, 150), (self.bundle, 1, 150)],
+			components={0: ["_DMTV-M-3"], 1: ["_DMTV-M-2"]}))
+		rows = frappe.get_all("Sales Order Item", filters={"parent": so}, fields=["name"], order_by="idx asc")
+		by_row = [frappe.get_all("Serial and Batch Entry", filters={"parent": ["in", frappe.get_all(
+			"Stock Reservation Entry", filters={"voucher_detail_no": r.name, "item_code": self.w.tv, "docstatus": 1},
+			pluck="name")]}, pluck="serial_no") for r in rows]
+		self.assertEqual(by_row, [["_DMTV-M-3"], ["_DMTV-M-2"]])
+
+	def test_chosen_serial_is_not_taken_by_another_line(self):
+		so = self.order(self.invoice([(self.w.tv, 1, 100), (self.w.tv, 1, 100)], serials={1: ["_DMTV-M-1"]}))
+		self.assertEqual(reserved_serials(so, self.w.tv), ["_DMTV-M-1", "_DMTV-M-2"])
+
+	def test_serial_reserved_for_another_order_is_refused(self):
+		self.order(self.invoice([(self.w.tv, 1, 100)], serials={0: ["_DMTV-M-3"]}))
+		invoice = self.invoice([(self.w.tv, 1, 100)], serials={0: ["_DMTV-M-3"]})
+		self.assertRaisesRegex(frappe.ValidationError, "reserved for another order", self.order, invoice)
+		self.assertEqual(self.counter(self.area, self.slot_date, "10:00"), 1)
+
+	def test_branch_serial_is_refused_for_an_order(self):
+		invoice = self.invoice([(self.w.tv, 1, 100)], serials={0: ["_DMTV-B-1"]})
+		self.assertRaisesRegex(frappe.ValidationError, "not available", self.order, invoice)
+
+	def test_wrong_item_and_double_choice_are_refused(self):
+		invoice = self.invoice([(self.w.ac, 1, 300)], serials={0: ["_DMTV-B-1"]})
+		self.assertRaisesRegex(frappe.ValidationError, "belongs to", service.submit_pos_invoice, invoice, DATA)
+		invoice = self.invoice([(self.w.tv, 1, 100), (self.w.tv, 1, 100)], serials={0: ["_DMTV-B-1"], 1: ["_DMTV-B-1"]})
+		self.assertRaisesRegex(frappe.ValidationError, "chosen twice", service.submit_pos_invoice, invoice, DATA)
 
 
 class TestDriverPayment(OrdersTestCase):

@@ -139,7 +139,7 @@ doc_events = {
 		"before_submit": "delivery_management.orders.sales_order.before_submit",
 		# Replaces the server script "Delivery Note From Sales Order".
 		"on_submit": [
-			"delivery_management.orders.bundle_reservation.reserve",
+			"delivery_management.orders.reservation.reserve",
 			"delivery_management.orders.delivery_note.create_from_sales_order",
 		],
 		"on_cancel": "delivery_management.orders.events.on_sales_order_cancel",
@@ -152,16 +152,19 @@ doc_events = {
 		],
 		"validate": [
 			"delivery_management.drivers.delivery_note.validate",
-			"delivery_management.orders.bundle_reservation.fill_serials",
+			"delivery_management.orders.reservation.fill_serials",
 		],
 		"before_submit": [
 			"delivery_management.drivers.delivery_note.before_submit",
-			"delivery_management.orders.bundle_reservation.deliver",
+			"delivery_management.orders.reservation.deliver",
 		],
-		"before_cancel": "delivery_management.orders.bundle_reservation.undeliver",
+		"before_cancel": "delivery_management.orders.reservation.undeliver",
 		"on_update": "delivery_management.drivers.delivery_note.on_update",
 		"on_cancel": "delivery_management.drivers.delivery_note.on_cancel",
 		"on_trash": "delivery_management.drivers.delivery_note.on_trash",
+	},
+	"Sales Invoice": {
+		"validate": "delivery_management.orders.serial_choice.apply_to_packed_items",
 	},
 	"Issue": {
 		# A pickup slot booked for a support ticket is freed with it.

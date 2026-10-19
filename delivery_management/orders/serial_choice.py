@@ -1,0 +1,139 @@
+"""Serials the cashier chose at the POS (scanned or picked from the list).
+
+A cart row brings its own serials in ``serial_no``; a bundle line brings the serials of
+its components in ``dm_component_serials`` (``{component item: [serials]}``). Each chosen
+serial must belong to the item, be in the sale's warehouse and not be reserved for
+another order; a serial is used once per cart. Rows without a choice are left to the
+automatic picking (oldest free serial first).
+"""
+
+from __future__ import annotations
+
+import json
+
+import frappe
+from frappe import _
+from frappe.utils import cint, flt
+
+from erpnext.stock.doctype.serial_no.serial_no import get_serial_nos
+from erpnext.stock.doctype.stock_reservation_entry.stock_reservation_entry import (
+	get_sre_reserved_serial_nos_details,
+)
+
+COMPONENT_SERIALS = "dm_component_serials"
+
+
+def _component_serials(row) -> dict:
+	value = row.get(COMPONENT_SERIALS) or {}
+	if isinstance(value, str):
+		value = json.loads(value or "{}")
+	return {code: get_serial_nos("\n".join(sns) if isinstance(sns, list) else sns or "") for code, sns in value.items()}
+
+
+def _needs(items) -> list[tuple[str, str, int, list[str]]]:
+	"""``(row id, item, stock qty, chosen serials)`` for every serialised item of the cart,
+	bundle components included."""
+	codes = {r.get("item_code") for r in items}
+	bundles: dict[str, list] = {}
+	for b in frappe.get_all("Product Bundle Item", filters={"parent": ["in", list(codes) or [""]],
+			"parenttype": "Product Bundle"}, fields=["parent", "item_code", "qty"], order_by="idx asc"):
+		bundles.setdefault(b.parent, []).append((b.item_code, flt(b.qty)))
+	all_codes = codes | {c for parts in bundles.values() for c, _q in parts}
+	serialised = set(frappe.get_all("Item", filters={"name": ["in", list(all_codes) or [""]], "has_serial_no": 1},
+		pluck="name"))
+
+	needs = []
+	for row in items:
+		code = row.get("item_code")
+		stock_qty = flt(row.get("qty")) * (flt(row.get("conversion_factor")) or 1)
+		if code in bundles:
+			chosen = _component_serials(row)
+			needs += [(row.get("posa_row_id"), c, cint(per * stock_qty), chosen.get(c, []))
+				for c, per in bundles[code] if c in serialised]
+		elif code in serialised:
+			needs.append((row.get("posa_row_id"), code, cint(stock_qty), get_serial_nos(row.get("serial_no") or "")))
+	return needs
+
+
+def _check(needs, warehouse) -> None:
+	chosen = [(code, sn) for _row, code, _qty, sns in needs for sn in sns]
+	if not chosen:
+		return
+	errors = []
+	seen = set()
+	for code, sn in chosen:
+		if sn in seen:
+			errors.append(_("{0} is chosen twice.").format(sn))
+		seen.add(sn)
+	for _row, code, qty, sns in needs:
+		if len(sns) > qty:
+			errors.append(_("{0}: {1} serials chosen for a quantity of {2}.").format(code, len(sns), qty))
+	records = {r.name: r for r in frappe.get_all("Serial No", filters={"name": ["in", list(seen)]},
+		fields=["name", "item_code", "warehouse", "status"])}
+	for code, sn in chosen:
+		r = records.get(sn)
+		if not r:
+			errors.append(_("Serial {0} does not exist.").format(sn))
+		elif r.item_code != code:
+			errors.append(_("Serial {0} belongs to {1}, not {2}.").format(sn, r.item_code, code))
+		elif r.warehouse != warehouse or r.status != "Active":
+			errors.append(_("Serial {0} is not available in {1}.").format(sn, warehouse))
+	by_item: dict[str, list] = {}
+	for code, sn in chosen:
+		by_item.setdefault(code, []).append(sn)
+	for code, sns in by_item.items():
+		for sn, sre in get_sre_reserved_serial_nos_details(code, warehouse, sns).items():
+			errors.append(_("Serial {0} is reserved for another order ({1}).").format(sn, sre))
+	if errors:
+		frappe.throw("<br>".join(errors), title=_("Serial Numbers"))
+
+
+def free_serials(item_code, warehouse, exclude=()) -> list[str]:
+	"""Serials of the item in the warehouse that nobody holds, oldest first."""
+	reserved = set(get_sre_reserved_serial_nos_details(item_code, warehouse))
+	return [sn for sn in frappe.get_all("Serial No", filters={"item_code": item_code, "warehouse": warehouse,
+			"status": "Active"}, order_by="creation asc, name asc", pluck="name")
+		if sn not in reserved and sn not in exclude]
+
+
+def _free(item_code, warehouse, count, exclude) -> list[str]:
+	"""The ``count`` oldest free serials (see :func:`free_serials`)."""
+	free = free_serials(item_code, warehouse, exclude)
+	if len(free) < count:
+		frappe.throw(_("Not enough free serials of {0} in {1}.").format(item_code, warehouse))
+	return free[:count]
+
+
+def plan(items, warehouse, complete: bool) -> dict[str, dict[str, list[str]]]:
+	"""Check the chosen serials. Returns ``{row id: {item: serials}}`` for the rows that
+	have a choice; with ``complete``, every serialised item of the cart gets a full list
+	(missing serials are the oldest free ones), so nothing is left to pick later."""
+	needs = _needs(items)
+	_check(needs, warehouse)
+	if complete and not any(sns for *_x, sns in needs):
+		return {}
+	taken = {sn for *_x, sns in needs for sn in sns}
+	out: dict[str, dict] = {}
+	for row_id, code, qty, sns in needs:
+		if complete and len(sns) < qty:
+			extra = _free(code, warehouse, qty - len(sns), taken)
+			taken.update(extra)
+			sns = sns + extra
+		if sns:
+			out.setdefault(row_id, {}).setdefault(code, []).extend(sns)
+	return out
+
+
+def apply_to_packed_items(doc, method=None):
+	"""Sales Invoice ``validate``: put the chosen component serials of a POS sale on the
+	packing list (ERPNext builds it from the bundle lines during validate)."""
+	chosen = frappe.flags.get("dm_bundle_serials")
+	if not chosen or doc.docstatus == 2 or not doc.get("packed_items"):
+		return
+	row_ids = {r.name: r.get("posa_row_id") for r in doc.items}
+	for packed in doc.packed_items:
+		serials = list((chosen.get(row_ids.get(packed.parent_detail_docname)) or {}).get(packed.item_code) or [])
+		if serials:
+			packed.serial_no = "\n".join(serials[: cint(packed.qty)])
+			packed.use_serial_batch_fields = 1
+			packed.serial_and_batch_bundle = None

@@ -6,7 +6,7 @@ import frappe
 from frappe import _
 
 from delivery_management.orders import address as address_utils
-from delivery_management.orders import service
+from delivery_management.orders import serial_choice, service
 from delivery_management.orders.stock import get_sellable_qty
 from delivery_management.slots import engine, profile_cart
 from delivery_management.slots.cart import KIND_AC as KIND_AC_ITEM, KIND_OTHER as KIND_OTHER_ITEM, classify_items
@@ -73,6 +73,20 @@ def get_items_availability(item_codes, pos_profile, rules=1):
 		"rules": item_rules(item_codes) if frappe.utils.cint(rules) else {},
 		"delivery_charge_item": settings.delivery_charge_item,
 	}
+
+
+@frappe.whitelist()
+def get_free_serials(item_code, pos_profile, order_type="Invoice"):
+	"""Serials the cashier can choose for a cart line: ``{item: [serials]}`` for the item, or
+	for each serialised component of a bundle. Invoice: the branch; Order: the main store."""
+	_require_pos_user()
+	warehouse = get_settings().main_warehouse if order_type == "Order" else \
+		frappe.db.get_value("POS Profile", pos_profile, "warehouse")
+	bundle = frappe.db.get_value("Product Bundle", {"new_item_code": item_code, "disabled": 0})
+	codes = frappe.get_all("Product Bundle Item", filters={"parent": bundle, "parenttype": "Product Bundle"},
+		pluck="item_code", order_by="idx asc") if bundle else [item_code]
+	serialised = frappe.get_all("Item", filters={"name": ["in", codes], "has_serial_no": 1}, pluck="name")
+	return {code: serial_choice.free_serials(code, warehouse) for code in codes if code in serialised}
 
 
 def with_bundles(item_codes, warehouse) -> dict:

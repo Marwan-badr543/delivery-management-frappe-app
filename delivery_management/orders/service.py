@@ -5,7 +5,8 @@
     No delivery slot.
 
 ``Order``: delivery to the customer.
-    1. A Sales Order from the main store (ERPNext reserves its stock and serials). On
+    1. A Sales Order from the main store (``orders.reservation`` reserves its stock and
+       serials, the ones the cashier chose first). On
        submit, ``orders.delivery_note`` creates the draft Delivery Note.
     2. The delivery slot and/or AC capacity, booked against the Sales Order.
     3. The POS Sales Invoice (``update_stock = 0``), linked line by line to the
@@ -26,6 +27,7 @@ from frappe import _
 from frappe.utils import cint, flt, getdate, nowdate
 
 from delivery_management.orders import address as address_utils
+from delivery_management.orders import serial_choice
 from delivery_management.orders.stock import assert_in_stock
 from delivery_management.slots import profile_cart
 from delivery_management.slots.settings import get_settings
@@ -78,15 +80,22 @@ def submit_pos_invoice(invoice: dict, data: dict, delivery: dict | None = None) 
 		return _submit_with_posawesome(invoice, data)
 
 	items = invoice.get("items") or []
+	assert_in_stock(items, warehouse)
+	# Chosen serials (and, when any is chosen, all the others of the cart) go on the
+	# invoice; otherwise ERPNext picks them.
+	chosen = serial_choice.plan(items, warehouse, complete=True)
 	for row in items:
 		row["warehouse"] = warehouse
-		_drop_client_serials(row)
+		_set_client_serials(row, (chosen.get(row.get("posa_row_id")) or {}).get(row.get("item_code")))
 	invoice.update(set_warehouse=warehouse, update_stock=1, posa_delivery_date=None, dm_order_type=ORDER_TYPE_INVOICE)
 
-	assert_in_stock(items, warehouse)
 	_apply_address(invoice, delivery)
 	invoice["sales_team"] = sales_team_of_current_user()
-	return _submit_with_posawesome(invoice, data)
+	frappe.flags.dm_bundle_serials = chosen  # read by serial_choice.apply_to_packed_items
+	try:
+		return _submit_with_posawesome(invoice, data)
+	finally:
+		frappe.flags.dm_bundle_serials = None
 
 
 # ---------------------------------------------------------------------------
@@ -119,10 +128,15 @@ def submit_pos_order(invoice: dict, data: dict, delivery: dict | None, unpaid: b
 
 	profile, booking = build_booking(items, delivery)
 	assert_in_stock(items, main_store)
+	chosen = serial_choice.plan(items, main_store, complete=False)
 	address_name = _apply_address(invoice, delivery, required=bool(booking))
 
 	invoice["sales_team"] = sales_team_of_current_user()
 	so = _make_sales_order(invoice, items, main_store, booking, profile, address_name, delivery)
+	# The app reserves every line (orders.reservation), chosen serials first.
+	so.flags.dm_chosen_serials = chosen
+	for so_item in so.items:
+		so_item.reserve_stock = 0
 	so.insert(ignore_permissions=True)
 	# Books the slot / AC day from the schedule fields (sales_order.before_submit).
 	with quiet_messages():
@@ -130,7 +144,7 @@ def submit_pos_order(invoice: dict, data: dict, delivery: dict | None, unpaid: b
 
 	# so.items were built from ``items`` in the same order, so index i matches i.
 	for row, so_item in zip(items, so.items):
-		_drop_client_serials(row)
+		_set_client_serials(row, None)
 		row.update(
 			sales_order=so.name,
 			so_detail=so_item.name,
@@ -285,12 +299,13 @@ class quiet_messages:
 		return False
 
 
-def _drop_client_serials(row: dict) -> None:
-	"""POS Awesome V15 pre-fills serials from its own list, which knows nothing about
-	reservations; ERPNext picks them instead (unreserved, FIFO)."""
+def _set_client_serials(row: dict, serials: list[str] | None) -> None:
+	"""Put the checked serials on the row, or none (ERPNext picks them, unreserved, FIFO)."""
 	# Set to empty (not removed): the saved draft may already hold serials in the database.
-	row.update(serial_no=None, serial_and_batch_bundle=None, use_serial_batch_fields=1)
+	row.update(serial_no="\n".join(serials) if serials else None, serial_and_batch_bundle=None,
+		use_serial_batch_fields=1)
 	row.pop("serial_no_selected", None)
+	row.pop(serial_choice.COMPONENT_SERIALS, None)
 
 
 def _make_unpaid(invoice: dict, data: dict) -> None:
