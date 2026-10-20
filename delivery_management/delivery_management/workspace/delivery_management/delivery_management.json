@@ -1,7 +1,7 @@
 {
  "app": "delivery_management",
  "charts": [],
- "content": "[{\"id\": \"u8jzPde0Ig\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Today &amp; Attention</b></span>\", \"col\": 12}}, {\"id\": \"xLd6GncfBA\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Non AC Deliveries Today\", \"col\": 3}}, {\"id\": \"epfJBd0Kh8\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"AC Installations Today\", \"col\": 3}}, {\"id\": \"oOOL8dKLzd\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Orders Without Driver\", \"col\": 3}}, {\"id\": \"ocJ2isAjIh\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Orders Without Order Type\", \"col\": 3}}, {\"id\": \"KtJ0RlgLKO\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Overdue Deliveries\", \"col\": 3}}, {\"id\": \"mxgJTeKdNn\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Overdue AC Installations\", \"col\": 3}}, {\"id\": \"FRIBXuDL7D\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Delivered This Month\", \"col\": 3}}, {\"id\": \"xtpYlSXpfK\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Open Delivery Orders\", \"col\": 3}}, {\"id\": \"tHF4vUCsMe\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Open Support Tickets\", \"col\": 3}}, {\"id\": \"hGAkWvj7FA\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Open AC Site Checks\", \"col\": 3}}, {\"id\": \"c9QeWJKY40\", \"type\": \"spacer\", \"data\": {\"col\": 12}}, {\"id\": \"uvSwMFLZDe\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Pages</b></span>\", \"col\": 12}}, {\"id\": \"1f8rESQedU\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Delivery Schedule\", \"col\": 3}}, {\"id\": \"StPKR0CsTy\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Driver Assignment\", \"col\": 3}}, {\"id\": \"4Qwb8DwkNh\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Delivery Slots\", \"col\": 3}}, {\"id\": \"FdnXsiVpzz\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Installation Statistics\", \"col\": 3}}, {\"id\": \"63FfkCzJr4\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Sales Statistics\", \"col\": 3}}, {\"id\": \"i0B3JrTAwR\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Support Tickets\", \"col\": 3}}, {\"id\": \"4y9ojfljoQ\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Technician Issues\", \"col\": 3}}, {\"id\": \"oaF1Llqsaj\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Maintenance Issues\", \"col\": 3}}, {\"id\": \"AIxNKu8iS2\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"AC Site Check\", \"col\": 3}}, {\"id\": \"G8NPRVdD53\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Delivery Note\", \"col\": 3}}, {\"id\": \"X83RZJzzzz\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Delivery Settings\", \"col\": 3}}, {\"id\": \"gEOzdmenCk\", \"type\": \"spacer\", \"data\": {\"col\": 12}}, {\"id\": \"hvMdgaKjIg\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Masters &amp; Setup</b></span>\", \"col\": 12}}, {\"id\": \"8xNbe3nNyj\", \"type\": \"card\", \"data\": {\"card_name\": \"Delivery\", \"col\": 3}}, {\"id\": \"Oq9wMxEhh2\", \"type\": \"card\", \"data\": {\"card_name\": \"Capacity\", \"col\": 3}}, {\"id\": \"FDEEtfjgVv\", \"type\": \"card\", \"data\": {\"card_name\": \"Customer Service\", \"col\": 3}}, {\"id\": \"VqE1SkHbn8\", \"type\": \"card\", \"data\": {\"card_name\": \"Reports & Setup\", \"col\": 3}}]",
+ "content": "[{\"id\": \"u8jzPde0Ig\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Today &amp; Attention</b></span>\", \"col\": 12}}, {\"id\": \"xLd6GncfBA\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Non AC Deliveries Today\", \"col\": 3}}, {\"id\": \"epfJBd0Kh8\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"AC Installations Today\", \"col\": 3}}, {\"id\": \"oOOL8dKLzd\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Orders Without Driver\", \"col\": 3}}, {\"id\": \"ocJ2isAjIh\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Orders Without Order Type\", \"col\": 3}}, {\"id\": \"KtJ0RlgLKO\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Overdue Deliveries\", \"col\": 3}}, {\"id\": \"mxgJTeKdNn\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Overdue AC Installations\", \"col\": 3}}, {\"id\": \"FRIBXuDL7D\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Delivered This Month\", \"col\": 3}}, {\"id\": \"xtpYlSXpfK\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Open Delivery Orders\", \"col\": 3}}, {\"id\": \"tHF4vUCsMe\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Open Support Tickets\", \"col\": 3}}, {\"id\": \"hGAkWvj7FA\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Open AC Site Checks\", \"col\": 3}}, {\"id\": \"c9QeWJKY40\", \"type\": \"spacer\", \"data\": {\"col\": 12}}, {\"id\": \"uvSwMFLZDe\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Pages</b></span>\", \"col\": 12}}, {\"id\": \"1f8rESQedU\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Delivery Schedule\", \"col\": 3}}, {\"id\": \"StPKR0CsTy\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Driver Assignment\", \"col\": 3}}, {\"id\": \"4Qwb8DwkNh\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Delivery Slots\", \"col\": 3}}, {\"id\": \"sAlDashB0a\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Sales Dashboard\", \"col\": 3}}, {\"id\": \"FdnXsiVpzz\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Installation Statistics\", \"col\": 3}}, {\"id\": \"63FfkCzJr4\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Sales Statistics\", \"col\": 3}}, {\"id\": \"i0B3JrTAwR\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Support Tickets\", \"col\": 3}}, {\"id\": \"4y9ojfljoQ\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Technician Issues\", \"col\": 3}}, {\"id\": \"oaF1Llqsaj\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Maintenance Issues\", \"col\": 3}}, {\"id\": \"AIxNKu8iS2\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"AC Site Check\", \"col\": 3}}, {\"id\": \"G8NPRVdD53\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Delivery Note\", \"col\": 3}}, {\"id\": \"X83RZJzzzz\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Delivery Settings\", \"col\": 3}}, {\"id\": \"gEOzdmenCk\", \"type\": \"spacer\", \"data\": {\"col\": 12}}, {\"id\": \"hvMdgaKjIg\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Masters &amp; Setup</b></span>\", \"col\": 12}}, {\"id\": \"8xNbe3nNyj\", \"type\": \"card\", \"data\": {\"card_name\": \"Delivery\", \"col\": 3}}, {\"id\": \"Oq9wMxEhh2\", \"type\": \"card\", \"data\": {\"card_name\": \"Capacity\", \"col\": 3}}, {\"id\": \"FDEEtfjgVv\", \"type\": \"card\", \"data\": {\"card_name\": \"Customer Service\", \"col\": 3}}, {\"id\": \"VqE1SkHbn8\", \"type\": \"card\", \"data\": {\"card_name\": \"Reports & Setup\", \"col\": 3}}]",
  "creation": "2026-10-13 12:00:00.000000",
  "custom_blocks": [],
  "docstatus": 0,
@@ -171,9 +171,19 @@
    "hidden": 0,
    "is_query_report": 0,
    "label": "Reports & Setup",
-   "link_count": 4,
+   "link_count": 5,
    "onboard": 0,
    "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Sales Dashboard",
+   "link_count": 0,
+   "link_to": "sales-dashboard",
+   "link_type": "Page",
+   "onboard": 0,
+   "type": "Link"
   },
   {
    "hidden": 0,
@@ -216,7 +226,7 @@
    "type": "Link"
   }
  ],
- "modified": "2026-10-13 12:00:00.000000",
+ "modified": "2026-10-20 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Delivery Management",
  "name": "Delivery Management",
@@ -284,6 +294,12 @@
   {
    "label": "Delivery Slots",
    "link_to": "delivery-slots",
+   "type": "Page",
+   "color": "Blue"
+  },
+  {
+   "label": "Sales Dashboard",
+   "link_to": "sales-dashboard",
    "type": "Page",
    "color": "Blue"
   },

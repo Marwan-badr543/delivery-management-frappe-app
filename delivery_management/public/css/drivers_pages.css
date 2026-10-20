@@ -141,6 +141,12 @@
 .dd-kpi-ac b { color: var(--blue-600, var(--blue)); } .dd-kpi-ac .dd-kpi-icon { background: var(--blue-50, var(--bg-blue)); }
 .dd-kpi-tv b { color: var(--purple-600, var(--purple)); } .dd-kpi-tv .dd-kpi-icon { background: var(--purple-50, var(--control-bg)); }
 .dd-kpi-all b { color: var(--green-600, var(--green)); } .dd-kpi-all .dd-kpi-icon { background: var(--green-50, var(--bg-green)); }
+.dd-kpi-warn b { color: var(--orange-600, var(--orange)); } .dd-kpi-warn .dd-kpi-icon { background: var(--orange-50, var(--bg-orange)); }
+.dd-kpis-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 992px) { .dd-kpis-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 576px) { .dd-kpis-4 { grid-template-columns: 1fr; } }
+.dd-chart-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 992px) { .dd-chart-grid { grid-template-columns: 1fr; } }
 .dd-bar-cell { display: flex; align-items: center; gap: 10px; }
 .dd-num { min-width: 34px; text-align: center; font-weight: 700; padding: 2px 8px; border-radius: 6px; font-variant-numeric: tabular-nums; }
 .dd-num-ac { background: var(--blue-50, var(--bg-blue)); color: var(--blue-700, var(--blue)); }

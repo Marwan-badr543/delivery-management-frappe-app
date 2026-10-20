@@ -172,6 +172,19 @@
   {
    "child": 1,
    "collapsible": 1,
+   "icon": "bar-chart",
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Sales Dashboard",
+   "link_to": "sales-dashboard",
+   "link_type": "Page",
+   "show_arrow": 0,
+   "type": "Link",
+   "idx": 14
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
    "icon": "trending-up",
    "indent": 0,
    "keep_closed": 0,
@@ -180,7 +193,7 @@
    "link_type": "Page",
    "show_arrow": 0,
    "type": "Link",
-   "idx": 14
+   "idx": 15
   },
   {
    "child": 0,
@@ -191,7 +204,7 @@
    "label": "Setup",
    "show_arrow": 0,
    "type": "Section Break",
-   "idx": 15
+   "idx": 16
   },
   {
    "child": 1,
@@ -204,7 +217,7 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "idx": 16
+   "idx": 17
   },
   {
    "child": 1,
@@ -217,10 +230,10 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "idx": 17
+   "idx": 18
   }
  ],
- "modified": "2026-10-13 12:00:00.000000",
+ "modified": "2026-10-20 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Delivery Management",
  "name": "Delivery Management",
