@@ -691,8 +691,8 @@ Port of the old system's support part (old pages `/support`, `/support/technicia
   AC units only) and `Non AC` (other goods, delivery charge, services; delivery date and
   time only). Admin slot moves (`orders.schedule.stamp_schedule`) update each note with
   its own fields only.
-* Delivery Schedule page: "Delivered: submit Delivery Note" button on a draft order
-  (`api.drivers.submit_delivery_note`; driver may submit only his own assigned notes).
+* Delivery Schedule page: no submit button; the Delivery Note is submitted in the desk
+  once the stock keeper has scanned its serials.
 
 ## 14. AC Site Check (2026-10-13)
 

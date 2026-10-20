@@ -377,22 +377,6 @@ def record_payment(delivery_note, amount, mode_of_payment):
 
 
 @frappe.whitelist(methods=["POST"])
-def submit_delivery_note(delivery_note):
-	"""The driver marks the order delivered: submit its draft Delivery Note (stock leaves
-	the store, serials become Delivered)."""
-	_require_order_access(delivery_note)
-	dn = frappe.get_doc(DN, delivery_note)
-	if dn.docstatus != 0:
-		frappe.throw(_("Delivery Note {0} is already submitted or cancelled.").format(delivery_note))
-	# A driver has no desk right to submit Delivery Notes or post stock; his access to
-	# this order was checked above, so it is submitted with full rights in his name.
-	with _with_full_rights() as user:
-		dn.submit()
-		frappe.db.set_value(DN, dn.name, "modified_by", user, update_modified=False)
-	return {"name": dn.name, "docstatus": 1}
-
-
-@frappe.whitelist(methods=["POST"])
 def upload_attachment(delivery_note, filename, filedata):
 	"""Attach a photo / file or the customer's signature to the Delivery Note."""
 	_require_order_access(delivery_note)

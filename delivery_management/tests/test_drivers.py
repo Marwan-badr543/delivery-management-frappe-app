@@ -214,20 +214,6 @@ class TestDriverAccess(DriversTestCase):
 		frappe.set_user("Administrator")
 		self.assertEqual(len(api.get_schedule("Non AC", str(DAY), str(DAY))["rows"]), 2)
 
-	def test_driver_submits_his_delivery_note(self):
-		mine = self.dn([(self.tv, 1)], time="10:00")
-		other = self.dn([(self.tv, 1)], time="16:00")
-		asg.assign(mine.name, self.tv1)
-		asg.assign(other.name, self.tv2)
-		frappe.set_user(self.tv1)
-		self.assertRaises(frappe.PermissionError, api.submit_delivery_note, other.name)
-		api.submit_delivery_note(mine.name)
-		self.assertEqual(frappe.session.user, self.tv1)
-		self.assertRaises(frappe.ValidationError, api.submit_delivery_note, mine.name)
-		frappe.set_user("Administrator")
-		self.assertEqual(frappe.db.get_value("Delivery Note", mine.name, ["docstatus", "modified_by"]), (1, self.tv1))
-		self.assertEqual(frappe.db.get_value("Delivery Note", other.name, "docstatus"), 0)
-
 	def test_driver_attaches_files_and_signature_to_the_delivery_note(self):
 		mine = self.dn([(self.tv, 1)], time="10:00")
 		asg.assign(mine.name, self.tv1)

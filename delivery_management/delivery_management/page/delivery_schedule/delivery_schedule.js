@@ -262,7 +262,6 @@ class DeliverySchedulePage {
 			</div>
 			<div class="dd-box" style="margin-top:12px"><h5>${__("Actions")}</h5>
 				<div class="dd-btn-row">
-					${o.docstatus === 0 ? `<button class="btn btn-success" data-submit-dn>${frappe.utils.icon("check", "sm")} ${__("Delivered: submit Delivery Note")}</button>` : ""}
 					<a class="btn btn-default" href="/desk/delivery-note/${encodeURIComponent(o.name)}">${frappe.utils.icon("file", "sm")} ${__("Open Delivery Note")}</a>
 					<a class="btn btn-default" href="${pdfUrl}" target="_blank" rel="noopener">${frappe.utils.icon("printer", "sm")} ${__("Download DN PDF")}</a>
 					<button class="btn btn-default" data-upload>${frappe.utils.icon("upload", "sm")} ${__("Upload photo / file")}</button>
@@ -294,16 +293,6 @@ class DeliverySchedulePage {
 				d.hide();
 				this.load();
 				this.openDetail(name);
-			});
-		});
-
-		$b.find("[data-submit-dn]").on("click", () => {
-			frappe.confirm(__("Mark {0} as delivered to {1}? The Delivery Note will be submitted and cannot be edited after.",
-				[o.name, D.esc(o.customer_name || o.customer)]), async () => {
-				await D.call("submit_delivery_note", { delivery_note: o.name }, { post: true, freeze: true });
-				frappe.show_alert({ message: __("Delivery Note {0} submitted", [o.name]), indicator: "green" });
-				d.hide();
-				this.load();
 			});
 		});
 
