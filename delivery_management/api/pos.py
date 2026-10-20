@@ -76,6 +76,14 @@ def get_items_availability(item_codes, pos_profile, rules=1):
 
 
 @frappe.whitelist()
+def check_scanned_serial(serial_no, pos_profile):
+	"""Invoice scan: ``{"problem": message}`` when the serial cannot be sold from the branch."""
+	_require_pos_user()
+	warehouse = frappe.db.get_value("POS Profile", pos_profile, "warehouse")
+	return {"problem": serial_choice.scan_problem(serial_no, warehouse)}
+
+
+@frappe.whitelist()
 def get_free_serials(item_code, pos_profile):
 	"""Serials of the branch the cashier can choose for an Invoice line: ``{item: [serials]}``
 	for the item, or for each serialised component of a bundle."""

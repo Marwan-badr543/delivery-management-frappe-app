@@ -677,6 +677,14 @@ class TestChosenSerials(OrdersTestCase):
 		self.assertEqual(serial_status("_DMTV-B-2")[1], None)
 		self.assertEqual(serial_status("_DMTV-B-1")[1], self.w.branch)
 
+	def test_scanned_serial_of_another_store_is_explained(self):
+		from delivery_management.orders.serial_choice import scan_problem
+		self.assertIsNone(scan_problem("_DMTV-B-1", self.w.branch))
+		self.assertIsNone(scan_problem("_NO-SUCH-SERIAL", self.w.branch))
+		self.assertIn(self.w.main, scan_problem("_DMTV-M-1", self.w.branch))
+		service.submit_pos_invoice(self.invoice([(self.w.tv, 1, 100)], serials={0: ["_DMTV-B-1"]}), DATA)
+		self.assertIn("already sold", scan_problem("_DMTV-B-1", self.w.branch))
+
 	def test_wrong_item_and_double_choice_are_refused(self):
 		invoice = self.invoice([(self.w.ac, 1, 300)], serials={0: ["_DMTV-B-1"]})
 		self.assertRaisesRegex(frappe.ValidationError, "belongs to", service.submit_pos_invoice, invoice, DATA)

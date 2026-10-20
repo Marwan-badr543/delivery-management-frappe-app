@@ -89,6 +89,21 @@ def _check(needs, warehouse) -> None:
 		frappe.throw("<br>".join(errors), title=_("Serial Numbers"))
 
 
+def scan_problem(serial_no, warehouse) -> str | None:
+	"""Why a scanned serial cannot be sold from ``warehouse`` (None when it can, or when
+	it is not a serial at all)."""
+	r = frappe.db.get_value("Serial No", serial_no, ["item_code", "warehouse", "status"], as_dict=True)
+	if not r:
+		return None
+	if r.status != "Active" or not r.warehouse:
+		return _("Serial {0} is already sold or not in stock.").format(serial_no)
+	if r.warehouse != warehouse:
+		return _("Serial {0} is in {1}, not in this branch ({2}).").format(serial_no, r.warehouse, warehouse)
+	for _sn, sre in get_sre_reserved_serial_nos_details(r.item_code, warehouse, [serial_no]).items():
+		return _("Serial {0} is reserved for another order ({1}).").format(serial_no, sre)
+	return None
+
+
 def free_serials(item_code, warehouse, exclude=()) -> list[str]:
 	"""Serials of the item in the warehouse that nobody holds, oldest first."""
 	reserved = set(get_sre_reserved_serial_nos_details(item_code, warehouse))
