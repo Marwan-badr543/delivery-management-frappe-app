@@ -170,7 +170,7 @@
   }
  ],
  "links": [],
- "modified": "2026-10-15 11:26:41.401822",
+ "modified": "2026-10-20 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Delivery Management",
  "name": "AC Site Check",
@@ -219,6 +219,29 @@
    "role": "AC Tech",
    "share": 1,
    "write": 1
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "role": "System Manager",
+   "write": 1
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "role": "Delivery Manager",
+   "write": 1
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "role": "Sales User",
+   "write": 1
+  },
+  {
+   "permlevel": 1,
+   "read": 1,
+   "role": "AC Tech"
   }
  ],
  "row_format": "Dynamic",
