@@ -9,11 +9,15 @@
   territory "All Territories", as in the old system.
 * The period is the Posting Date. Top products: 20 items by stock quantity (the
   delivery charge is not a product).
+
+:func:`compute` builds the whole page at once (top products of every area included), so
+it runs as one background job (``api.dashboard``).
 """
 
 from __future__ import annotations
 
 import frappe
+from frappe.utils import now_datetime
 
 from delivery_management.slots.settings import get_settings
 
@@ -64,3 +68,15 @@ def top_products(start, end, area: str | None = None) -> list[dict]:
 		from `tabSales Invoice Item` item join `tabSales Invoice` si on si.name = item.parent
 		where {where} group by item.item_code, item.item_name order by qty desc, item.item_code limit %(top)s""",
 		values, as_dict=True)
+
+
+def compute(start, end) -> dict:
+	areas = area_stats(start, end)
+	return {
+		"summary": summary(),
+		"status": status_stats(start, end),
+		"areas": areas,
+		"top_products": {area: top_products(start, end, area or None) for area in [""] + [a["area"] for a in areas]},
+		"filters": {"start_date": str(start), "end_date": str(end)},
+		"generated_at": str(now_datetime()),
+	}

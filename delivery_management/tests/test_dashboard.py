@@ -39,3 +39,16 @@ class TestSalesDashboard(OrdersTestCase):
 		before = dashboard.summary()["pending_orders"]
 		make_delivery_note(so).insert()
 		self.assertEqual(dashboard.summary()["pending_orders"], before + 1)
+
+	def test_page_result_comes_from_the_background_job(self):
+		from delivery_management.api import dashboard as api
+
+		self.sell([(self.w.tv, 1, 100)])
+		state = api.start(nowdate(), nowdate())  # tests run the job at once
+		self.assertEqual(state["status"], "done")
+		self.assertEqual(api.status(state["key"])["status"], "done")
+		result = state["result"]
+		self.assertEqual(set(result["top_products"]), {"", dashboard.ONLINE, *(a["area"] for a in result["areas"])})
+		self.assertIn(self.w.tv, [p["item_code"] for p in result["top_products"][self.w.pos_profile]])
+		self.assertEqual(api.status("no-such-run")["status"], "expired")
+		self.assertRaises(frappe.ValidationError, api.start, nowdate(), "2000-01-01")

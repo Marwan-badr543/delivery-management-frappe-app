@@ -1,5 +1,8 @@
 // Sales Dashboard: port of the old admin "Dashboard Summary" page — totals, invoices by
-// status, orders by branch (and Online) and the top products of each. No caching.
+// status, orders by branch (and Online) and the top products of each. Like Sales
+// Statistics, every load is a fresh background job; the page waits for its result.
+
+const SD_API = "delivery_management.api.dashboard.";
 
 frappe.pages["sales-dashboard"].on_page_load = function (wrapper) {
 	const page = frappe.ui.make_app_page({ parent: wrapper, title: __("Sales Dashboard"), single_column: true });
@@ -18,10 +21,12 @@ const STATUS_COLORS = {
 class SalesDashboardPage {
 	constructor(page) {
 		this.D = window.dm_drivers;
-		this.f = { start_date: frappe.datetime.month_start(), end_date: frappe.datetime.get_today(), area: "" };
+		this.f = { start_date: frappe.datetime.month_start(), end_date: frappe.datetime.get_today() };
+		this.area = "";
 		this.preset = "month";
 		this.$root = $(`<div class="dd-page">
 			<div class="dd-panel dd-filter-panel"></div>
+			<div class="dd-state"></div>
 			<div class="dd-kpis dd-kpis-4"></div>
 			<div class="dd-chart-grid">
 				<div class="dd-panel"><div class="dd-panel-head"><div><h4>${frappe.utils.icon("chart", "sm")} ${__("Order status distribution")}</h4>
@@ -38,6 +43,9 @@ class SalesDashboardPage {
 		</div>`).appendTo(page.main);
 		page.set_secondary_action(__("Refresh"), () => this.load(), "refresh");
 		this.renderFilters();
+		frappe.realtime.on("dm_sales_dashboard", (data) => {
+			if (data && data.key === this.key) this.checkStatus();
+		});
 	}
 
 	renderFilters() {
@@ -73,21 +81,63 @@ class SalesDashboardPage {
 		});
 	}
 
-	async load() {
+	load() {
 		if (this.f.start_date > this.f.end_date) {
 			frappe.show_alert({ message: __("Start date is after the end date."), indicator: "orange" });
 			return;
 		}
-		if (!this.data) this.$root.find(".dd-top-table tbody").html(this.D.skeleton(3, 5));
-		const seq = (this.seq = (this.seq || 0) + 1);
-		const r = await frappe.call({ method: "delivery_management.api.dashboard.get_dashboard", args: this.f, type: "GET" });
-		if (seq !== this.seq) return;
-		this.data = r.message;
-		this.render();
+		this.stopPoll();
+		this.key = null;
+		this.setState("loading");
+		frappe.call({ method: SD_API + "start", args: this.f })
+			.then((r) => this.handle(r.message))
+			.catch(() => this.setState("error", __("The dashboard could not be started.")));
+	}
+
+	handle(state) {
+		if (!state) return;
+		this.key = state.key;
+		if (state.status === "done") {
+			this.stopPoll();
+			this.data = state.result;
+			this.setState("done");
+			this.render();
+		} else if (state.status === "failed" || state.status === "expired") {
+			this.stopPoll();
+			this.setState("error", state.error || __("The result expired. Click Refresh."));
+		} else if (!this.poll) {
+			// Realtime says when it is ready; poll too in case the socket is down.
+			this.poll = setInterval(() => this.checkStatus(), 3000);
+		}
+	}
+
+	checkStatus() {
+		if (!this.key) return;
+		const key = this.key;
+		frappe.call({ method: SD_API + "status", args: { key } }).then((r) => key === this.key && this.handle(r.message));
+	}
+
+	stopPoll() {
+		if (this.poll) clearInterval(this.poll);
+		this.poll = null;
+	}
+
+	setState(state, message) {
+		const $s = this.$root.find(".dd-state").empty();
+		if (state === "loading") {
+			$s.html(`<div class="dd-panel dd-muted">${frappe.utils.icon("refresh", "sm")}
+				<b>${__("Calculating...")}</b> ${__("This runs in the background; the numbers appear here when ready.")}</div>`);
+			if (!this.data) this.$root.find(".dd-top-table tbody").html(this.D.skeleton(3, 5));
+		} else if (state === "error") {
+			$s.html(`<div class="dd-panel text-danger"><b>${__("Could not calculate")}</b> ${this.D.esc(message)}</div>`);
+		} else if (state === "done") {
+			const at = this.data.generated_at;
+			$s.html(`<div class="dd-muted small">${__("Calculated at {0}", [frappe.datetime.str_to_user(at.slice(0, 10)) + " " + at.slice(11, 16)])}</div>`);
+		}
 	}
 
 	render() {
-		const { summary, status, areas, top_products } = this.data;
+		const { summary, status, areas } = this.data;
 		const n = (v) => format_number(v, null, v % 1 ? 2 : 0);
 		const kpi = (cls, label, value, note, icon, route) => `
 			<div class="dd-kpi ${cls}" ${route ? `data-route="${route}" style="cursor:pointer"` : ""}>
@@ -116,12 +166,13 @@ class SalesDashboardPage {
 
 		const tabs = [{ area: "", label: __("All") }, ...areas];
 		const $tabs = this.$root.find(".dd-area-tabs").html(tabs.map((t) =>
-			`<button class="dd-preset ${this.f.area === t.area ? "active" : ""}" data-area="${this.D.esc(t.area)}">${this.D.esc(__(t.label))}</button>`).join(""));
+			`<button class="dd-preset ${this.area === t.area ? "active" : ""}" data-area="${this.D.esc(t.area)}">${this.D.esc(__(t.label))}</button>`).join(""));
 		$tabs.find("[data-area]").on("click", (e) => {
-			this.f.area = String($(e.currentTarget).data("area"));
-			this.load();
+			this.area = String($(e.currentTarget).data("area"));
+			this.render();
 		});
 
+		const top_products = this.data.top_products[this.area] || [];
 		const $tbody = this.$root.find(".dd-top-table tbody");
 		if (!top_products.length) {
 			$tbody.html(this.D.emptyRow(3, __("No sales"), __("No submitted sale in this period.")));
