@@ -562,7 +562,7 @@ Unavailable people are listed but greyed with the reason ("unavailable", "3/3 fu
 **System Manager = admin in the old system.** Delivery Manager has the same rights on these pages.
 
 * **Driver Assignment** (System Manager, Delivery Manager): draft DNs waiting for delivery, earliest first. Filters: search (DN, customer, phone), assigned / not assigned, driver, area, date; page size and paging. Columns: DN, customer + phone, address, delivery day/time (AC: installation day + units), type, payment, driver. "Assign driver" opens the list of drivers of the right role with availability. Clicking a row opens the Delivery Note. AC tab + a date: each AC Tech's load that day, click to set his limit for that day (0 = day off, empty = global). A banner lists DNs that still need an Order Type.
-* **Delivery Schedule** (+ TV Driver, AC Tech): assigned DNs in a date range (default today to +1 month, "Today" button). A driver sees only his own; managers see all and can filter by driver. Status filter Pending / Delivered (= DN submitted). Order details: customer, phone (tap to call), address + Google Maps, items (bundle components and serials), schedule, payment (total / paid / outstanding) with **Record payment** (Payment Entry against the order's invoice, never above the outstanding, credited to the driver), **Open Delivery Note**, **Download DN PDF**, **Upload photo / file** (attached to the customer, as before), **customer signature** pad (attached to the DN). **No Ship, Return or Submit** (the office submits the DN). Phone layout: rows become cards.
+* **Delivery Schedule** (+ TV Driver, AC Tech): assigned DNs in a date range (default today to +1 month, "Today" button). A driver sees only his own; managers see all and can filter by driver. Status filter On the way / Delivered (workflow state, see §13). Order details: customer, phone (tap to call), address + Google Maps, items (bundle components and serials), schedule, payment (total / paid / outstanding) with **Record payment** (Payment Entry against the order's invoice, never above the outstanding, credited to the driver), **Open Delivery Note**, **Download DN PDF**, **Upload photo / video** (attached to the customer, as before), **customer signature** pad (attached to the DN). **No Ship, Return or Submit** (the office submits the DN). Phone layout: rows become cards.
 * **Installation Statistics** (+ TV Driver, AC Tech): from **submitted** DNs with a driver. Presets Today / Last 7 days / This month, start/end date, technician (managers only), unit type (all / AC / TV & non-AC). Cards: AC units, TV & non-AC units, total. Table per technician with bars, orders, totals; click a row to list his DNs. A driver sees only himself. AC units = qty of AC items; non-AC units = qty of other stock items (accessories only when the order has no AC unit; services and the delivery charge are not units). No caching.
 
 Drivers get read + print on Delivery Note, limited to their own DNs by `drivers/delivery_note.has_permission` / `get_permission_query_conditions`. Users who also have a stock/sales/accounts role keep their normal access.
@@ -691,8 +691,14 @@ Port of the old system's support part (old pages `/support`, `/support/technicia
   AC units only) and `Non AC` (other goods, delivery charge, services; delivery date and
   time only). Admin slot moves (`orders.schedule.stamp_schedule`) update each note with
   its own fields only.
-* Delivery Schedule page: no submit button; the Delivery Note is submitted in the desk
-  once the stock keeper has scanned its serials.
+* Delivery Note workflow `delivery note on the way` (fixtures: Workflow, Workflow State,
+  Workflow Action Master): Draft → **On the way** (submitted by the stock keeper in the
+  desk, after scanning the serials) → **Delivered**; Cancel from On the way / Delivered.
+* Delivery Schedule page lists only On the way / Delivered notes (status filter). The
+  driver's **Mark as delivered** (`api.drivers.mark_delivered`) needs a photo or video and
+  the customer's signature attached first. That check is on the page only: the
+  Delivered action in the Delivery Note form has no such guard. Installation Statistics
+  do not count notes still On the way.
 
 ## 14. AC Site Check (2026-10-13)
 

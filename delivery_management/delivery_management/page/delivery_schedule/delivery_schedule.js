@@ -1,7 +1,8 @@
 // Delivery Schedule: the orders assigned to a driver (TV / Non AC) or an AC Tech (AC).
 // A driver sees only his own orders; System Manager / Delivery Manager see everyone's.
-// Port of the old "Delivery Schedule" and "AC Delivery Schedule" pages, without Ship,
-// Return and Submit (the office submits the Delivery Note).
+// Port of the old "Delivery Schedule" and "AC Delivery Schedule" pages. It lists the
+// Delivery Notes the stock keeper moved to "On the way"; the driver marks them Delivered
+// here after uploading a photo / video and the customer's signature.
 
 frappe.pages["delivery-schedule"].on_page_load = function (wrapper) {
 	const page = frappe.ui.make_app_page({ parent: wrapper, title: __("Delivery Schedule"), single_column: true });
@@ -92,7 +93,7 @@ class DeliverySchedulePage {
 				<div class="dd-field"><label>${__("Status")}</label>
 					<select class="form-control" data-f="status">${D.select([
 						{ value: "", label: __("All statuses") },
-						{ value: "pending", label: ac ? __("Pending install") : __("Pending delivery") },
+						{ value: "on_the_way", label: __("On the way") },
 						{ value: "delivered", label: ac ? __("Installed") : __("Delivered") },
 					], f.status)}</select></div>
 				<div class="dd-field dd-search"><label>${__("Search")}</label>
@@ -182,7 +183,7 @@ class DeliverySchedulePage {
 		this.$root.find("[data-next]").prop("disabled", this.pageNo >= pages - 1);
 		const $tbody = this.$root.find(".dd-table tbody");
 		if (!slice.length) {
-			$tbody.html(D.emptyRow(7, __("No assigned orders"), __("Nothing assigned in this date range.")));
+			$tbody.html(D.emptyRow(7, __("No orders on the way"), __("Nothing on the way in this date range.")));
 			return;
 		}
 		$tbody.html(slice.map((r) => `
@@ -216,6 +217,10 @@ class DeliverySchedulePage {
 		const pay = o.payment || {};
 		const bundles = {};
 		(o.packed_items || []).forEach((p) => (bundles[p.parent_item] = bundles[p.parent_item] || []).push(p));
+		const files = o.attachments || [];
+		const signed = files.some((f) => f.file_name.startsWith("signature_"));
+		const hasMedia = files.some((f) => !f.file_name.startsWith("signature_")
+			&& /\.(jpe?g|png|gif|webp|heic|heif|mp4|mov|webm|3gp|mkv)$/i.test(f.file_name));
 		const pdfUrl = `/api/method/frappe.utils.print_format.download_pdf?doctype=Delivery%20Note&name=${encodeURIComponent(o.name)}&format=${encodeURIComponent(o.print_format)}&no_letterhead=0`;
 
 		$b.html(`
@@ -264,9 +269,9 @@ class DeliverySchedulePage {
 				<div class="dd-btn-row">
 					<a class="btn btn-default" href="/desk/delivery-note/${encodeURIComponent(o.name)}">${frappe.utils.icon("file", "sm")} ${__("Open Delivery Note")}</a>
 					<a class="btn btn-default" href="${pdfUrl}" target="_blank" rel="noopener">${frappe.utils.icon("printer", "sm")} ${__("Download DN PDF")}</a>
-					<button class="btn btn-default" data-upload>${frappe.utils.icon("upload", "sm")} ${__("Upload photo / file")}</button>
+					<button class="btn btn-default" data-upload>${frappe.utils.icon("upload", "sm")} ${__("Upload photo / video")}</button>
 				</div>
-				<input type="file" accept="image/*,.pdf,.doc,.docx" data-file hidden>
+				<input type="file" accept="image/*,video/*,.pdf,.doc,.docx" data-file hidden>
 				<div class="dd-files small">${(o.attachments || []).length
 					? `<span class="dd-muted">${__("Attached to this delivery")}:</span>` + o.attachments.map((f) =>
 						`<a href="${D.esc(f.file_url)}" target="_blank" rel="noopener">${D.esc(f.file_name)}</a>`).join("")
@@ -277,7 +282,25 @@ class DeliverySchedulePage {
 				<div class="dd-actions" style="justify-content:flex-end">
 					<button class="btn btn-primary btn-sm" data-save-sign>${frappe.utils.icon("upload", "xs")} ${__("Upload signature")}</button>
 				</div>
-			</div>`);
+			</div>
+			${o.workflow_state === "On the way" ? `<div class="dd-box" style="margin-top:12px"><h5>${ac ? __("Installed") : __("Delivered")}</h5>
+				<div class="dd-kv">
+					<span>${__("Photo / video")}</span><b class="${hasMedia ? "dd-ok" : "dd-no"}">${hasMedia ? __("Uploaded") : __("Missing")}</b>
+					<span>${__("Customer signature")}</span><b class="${signed ? "dd-ok" : "dd-no"}">${signed ? __("Uploaded") : __("Missing")}</b>
+				</div>
+				<div class="dd-actions" style="justify-content:flex-end">
+					<button class="btn btn-success" data-deliver ${hasMedia && signed ? "" : "disabled"}>${frappe.utils.icon("check", "sm")} ${__("Mark as delivered")}</button>
+				</div>
+			</div>` : ""}`);
+
+		$b.find("[data-deliver]").on("click", () => {
+			frappe.confirm(__("Mark {0} as delivered?", [o.name]), async () => {
+				await D.call("mark_delivered", { delivery_note: o.name }, { post: true, freeze: true });
+				frappe.show_alert({ message: __("{0} delivered", [o.name]), indicator: "green" });
+				d.hide();
+				this.load();
+			});
+		});
 
 		$b.find("[data-pay]").on("click", () => {
 			const amount = flt($b.find("[data-amount]").val(), 3);

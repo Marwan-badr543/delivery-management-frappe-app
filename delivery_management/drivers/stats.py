@@ -22,7 +22,9 @@ from delivery_management.slots.cart import unit_counts
 
 
 def installation_stats(start_date, end_date, technician: str | None = None, unit: str = "all") -> list[dict]:
-	conditions = ["dn.docstatus = 1", "dn.is_return = 0", "ifnull(dn.dm_driver, '') != ''",
+	# Submitted notes still On the way are not delivered yet (older notes have no workflow state).
+	conditions = ["dn.docstatus = 1", "ifnull(dn.workflow_state, '') != 'On the way'", "dn.is_return = 0",
+		"ifnull(dn.dm_driver, '') != ''",
 		"""(case when dn.dm_delivery_type = 'AC'
 			then coalesce(dn.dm_ac_installation_date, dn.dm_delivery_date, dn.posting_date)
 			else coalesce(dn.dm_delivery_date, dn.posting_date) end) between %(start)s and %(end)s"""]

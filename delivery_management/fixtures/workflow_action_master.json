@@ -1,0 +1,23 @@
+[
+ {
+  "docstatus": 0,
+  "doctype": "Workflow Action Master",
+  "modified": "2026-10-21 10:08:17.938013",
+  "name": "Deliver",
+  "workflow_action_name": "Deliver"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Workflow Action Master",
+  "modified": "2026-10-21 10:11:58.298416",
+  "name": "On the way",
+  "workflow_action_name": "On the way"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Workflow Action Master",
+  "modified": "2026-10-21 10:23:47.797830",
+  "name": "Cancel",
+  "workflow_action_name": "Cancel"
+ }
+]

@@ -185,8 +185,13 @@ doctype_js = {
 	"Issue": "public/js/issue.js",
 }
 
-fixtures = [{"dt": "Role", "filters": [["role_name", "in",
-	["AC Tech", "TV Driver", "Technician", "Maintenance Technician"]]]}]
+fixtures = [
+	{"dt": "Role", "filters": [["role_name", "in", ["AC Tech", "TV Driver", "Technician", "Maintenance Technician"]]]},
+	# Delivery Note workflow: Draft -> On the way (stock keeper submits) -> Delivered (driver).
+	{"dt": "Workflow State", "filters": [["name", "in", ["Draft", "On the way", "Delivered", "Cancelled"]]]},
+	{"dt": "Workflow Action Master", "filters": [["name", "in", ["On the way", "Deliver", "Cancel"]]]},
+	{"dt": "Workflow", "filters": [["name", "=", "delivery note on the way"]]},
+]
 
 permission_query_conditions = {
 	"Delivery Note": "delivery_management.drivers.delivery_note.get_permission_query_conditions",

@@ -4,6 +4,7 @@ installation statistics, POS order rules (AC/non-AC guard, delivery charge), bun
 import datetime
 
 import frappe
+from frappe.model.workflow import apply_workflow
 from frappe.utils import add_days, getdate, nowdate
 
 from delivery_management.api import drivers as api
@@ -67,6 +68,11 @@ class DriversTestCase(DeliveryTestCase):
 		})
 		doc.insert()
 		return doc
+
+	def send(self, dn):
+		"""The stock keeper's workflow step: submit the note as On the way."""
+		dn.reload()
+		apply_workflow(dn, "On the way")
 
 
 class TestOrderType(DriversTestCase):
@@ -202,6 +208,8 @@ class TestDriverAccess(DriversTestCase):
 		other = self.dn([(self.tv, 1)], time="16:00")
 		asg.assign(mine.name, self.tv1)
 		asg.assign(other.name, self.tv2)
+		self.send(mine)
+		self.send(other)
 		self.assertTrue(only_own_orders(self.tv1))
 		self.assertIn(self.tv1, get_permission_query_conditions(self.tv1))
 		frappe.set_user(self.tv1)
@@ -224,6 +232,43 @@ class TestDriverAccess(DriversTestCase):
 		names = [f["file_name"] for f in api.get_order_detail(mine.name).attachments]
 		self.assertEqual(sorted(names), ["photo.png", "signature_x.png"])
 
+	def test_schedule_lists_only_notes_on_the_way_or_delivered(self):
+		draft = self.dn([(self.tv, 1)], time="10:00")
+		sent = self.dn([(self.tv, 1)], time="16:00")
+		for dn in (draft, sent):
+			asg.assign(dn.name, self.tv1)
+		self.send(sent)
+		rows = api.get_schedule("Non AC", str(DAY), str(DAY))["rows"]
+		self.assertEqual([(r.name, r.workflow_state) for r in rows], [(sent.name, "On the way")])
+		self.assertEqual(api.get_schedule("Non AC", str(DAY), str(DAY), status="delivered")["rows"], [])
+
+	def test_driver_delivers_only_with_a_photo_or_video_and_a_signature(self):
+		dn = self.dn([(self.tv, 1)])
+		asg.assign(dn.name, self.tv1)
+		frappe.set_user(self.tv1)
+		self.assertRaisesRegex(frappe.ValidationError, "On the way", api.mark_delivered, dn.name)
+		frappe.set_user("Administrator")
+		self.send(dn)
+		frappe.set_user(self.tv1)
+		png = "data:image/png;base64,iVBORw0KGgo="
+		api.upload_attachment(dn.name, "notes.txt", png)
+		self.assertRaisesRegex(frappe.ValidationError, "photo or video.*signature", api.mark_delivered, dn.name)
+		api.upload_attachment(dn.name, "signature_x.png", png)
+		self.assertRaisesRegex(frappe.ValidationError, "photo or video", api.mark_delivered, dn.name)
+		api.upload_attachment(dn.name, "door.mp4", png)
+		api.mark_delivered(dn.name)
+		self.assertEqual(frappe.session.user, self.tv1)
+		self.assertEqual(frappe.db.get_value("Delivery Note", dn.name, "workflow_state"), "Delivered")
+		self.assertEqual([r.name for r in api.get_schedule("Non AC", str(DAY), str(DAY), status="delivered")["rows"]],
+			[dn.name])
+
+	def test_office_can_deliver_from_the_form_without_the_page_checks(self):
+		dn = self.dn([(self.tv, 1)])
+		asg.assign(dn.name, self.tv1)
+		self.send(dn)
+		apply_workflow(frappe.get_doc("Delivery Note", dn.name), "Deliver")
+		self.assertEqual(frappe.db.get_value("Delivery Note", dn.name, "workflow_state"), "Delivered")
+
 
 class TestInstallationStats(DriversTestCase):
 	def test_units_per_driver_from_submitted_notes(self):
@@ -233,12 +278,15 @@ class TestInstallationStats(DriversTestCase):
 		asg.assign(ac_dn.name, self.ac1)
 		asg.assign(tv_dn.name, self.tv1)
 		asg.assign(draft.name, self.tv1)
+		on_the_way = self.dn([(self.tv, 7)], time="16:00")
+		asg.assign(on_the_way.name, self.tv1)
+		for dn in (ac_dn, tv_dn, on_the_way):
+			self.send(dn)
 		for dn in (ac_dn, tv_dn):
-			dn.reload()
-			dn.submit()
+			apply_workflow(frappe.get_doc("Delivery Note", dn.name), "Deliver")
 		rows = {r["technician"]: r for r in stats.installation_stats(DAY, DAY)}
 		self.assertEqual((rows[self.ac1]["ac_units"], rows[self.ac1]["non_ac_units"]), (2, 0))
-		# The draft (not delivered yet) and the non-stock delivery charge do not count.
+		# The draft, the note still on the way and the non-stock delivery charge do not count.
 		self.assertEqual((rows[self.tv1]["ac_units"], rows[self.tv1]["non_ac_units"]), (0, 4))
 		self.assertEqual(list({r["technician"] for r in stats.installation_stats(DAY, DAY, unit="ac")}), [self.ac1])
 		# A driver sees only himself.
