@@ -114,7 +114,7 @@ flowchart LR
 
 * **Backend**: Python 3.12+ / 3.14, Frappe Framework v16, ERPNext v16.
 * **Database**: MariaDB / MySQL (leveraging row locks, savepoints, and deterministic ledger indexing).
-* **Frontend**: Vanilla ES6+ Desk Pages with Frappe UI widgets, Tailwind-inspired design system (`drivers_pages.css`), and POS Awesome V15 (Vue 3, Pinia).
+* **Frontend**: Vanilla ES6+ Desk Pages with Frappe UI widgets, Tailwind-inspired design system (`drivers_pages.bundle.css`), and POS Awesome V15 (Vue 3, Pinia).
 * **Background Jobs**: Frappe Background Workers (`default` and `long` queues).
 
 ---

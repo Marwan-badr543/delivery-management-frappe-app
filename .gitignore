@@ -4,4 +4,4 @@
 *.swp
 tags
 delivery_management/docs/current
-node_modules/
+node_modules/delivery_management/public/dist/

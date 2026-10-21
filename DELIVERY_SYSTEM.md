@@ -505,13 +505,13 @@ delivery_management/
   api/drivers.py  Driver Assignment / Delivery Schedule / Installation Statistics endpoints
   delivery_management/page/{driver_assignment,delivery_schedule,installation_statistics}/
   delivery_management/print_format/pos_invoice_salesman/
-  public/js/    drivers_common.js · delivery_note.js · header_search.js
+  public/js/    drivers_common.bundle.js · delivery_note.js · header_search.bundle.js
   fixtures/role.json   AC Tech, TV Driver, Technician, Maintenance Technician
   orders/       delivery_note.py (DN from SO) · serials.py (serial reservations and guard)
   customer_support/  tickets.py (support rules) · permissions.py · doctype/support_technician_visit ·
                 page/{support_tickets,technician_issues,maintenance_issues}
   api/support.py   Support pages endpoints
-  public/js/    support_pages.js · issue.js
+  public/js/    support_pages.bundle.js · issue.js
   patches/      ac_tech_day_limits_into_settings.py · disable_replaced_server_scripts.py
   tests/        test_slot_engine.py · test_orders.py · test_sales_stats.py · test_drivers.py · test_serials.py ·
                 test_support.py · fixtures.py · utils.py · race_check.py

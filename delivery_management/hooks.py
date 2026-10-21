@@ -18,15 +18,16 @@ add_to_apps_screen = [
 # ------------------
 
 # include js, css files in header of desk.html
+# Bundles get a content hash in their URL, so browsers load each new version at once.
 app_include_css = [
-	"/assets/delivery_management/css/header_search.css",
-	"/assets/delivery_management/css/drivers_pages.css",
+	"header_search.bundle.css",
+	"drivers_pages.bundle.css",
 ]
 app_include_js = [
-	"/assets/delivery_management/js/header_search.js",
-	"/assets/delivery_management/js/drivers_common.js",
-	"/assets/delivery_management/js/support_pages.js",
-	"/assets/delivery_management/js/pos_reload_qty.js",
+	"header_search.bundle.js",
+	"drivers_common.bundle.js",
+	"support_pages.bundle.js",
+	"pos_reload_qty.bundle.js",
 ]
 
 # include js, css files in header of web template
