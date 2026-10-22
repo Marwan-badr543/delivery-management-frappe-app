@@ -204,6 +204,34 @@ class TestOrderFlow(OrdersTestCase):
 		so = frappe.get_doc("Sales Order", result["sales_order"])
 		self.assertEqual(sorted(i.so_detail for n in notes.values() for i in n.items), sorted(i.name for i in so.items))
 
+	def test_delivery_note_moves_its_own_booking(self):
+		from delivery_management.api import admin
+		from delivery_management.slots.timeutils import to_time_str
+
+		self.settings(auto_create_delivery_note=1, auto_delivery_note_company=None)
+		result = self.place([(self.w.ac, 2, 300), (self.w.tv, 1, 100), (self.w.pipe, 3, 2)])
+		names = frappe.get_all("Delivery Note Item", filters={"against_sales_order": result["sales_order"]},
+			pluck="parent", distinct=True)
+		notes = {frappe.db.get_value("Delivery Note", n, "dm_delivery_type"): n for n in names}
+		ac = admin.get_delivery_note_booking(notes["AC"])
+		booking = admin.get_delivery_note_booking(notes["Non AC"])
+		self.assertEqual((ac["slot_type"], ac["date"]), ("AC", str(add_days(self.slot_date, 1))))
+		self.assertEqual((booking["slot_type"], booking["area"], booking["date"], booking["time"]),
+			("Delivery", self.area, str(self.slot_date), "10:00"))
+		self.assertIn(self.area, admin.get_areas())
+
+		new_time = next(s["time"] for s in engine.get_delivery_slots(self.area, self.slot_date)
+			if s["available"] and s["time"] != "10:00")
+		admin.move_reservation(booking["reservation"], area=self.area, date=self.slot_date, time=new_time)
+		self.assertEqual(to_time_str(frappe.db.get_value("Delivery Note", notes["Non AC"], "dm_delivery_time"))[:5],
+			new_time)
+		# A delivered note keeps the schedule it was delivered on.
+		frappe.db.set_value("Delivery Note", notes["Non AC"], "workflow_state", "Delivered")
+		moved = admin.get_delivery_note_booking(notes["Non AC"])
+		admin.move_reservation(moved["reservation"], area=self.area, date=self.slot_date, time="10:00")
+		self.assertEqual(to_time_str(frappe.db.get_value("Delivery Note", notes["Non AC"], "dm_delivery_time"))[:5],
+			new_time)
+
 	def test_ac_only_order_needs_no_delivery_slot(self):
 		result = self.place([(self.w.ac, 1, 300), (self.w.pipe, 2, 2)], {**self.delivery, "delivery_date": None,
 			"delivery_time": None})

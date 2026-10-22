@@ -28,6 +28,7 @@ app_include_js = [
 	"drivers_common.bundle.js",
 	"support_pages.bundle.js",
 	"pos_reload_qty.bundle.js",
+	"slot_move.bundle.js",
 ]
 
 # include js, css files in header of web template

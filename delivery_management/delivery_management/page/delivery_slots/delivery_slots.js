@@ -1,17 +1,10 @@
 // Delivery Slots: one page, two tabs (Delivery Times / AC Installation).
-// Every action goes through delivery_management.api.admin -> the slot engine.
+// Every action goes through delivery_management.api.admin -> the slot engine. The Delivery
+// tab shows every area as a section; Move uses the shared dialog (public/js/slot_move.bundle.js).
 
 const API = "delivery_management.api.admin.";
 
-const REASON_LABELS = {
-	area_disabled: __("Area turned off"),
-	not_a_working_hour: __("Not a working hour"),
-	too_soon: __("Too soon / passed"),
-	past_date: __("Past date"),
-	manually_disabled: __("Closed by admin"),
-	full: __("Full"),
-	not_enough_capacity: __("Not enough capacity"),
-};
+const { REASON_LABELS, timeLabel } = window.dm_slots;
 
 frappe.pages["delivery-slots"].on_page_load = function (wrapper) {
 	const page = frappe.ui.make_app_page({
@@ -87,10 +80,6 @@ function longDate(date) {
 	return label;
 }
 
-function timeLabel(time) {
-	return moment(time, "HH:mm").format("h:mm A");
-}
-
 /** free | partial | full | closed | past */
 function slotState(s) {
 	if ((s.reasons || []).some((r) => ["too_soon", "past_date"].includes(r))) return "past";
@@ -156,48 +145,64 @@ function emptyState(icon, title, text) {
 
 // ------------------------------------------------------------ Delivery tab
 
+/** One date for the whole tab; every area is a section under the other. */
 class DeliveryTab {
 	constructor($wrapper) {
 		this.$w = $wrapper;
 		this.date = frappe.datetime.get_today();
-		this.area = null;
-		this.selected = null;
+		this.sections = [];
 		this.$w.html(`
 			<section class="dm-panel dm-toolbar">
-				<div class="dm-area"></div>
 				<div class="dm-date"></div>
 				${dayNav()}
 				<div class="dm-day-title"></div>
+				${legend()}
 			</section>
-			<div class="dm-summary"></div>
-			<div class="dm-split">
-				<section class="dm-panel">
-					<header class="dm-panel-head">
-						<h4>${__("Time slots")}</h4>
-						${legend()}
-					</header>
-					<div class="dm-slots"></div>
-				</section>
-				<section class="dm-panel dm-detail"></section>
-			</div>`);
-
-		this.areaControl = frappe.ui.form.make_control({
-			parent: this.$w.find(".dm-area"),
-			df: {
-				fieldtype: "Link", options: "Delivery Area", label: __("Area"), fieldname: "area",
-				onchange: () => { this.area = this.areaControl.get_value(); this.selected = null; this.refresh(); },
-			},
-			render_input: true,
-		});
+			<div class="dm-areas"></div>`);
 		this.dateControl = dateControl(this.$w.find(".dm-date"), __("Date"), this.date, (v) => {
-			if (v && v !== this.date) { this.date = v; this.selected = null; this.refresh(); }
+			if (v && v !== this.date) { this.date = v; this.refresh(); }
 		});
 		this.$w.on("click", "[data-shift]", (e) => {
 			const shift = cint($(e.currentTarget).data("shift"));
 			this.date = shift ? shiftDate(this.date, shift) : frappe.datetime.get_today();
-			this.selected = null;
 			this.dateControl.set_value(this.date);
 		});
+	}
+
+	async refresh() {
+		this.$w.find(".dm-day-title").html(longDate(this.date));
+		const areas = await call("get_areas");
+		if (!areas.length) {
+			this.$w.find(".dm-areas").html(`<section class="dm-panel">${emptyState("map", __("No delivery areas yet"),
+				__("Add an area and its work hours to start taking delivery bookings."))}</section>`);
+			this.sections = [];
+			return;
+		}
+		if (this.sections.map((x) => x.area).join("\n") !== areas.join("\n")) {
+			const $areas = this.$w.find(".dm-areas").empty();
+			this.sections = areas.map((area) => new AreaSection($("<section class=\"dm-area-section\"></section>").appendTo($areas), area, this));
+		}
+		await Promise.all(this.sections.map((x) => x.refresh()));
+	}
+}
+
+/** One area of the Delivery tab: its summary, time slots and the bookings of the picked slot. */
+class AreaSection {
+	constructor($el, area, tab) {
+		this.$w = $el;
+		this.area = area;
+		this.tab = tab;
+		this.selected = null;
+		this.$w.html(`
+			<h3 class="dm-area-title">${frappe.utils.icon("map-pin", "sm")} ${esc(area)}</h3>
+			<div class="dm-summary"></div>
+			<div class="dm-split">
+				<section class="dm-panel">
+					<header class="dm-panel-head"><h4>${__("Time slots")}</h4></header>
+					<div class="dm-slots"></div>
+				</section>
+				<section class="dm-panel dm-detail"></section>
+			</div>`);
 		this.$w.on("click", ".dm-slot", (e) => {
 			if ($(e.target).closest("button").length) return;
 			this.selected = $(e.currentTarget).data("time");
@@ -210,20 +215,14 @@ class DeliveryTab {
 		});
 	}
 
+	get date() {
+		return this.tab.date;
+	}
+
 	async refresh() {
-		if (!this.area) {
-			const areas = await frappe.db.get_list("Delivery Area", { fields: ["name"], order_by: "area_name asc", limit: 1 });
-			if (!areas.length) {
-				this.$w.find(".dm-slots").html(emptyState("map", __("No delivery areas yet"),
-					__("Add an area and its work hours to start taking delivery bookings.")));
-				return;
-			}
-			this.area = areas[0].name;
-			this.areaControl.set_value(this.area);
-			return; // set_value triggers refresh
-		}
-		this.$w.find(".dm-day-title").html(longDate(this.date));
+		if (this.date !== this.boardDate) this.selected = null;
 		this.board = await call("get_slot_board", { area: this.area, date: this.date });
+		this.boardDate = this.date;
 		const slots = this.board.slots;
 		const booked = slots.reduce((a, s) => a + s.reserved, 0);
 		const free = slots.filter((s) => s.available).reduce((a, s) => a + s.remaining, 0);
@@ -277,7 +276,7 @@ class DeliveryTab {
 			const values = await new Promise((resolve) =>
 				frappe.prompt({ fieldname: "remarks", fieldtype: "Small Text", label: __("Reason (optional)"),
 					description: __("No new bookings will be taken in this slot. Existing bookings stay.") },
-				resolve, __("Close {0} on {1}?", [timeLabel(time), frappe.datetime.str_to_user(this.date)]), __("Close slot")));
+				resolve, __("Close {0} on {1} in {2}?", [timeLabel(time), frappe.datetime.str_to_user(this.date), this.area]), __("Close slot")));
 			remarks = values.remarks;
 		}
 		await call("set_slot_blocked", { area: this.area, date: this.date, time, blocked, remarks });
@@ -319,13 +318,14 @@ class DeliveryTab {
 				</div>`).join("")}
 			</div>`);
 		$d.find("[data-add]").on("click", () => this.add_booking(time));
-		$d.find("[data-move]").on("click", (e) => this.move_booking($(e.currentTarget).data("move")));
+		$d.find("[data-move]").on("click", (e) => window.dm_slots.moveBooking({ reservation: $(e.currentTarget).data("move"),
+			slot_type: "Delivery", area: this.area, date: this.date, time }, () => this.tab.refresh()));
 		$d.find("[data-release]").on("click", (e) => this.release_booking($(e.currentTarget).data("release")));
 	}
 
 	add_booking(time) {
 		const d = new frappe.ui.Dialog({
-			title: __("Add a manual booking · {0} {1}", [frappe.datetime.str_to_user(this.date), timeLabel(time)]),
+			title: __("Add a manual booking · {0} · {1} {2}", [this.area, frappe.datetime.str_to_user(this.date), timeLabel(time)]),
 			fields: [
 				{ fieldname: "remarks", fieldtype: "Data", label: __("Reference / Invoice No"), reqd: 1,
 					description: __("For orders taken outside the POS (phone, website...).") },
@@ -342,39 +342,6 @@ class DeliveryTab {
 			},
 		});
 		d.show();
-	}
-
-	move_booking(reservation) {
-		const d = new frappe.ui.Dialog({
-			title: __("Move booking"),
-			fields: [
-				{ fieldname: "area", fieldtype: "Link", options: "Delivery Area", label: __("Area"), reqd: 1, default: this.area },
-				{ fieldname: "date", fieldtype: "Date", label: __("Date"), reqd: 1, default: this.date },
-				{ fieldname: "time", fieldtype: "Select", label: __("Time slot"), reqd: 1 },
-				{ fieldname: "force", fieldtype: "Check", label: __("Allow over capacity / closed slot") },
-			],
-			primary_action_label: __("Move"),
-			primary_action: async (v) => {
-				await call("move_reservation", { reservation, ...v });
-				d.hide();
-				frappe.show_alert({ message: __("Booking moved"), indicator: "green" });
-				this.refresh();
-			},
-		});
-		const loadSlots = async () => {
-			const { area, date } = d.get_values(true);
-			if (!area || !date) return;
-			const board = await call("get_slot_board", { area, date });
-			const options = board.slots.map((s) => ({
-				value: s.time,
-				label: `${timeLabel(s.time)} · ${s.reserved}/${s.capacity}${s.available ? "" : " · " + s.reasons.map((r) => REASON_LABELS[r] || r).join(", ")}`,
-			}));
-			d.set_df_property("time", "options", options);
-		};
-		d.fields_dict.area.df.onchange = loadSlots;
-		d.fields_dict.date.df.onchange = loadSlots;
-		d.show();
-		loadSlots();
 	}
 
 	release_booking(reservation) {
@@ -530,7 +497,8 @@ class AcTab {
 					</tr>`).join("")}
 				</tbody>
 			</table></div>`);
-		$o.find("[data-move]").on("click", (e) => this.move_booking($(e.currentTarget).data("move")));
+		$o.find("[data-move]").on("click", (e) => window.dm_slots.moveBooking({ reservation: $(e.currentTarget).data("move"),
+			slot_type: "AC", date: this.date }, () => this.refresh()));
 		$o.find("[data-release]").on("click", (e) => {
 			const reservation = $(e.currentTarget).data("release");
 			frappe.confirm(__("Release this manual booking? The units become free for other orders."), async () => {
@@ -560,21 +528,5 @@ class AcTab {
 			},
 		});
 		d.show();
-	}
-
-	move_booking(reservation) {
-		frappe.prompt(
-			[
-				{ fieldname: "ac_date", fieldtype: "Date", label: __("New installation date"), reqd: 1, default: this.date },
-				{ fieldname: "force", fieldtype: "Check", label: __("Allow over capacity / closed day") },
-			],
-			async (v) => {
-				await call("move_reservation", { reservation, ...v });
-				frappe.show_alert({ message: __("Booking moved"), indicator: "green" });
-				this.refresh();
-			},
-			__("Move AC booking"),
-			__("Move")
-		);
 	}
 }

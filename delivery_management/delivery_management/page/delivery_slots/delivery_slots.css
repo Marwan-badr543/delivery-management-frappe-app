@@ -25,6 +25,13 @@
 .dm-day-title { margin-left: auto; align-self: center; font-size: var(--text-lg, 16px); font-weight: 600; }
 .dm-today-tag { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; background: var(--primary); color: #fff; vertical-align: middle; margin-left: 6px; }
 
+/* Delivery tab: one section per area */
+.dm-areas { display: flex; flex-direction: column; gap: 24px; }
+.dm-area-section { display: flex; flex-direction: column; gap: 12px; }
+.dm-area-section + .dm-area-section { padding-top: 24px; border-top: 1px dashed var(--border-color); }
+.dm-area-title { display: flex; align-items: center; gap: 8px; margin: 0; font-size: var(--text-xl, 18px); font-weight: 700; }
+.dm-toolbar .dm-legend { flex-basis: 100%; }
+
 /* stats */
 .dm-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
 .dm-summary-tight { margin-bottom: 10px; }

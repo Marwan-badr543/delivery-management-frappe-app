@@ -232,7 +232,8 @@ No Python file of POS Awesome is changed in v16.
 
 ### 3.1 Desk pages (v16 redesign)
 * **Sales Statistics**: filter card with quick periods, KPI cards (total sales, commission, invoices, orders, AC / other units), a "What is counted?" note, the salesman table with share bars and per-row commission %, and the invoice list with search and paging. Same API, same numbers, same commission formula and saved preferences.
-* **Delivery Slots**: segmented tabs, colour-coded slot cards (free / partly booked / full / closed / too soon) with a legend and capacity bars, a sticky bookings panel with address and phone, confirmations before closing or releasing. AC tab: 14-day strip with meters, day panel with capacity editor.
+* **Delivery Slots**: segmented tabs, colour-coded slot cards (free / partly booked / full / closed / too soon) with a legend and capacity bars, a sticky bookings panel with address and phone, confirmations before closing or releasing. AC tab: 14-day strip with meters, day panel with capacity editor. The Delivery tab shows **every area as a section** (one date for all), each with its summary, slots and bookings panel. **Move** (page and Delivery Note) is one dialog, `public/js/slot_move.bundle.js`, with the area as a dropdown of all areas.
+* **Delivery Note → Move Delivery Slot / Move Installation Day** (managers, until Delivered): moves the booking its Sales Order holds for the note's type (`api.admin.get_delivery_note_booking` + `move_reservation`). The new slot is copied onto the order, its invoices and its Delivery Notes not yet delivered (draft or On the way).
 * **Sales Order → Choose Delivery Slot**: one picker with a day strip, free-time cards and AC days; choose both, then **Apply**.
 
 ## 4. Admin page: `/desk/delivery-slots` (roles: System Manager, Delivery Manager)

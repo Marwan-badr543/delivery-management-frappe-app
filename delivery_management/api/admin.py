@@ -4,6 +4,7 @@ import frappe
 from frappe import _
 from frappe.utils import cint
 
+from delivery_management.drivers.delivery_note import sales_order_of
 from delivery_management.orders.schedule import stamp_schedule
 from delivery_management.slots import engine, get_ac_item_codes
 from delivery_management.slots.timeutils import to_date, to_time_str
@@ -47,6 +48,13 @@ def _reference_rows(filters):
 
 
 # ----------------------------- delivery slots -----------------------------
+
+
+@frappe.whitelist()
+def get_areas():
+	"""Every area, for the page sections and the Move dialog."""
+	_only_managers()
+	return frappe.get_all("Delivery Area", pluck="name", order_by="area_name asc")
 
 
 @frappe.whitelist()
@@ -101,6 +109,21 @@ def move_reservation(reservation, area=None, date=None, time=None, ac_date=None,
 	if row and row.reference_doctype:
 		stamp_schedule(row.reference_doctype, row.reference_name)
 	return new
+
+
+@frappe.whitelist()
+def get_delivery_note_booking(delivery_note):
+	"""The booking a Delivery Note's order holds for its type (AC day or delivery slot), for its Move button."""
+	_only_managers()
+	dn = frappe.get_doc("Delivery Note", delivery_note)
+	so = sales_order_of(dn)
+	slot_type = engine.SLOT_AC if dn.dm_delivery_type == "AC" else engine.SLOT_DELIVERY
+	row = next((r for r in engine.get_reservations("Sales Order", so) if r.slot_type == slot_type), None) if so else None
+	if not row:
+		frappe.throw(_("The order of this Delivery Note holds no {0} booking.").format(
+			_("AC installation") if slot_type == engine.SLOT_AC else _("delivery slot")))
+	return {"reservation": row.name, "slot_type": slot_type, "area": row.area, "date": str(row.delivery_date),
+		"time": row.delivery_time and to_time_str(row.delivery_time)[:5]}
 
 
 # ------------------------------- AC days ---------------------------------
