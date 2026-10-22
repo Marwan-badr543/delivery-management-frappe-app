@@ -29,7 +29,7 @@
 .dm-areas { display: flex; flex-direction: column; gap: 24px; }
 .dm-area-section { display: flex; flex-direction: column; gap: 12px; }
 .dm-area-section + .dm-area-section { padding-top: 24px; border-top: 1px dashed var(--border-color); }
-.dm-area-title { display: flex; align-items: center; gap: 8px; margin: 0; font-size: var(--text-xl, 18px); font-weight: 700; }
+.dm-area-title { display: flex; align-items: center; justify-content: left; text-align: left; gap: 8px; margin: 0; font-size: var(--text-xl, 18px); font-weight: 700; }
 .dm-toolbar .dm-legend { flex-basis: 100%; }
 
 /* stats */
