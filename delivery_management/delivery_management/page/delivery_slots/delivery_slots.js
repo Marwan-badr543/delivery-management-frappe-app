@@ -121,14 +121,17 @@ function referenceLink(row) {
 	return `<a class="dm-ref" href="${frappe.utils.get_form_link(row.reference_doctype, row.reference_name)}">${esc(row.reference_name)}</a>`;
 }
 
+/** Native date input: it reports every change at once (picker or typing), so the day reloads without Refresh. */
 function dateControl($parent, label, value, onchange) {
-	const control = frappe.ui.form.make_control({
-		parent: $parent,
-		df: { fieldtype: "Date", label, fieldname: "date", onchange: () => onchange(control.get_value()) },
-		render_input: true,
-	});
-	control.set_value(value);
-	return control;
+	const $input = $(`<div class="frappe-control"><label class="control-label">${label}</label>
+		<input type="date" class="form-control"></div>`).appendTo($parent).find("input").val(value);
+	$input.on("change", () => $input.val() && onchange($input.val()));
+	return {
+		set_value(v) {
+			$input.val(v);
+			onchange(v);
+		},
+	};
 }
 
 function dayNav() {
@@ -164,8 +167,7 @@ class DeliveryTab {
 		});
 		this.$w.on("click", "[data-shift]", (e) => {
 			const shift = cint($(e.currentTarget).data("shift"));
-			this.date = shift ? shiftDate(this.date, shift) : frappe.datetime.get_today();
-			this.dateControl.set_value(this.date);
+			this.dateControl.set_value(shift ? shiftDate(this.date, shift) : frappe.datetime.get_today());
 		});
 	}
 
@@ -381,8 +383,7 @@ class AcTab {
 		});
 		this.$w.on("click", "[data-shift]", (e) => {
 			const shift = cint($(e.currentTarget).data("shift"));
-			this.date = shift ? shiftDate(this.date, shift) : frappe.datetime.get_today();
-			this.dateControl.set_value(this.date);
+			this.dateControl.set_value(shift ? shiftDate(this.date, shift) : frappe.datetime.get_today());
 		});
 		this.$w.on("click", ".dm-chip", (e) => this.dateControl.set_value($(e.currentTarget).data("date")));
 	}
