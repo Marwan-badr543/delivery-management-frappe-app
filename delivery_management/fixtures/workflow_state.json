@@ -3,18 +3,18 @@
   "docstatus": 0,
   "doctype": "Workflow State",
   "icon": "",
-  "modified": "2026-10-21 10:06:38.147877",
+  "modified": "2026-10-24 11:12:53.596843",
   "name": "On the way",
-  "style": "",
+  "style": "Warning",
   "workflow_state_name": "On the way"
  },
  {
   "docstatus": 0,
   "doctype": "Workflow State",
   "icon": "",
-  "modified": "2026-10-21 10:07:29.728434",
+  "modified": "2026-10-24 11:12:53.669829",
   "name": "Delivered",
-  "style": "",
+  "style": "Success",
   "workflow_state_name": "Delivered"
  },
  {
@@ -34,5 +34,14 @@
   "name": "Cancelled",
   "style": "",
   "workflow_state_name": "Cancelled"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Workflow State",
+  "icon": "",
+  "modified": "2026-10-24 11:12:53.674454",
+  "name": "Return",
+  "style": "Danger",
+  "workflow_state_name": "Return"
  }
 ]

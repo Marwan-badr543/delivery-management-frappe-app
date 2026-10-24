@@ -19,5 +19,12 @@
   "modified": "2026-10-21 10:23:47.797830",
   "name": "Cancel",
   "workflow_action_name": "Cancel"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Workflow Action Master",
+  "modified": "2026-10-22 14:05:39.826293",
+  "name": "Retrun",
+  "workflow_action_name": "Retrun"
  }
 ]

@@ -189,9 +189,10 @@ doctype_js = {
 
 fixtures = [
 	{"dt": "Role", "filters": [["role_name", "in", ["AC Tech", "TV Driver", "Technician", "Maintenance Technician"]]]},
-	# Delivery Note workflow: Draft -> On the way (stock keeper submits) -> Delivered (driver).
-	{"dt": "Workflow State", "filters": [["name", "in", ["Draft", "On the way", "Delivered", "Cancelled"]]]},
-	{"dt": "Workflow Action Master", "filters": [["name", "in", ["On the way", "Deliver", "Cancel"]]]},
+	# Delivery Note workflow: Draft -> On the way (stock keeper submits) -> Delivered (driver);
+	# a return goes Draft -> Return.
+	{"dt": "Workflow State", "filters": [["name", "in", ["Draft", "On the way", "Delivered", "Return", "Cancelled"]]]},
+	{"dt": "Workflow Action Master", "filters": [["name", "in", ["On the way", "Deliver", "Retrun", "Cancel"]]]},
 	{"dt": "Workflow", "filters": [["name", "=", "delivery note on the way"]]},
 ]
 
