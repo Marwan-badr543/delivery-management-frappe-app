@@ -8,8 +8,7 @@ no accounts: only the POS submit (``orders.service``) calls ``add_to_pos_sale``.
 The accounts live in the external accounts database (table ``lines``), not in ERPNext.
 Usernames continue the member's ``ERP-<n>`` series, which the website orders also use,
 so the next number is read from that database. The password is the customer's mobile.
-The credentials go in ``posa_notes``, so they show on the invoice, the order and the
-n8n message.
+The credentials go in ``posa_notes``, so they show on the invoice and the order.
 """
 
 from __future__ import annotations
