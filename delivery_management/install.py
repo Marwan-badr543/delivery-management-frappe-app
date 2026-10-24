@@ -133,7 +133,11 @@ def get_custom_fields() -> dict:
 		],
 		# On the Details tab, just above the items.
 		"Sales Order": _delivery_fields("ignore_pricing_rule", editable=True),
-		"Sales Invoice": _delivery_fields("ignore_pricing_rule", editable=False),
+		"Sales Invoice": [
+			*_delivery_fields("ignore_pricing_rule", editable=False),
+			{"fieldname": "dm_n8n_sent", "fieldtype": "Check", "label": "Sent to n8n", "insert_after": "dm_building_no",
+				"read_only": 1, "no_copy": 1},
+		],
 	}
 
 

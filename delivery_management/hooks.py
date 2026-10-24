@@ -209,4 +209,10 @@ has_permission = {
 
 extend_bootinfo = "delivery_management.api.pos.extend_bootinfo"
 
+scheduler_events = {
+	"cron": {
+		"* * * * *": ["delivery_management.orders.n8n.send_pending"],
+	},
+}
+
 

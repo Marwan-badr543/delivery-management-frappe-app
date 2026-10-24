@@ -46,7 +46,11 @@
   "tv_account_password",
   "tv_account_member_id",
   "tv_account_valid_days",
-  "tv_account_note"
+  "tv_account_note",
+  "n8n_section",
+  "n8n_webhook_url",
+  "column_break_7",
+  "n8n_delay_minutes"
  ],
  "fields": [
   {
@@ -307,12 +311,34 @@
    "fieldtype": "HTML",
    "label": "TV Account Note",
    "options": "<p class='text-muted small'>The accounts database (table <code>lines</code>). Leave the host empty to create no accounts.</p>"
+  },
+  {
+   "fieldname": "n8n_section",
+   "fieldtype": "Section Break",
+   "label": "n8n (Customer Messages)"
+  },
+  {
+   "fieldname": "n8n_webhook_url",
+   "fieldtype": "Data",
+   "label": "n8n Webhook URL",
+   "description": "POS sales are posted here with the invoice (and Delivery Note) PDF. Empty: nothing is sent."
+  },
+  {
+   "fieldname": "column_break_7",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "n8n_delay_minutes",
+   "fieldtype": "Int",
+   "label": "Send After (Minutes)",
+   "default": "5",
+   "description": "Wait this long after the sale, so late changes are included."
   }
  ],
  "index_web_pages_for_search": 0,
  "issingle": 1,
  "links": [],
- "modified": "2026-10-24 12:00:00.000000",
+ "modified": "2026-10-24 12:30:00.000000",
  "modified_by": "Administrator",
  "module": "Delivery Management",
  "name": "Delivery Settings",
