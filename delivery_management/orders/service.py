@@ -90,13 +90,14 @@ def submit_pos_invoice(invoice: dict, data: dict, delivery: dict | None = None) 
 	invoice.update(set_warehouse=warehouse, update_stock=1, posa_delivery_date=None, dm_order_type=ORDER_TYPE_INVOICE)
 
 	_apply_address(invoice, delivery)
-	tv_accounts.add_to_pos_sale(invoice)
 	invoice["sales_team"] = sales_team_of_current_user()
 	frappe.flags.dm_bundle_serials = chosen  # read by serial_choice.apply_to_packed_items
 	try:
-		return _submit_with_posawesome(invoice, data)
+		result = _submit_with_posawesome(invoice, data)
 	finally:
 		frappe.flags.dm_bundle_serials = None
+	tv_accounts.add_to_pos_sale(result["name"])
+	return result
 
 
 # ---------------------------------------------------------------------------
@@ -130,7 +131,6 @@ def submit_pos_order(invoice: dict, data: dict, delivery: dict | None, unpaid: b
 	profile, booking = build_booking(items, delivery)
 	assert_in_stock(items, main_store)
 	address_name = _apply_address(invoice, delivery, required=bool(booking))
-	tv_accounts.add_to_pos_sale(invoice)
 
 	invoice["sales_team"] = sales_team_of_current_user()
 	so = _make_sales_order(invoice, items, main_store, booking, profile, address_name, delivery)
@@ -158,6 +158,7 @@ def submit_pos_order(invoice: dict, data: dict, delivery: dict | None, unpaid: b
 		_make_unpaid(invoice, data)
 	result = _submit_with_posawesome(invoice, data)
 	result["sales_order"] = so.name
+	tv_accounts.add_to_pos_sale(result["name"], so.name)
 	return result
 
 

@@ -133,13 +133,13 @@ class TestTVAccountsOnPosSale(TVAccountsTestCase):
 		service.submit_pos_invoice(self.sale([(self.w.pipe, 1, 2)]), DATA, {})
 		self.assertEqual(len(self.accounts.rows), 2)
 
-	def test_failed_sale_deletes_its_accounts(self):
+	def test_failed_sale_makes_no_account(self):
 		invoice = self.sale([(self.w.tv, 1, 100), (self.w.ac, 2, 300)])  # branch has one AC only
 		self.assertRaises(frappe.ValidationError, service.submit_pos_invoice, invoice, DATA, {})
-		self.assertEqual(len(self.accounts.rows), 2)  # stock is checked before any account is made
+		self.assertEqual(len(self.accounts.rows), 2)
 
-		invoice = self.sale([(self.w.tv, 1, 100)])
-		tv_accounts.add_to_pos_sale(invoice)
+	def test_rolled_back_sale_deletes_its_accounts(self):
+		service.submit_pos_invoice(self.sale([(self.w.tv, 1, 100)]), DATA, {})
 		self.assertEqual(len(self.accounts.rows), 3)
 		frappe.db.rollback()
 		self.assertEqual(len(self.accounts.rows), 2)

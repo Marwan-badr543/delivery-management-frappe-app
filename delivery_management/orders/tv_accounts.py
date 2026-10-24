@@ -89,33 +89,40 @@ def tv_units(items) -> int:
 	return sum(cint(stock_qty(row)) for row in items if row.get("item_code") in codes)
 
 
-def add_to_pos_sale(invoice: dict) -> None:
-	"""Create the accounts for the TV units of a POS sale and append them to its notes.
+def add_to_pos_sale(invoice: str, sales_order: str | None = None) -> None:
+	"""Create the accounts for the TV units of a submitted POS sale and append them to
+	the notes of its invoice and order.
 
-	Called just before the ERPNext documents are made. If the sale then fails, the
-	accounts are deleted again. If the accounts database is down, the sale goes on
-	without accounts (as in the old system) and an Error Log says why.
+	The last step of the POS submit, so a sale that fails makes no accounts. If the
+	request still fails afterwards, the accounts are deleted again. If the accounts
+	database is down, the sale stays without accounts (as in the old system) and an
+	Error Log says why.
 	"""
 	db = get_accounts_db()
 	if not db:
 		return
-	units = tv_units(invoice.get("items") or [])
+	doc = frappe.get_doc("Sales Invoice", invoice)
+	units = tv_units([row.as_dict() for row in doc.items])
 	if not units:
 		return
-	password = invoice.get("contact_mobile") or frappe.db.get_value("Customer", invoice.get("customer"), "mobile_no")
+	password = doc.contact_mobile or frappe.db.get_value("Customer", doc.customer, "mobile_no")
 	if not password:
 		frappe.log_error(_("TV accounts not created"),
-			_("Customer {0} has no mobile number, which is the account password.").format(invoice.get("customer")))
+			_("Customer {0} has no mobile number, which is the account password.").format(doc.customer),
+			reference_doctype="Sales Invoice", reference_name=invoice)
 		return
 	try:
 		usernames = _insert_accounts(db, units, password)
 	except Exception:
-		frappe.log_error(_("TV accounts not created"), reference_doctype="Customer",
-			reference_name=invoice.get("customer"))
+		frappe.log_error(_("TV accounts not created"), reference_doctype="Sales Invoice", reference_name=invoice)
 		return
 	frappe.db.after_rollback.add(lambda: _delete_accounts(db, usernames))
 	credentials = [f"Username ({n}): {u}\nPassword ({n}): {password}" for n, u in enumerate(usernames, 1)]
-	invoice["posa_notes"] = "\n".join(filter(None, [invoice.get("posa_notes"), *credentials]))
+	for doctype, name in (("Sales Invoice", invoice), ("Sales Order", sales_order)):
+		if name:
+			notes = frappe.db.get_value(doctype, name, "posa_notes")
+			frappe.db.set_value(doctype, name, "posa_notes", "\n".join(filter(None, [notes, *credentials])),
+				update_modified=False)
 
 
 def _insert_accounts(db: AccountsDB, units: int, password: str) -> list[str]:
