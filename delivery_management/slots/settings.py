@@ -23,6 +23,9 @@ class SlotSettings:
 	auto_delivery_note_company: str | None = None
 	support_visit_gap_minutes: int = 60
 	support_maint_service_person: str | None = None
+	tv_items: tuple[str, ...] = ()
+	tv_item_groups: tuple[str, ...] = ()
+	tv_excluded_items: tuple[str, ...] = ()
 
 
 def get_settings() -> SlotSettings:
@@ -43,6 +46,9 @@ def get_settings() -> SlotSettings:
 		auto_delivery_note_company=doc.get("auto_delivery_note_company") or None,
 		support_visit_gap_minutes=cint(_non_negative(doc.get("support_visit_gap_minutes"), 60)),
 		support_maint_service_person=doc.get("support_maint_service_person") or None,
+		tv_items=tuple(row.item_code for row in (doc.get("tv_items") or [])),
+		tv_item_groups=tuple(row.item_group for row in (doc.get("tv_item_groups") or [])),
+		tv_excluded_items=tuple(row.item_code for row in (doc.get("tv_excluded_items") or [])),
 	)
 
 

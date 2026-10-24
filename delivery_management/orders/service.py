@@ -27,7 +27,7 @@ from frappe import _
 from frappe.utils import cint, flt, getdate, nowdate
 
 from delivery_management.orders import address as address_utils
-from delivery_management.orders import serial_choice
+from delivery_management.orders import serial_choice, tv_accounts
 from delivery_management.orders.stock import assert_in_stock
 from delivery_management.slots import profile_cart
 from delivery_management.slots.settings import get_settings
@@ -90,6 +90,7 @@ def submit_pos_invoice(invoice: dict, data: dict, delivery: dict | None = None) 
 	invoice.update(set_warehouse=warehouse, update_stock=1, posa_delivery_date=None, dm_order_type=ORDER_TYPE_INVOICE)
 
 	_apply_address(invoice, delivery)
+	tv_accounts.add_to_pos_sale(invoice)
 	invoice["sales_team"] = sales_team_of_current_user()
 	frappe.flags.dm_bundle_serials = chosen  # read by serial_choice.apply_to_packed_items
 	try:
@@ -129,6 +130,7 @@ def submit_pos_order(invoice: dict, data: dict, delivery: dict | None, unpaid: b
 	profile, booking = build_booking(items, delivery)
 	assert_in_stock(items, main_store)
 	address_name = _apply_address(invoice, delivery, required=bool(booking))
+	tv_accounts.add_to_pos_sale(invoice)
 
 	invoice["sales_team"] = sales_team_of_current_user()
 	so = _make_sales_order(invoice, items, main_store, booking, profile, address_name, delivery)

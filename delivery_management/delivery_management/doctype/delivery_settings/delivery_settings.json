@@ -32,7 +32,21 @@
   "support_section",
   "support_visit_gap_minutes",
   "column_break_5",
-  "support_maint_service_person"
+  "support_maint_service_person",
+  "tv_accounts_section",
+  "tv_items",
+  "tv_item_groups",
+  "tv_excluded_items",
+  "tv_rule_note",
+  "column_break_6",
+  "tv_account_host",
+  "tv_account_port",
+  "tv_account_database",
+  "tv_account_user",
+  "tv_account_password",
+  "tv_account_member_id",
+  "tv_account_valid_days",
+  "tv_account_note"
  ],
  "fields": [
   {
@@ -216,12 +230,89 @@
    "options": "Sales Person",
    "label": "Default Service Person",
    "description": "Service Person on Maintenance Visits made from the Technician page, when the technician has no Sales Person of his own."
+  },
+  {
+   "fieldname": "tv_accounts_section",
+   "fieldtype": "Section Break",
+   "label": "TV Accounts (POS)"
+  },
+  {
+   "fieldname": "tv_items",
+   "fieldtype": "Table MultiSelect",
+   "label": "TV Items",
+   "options": "Delivery TV Item"
+  },
+  {
+   "fieldname": "tv_item_groups",
+   "fieldtype": "Table MultiSelect",
+   "label": "TV Item Groups",
+   "options": "Delivery TV Item Group"
+  },
+  {
+   "fieldname": "tv_excluded_items",
+   "fieldtype": "Table MultiSelect",
+   "label": "Excluded Items (from TV Item Groups)",
+   "options": "Delivery TV Item"
+  },
+  {
+   "fieldname": "tv_rule_note",
+   "fieldtype": "HTML",
+   "label": "TV Rule Note",
+   "options": "<p class='text-muted small'>A POS sale gets one TV account per unit of a <b>TV Item</b>, or of an item in a <b>TV Item Group</b> (sub-groups included) that is not an <b>Excluded Item</b>. The username and password are added to the notes of the invoice (and of the order). Orders made by hand in the desk get none.</p>"
+  },
+  {
+   "fieldname": "column_break_6",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "tv_account_host",
+   "fieldtype": "Data",
+   "label": "Accounts DB Host"
+  },
+  {
+   "fieldname": "tv_account_port",
+   "fieldtype": "Int",
+   "label": "Accounts DB Port",
+   "default": "3306"
+  },
+  {
+   "fieldname": "tv_account_database",
+   "fieldtype": "Data",
+   "label": "Accounts DB Name"
+  },
+  {
+   "fieldname": "tv_account_user",
+   "fieldtype": "Data",
+   "label": "Accounts DB User"
+  },
+  {
+   "fieldname": "tv_account_password",
+   "fieldtype": "Password",
+   "label": "Accounts DB Password"
+  },
+  {
+   "fieldname": "tv_account_member_id",
+   "fieldtype": "Int",
+   "label": "Member ID",
+   "default": "1410"
+  },
+  {
+   "fieldname": "tv_account_valid_days",
+   "fieldtype": "Int",
+   "label": "Account Valid (Days)",
+   "default": "365"
+  },
+  {
+   "fieldname": "tv_account_note",
+   "fieldtype": "HTML",
+   "label": "TV Account Note",
+   "options": "<p class='text-muted small'>The accounts database (table <code>lines</code>). Leave the host empty to create no accounts.</p>"
   }
  ],
  "index_web_pages_for_search": 0,
  "issingle": 1,
  "links": [],
- "modified": "2026-10-11 10:00:00.000000",
+ "modified": "2026-10-24 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Delivery Management",
  "name": "Delivery Settings",
