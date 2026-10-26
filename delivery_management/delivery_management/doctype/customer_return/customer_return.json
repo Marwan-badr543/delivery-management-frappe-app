@@ -1,0 +1,293 @@
+{
+ "actions": [],
+ "autoname": "format:CR-{YYYY}-{#####}",
+ "creation": "2026-10-26 10:00:00",
+ "description": "A return or exchange made from the POS: what came back, into which store, and how the customer was paid.",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "sales_invoice",
+  "sales_order",
+  "customer",
+  "customer_name",
+  "column_break_a",
+  "posting_date",
+  "company",
+  "currency",
+  "pos_profile",
+  "pos_opening_shift",
+  "warehouse",
+  "reason_section",
+  "reason",
+  "notes",
+  "items_section",
+  "items",
+  "money_section",
+  "return_amount",
+  "cleared_amount",
+  "column_break_m",
+  "refunded_amount",
+  "mode_of_payment",
+  "credit_amount",
+  "documents_section",
+  "credit_note",
+  "column_break_d",
+  "return_delivery_notes",
+  "request_id"
+ ],
+ "fields": [
+  {
+   "fieldname": "sales_invoice",
+   "fieldtype": "Link",
+   "label": "Original Invoice",
+   "options": "Sales Invoice",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "search_index": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "sales_order",
+   "fieldtype": "Link",
+   "label": "Sales Order",
+   "options": "Sales Order",
+   "in_standard_filter": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "customer",
+   "fieldtype": "Link",
+   "label": "Customer",
+   "options": "Customer",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "search_index": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "customer_name",
+   "fieldtype": "Data",
+   "label": "Customer Name",
+   "fetch_from": "customer.customer_name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_a",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "posting_date",
+   "fieldtype": "Date",
+   "label": "Date",
+   "in_list_view": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "read_only": 1
+  },
+  {
+   "fieldname": "currency",
+   "fieldtype": "Link",
+   "label": "Currency",
+   "options": "Currency",
+   "hidden": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "pos_profile",
+   "fieldtype": "Link",
+   "label": "POS Profile",
+   "options": "POS Profile",
+   "in_standard_filter": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "pos_opening_shift",
+   "fieldtype": "Link",
+   "label": "POS Opening Shift",
+   "options": "POS Opening Shift",
+   "read_only": 1
+  },
+  {
+   "fieldname": "warehouse",
+   "fieldtype": "Link",
+   "label": "Received Into",
+   "options": "Warehouse",
+   "in_standard_filter": 1,
+   "read_only": 1,
+   "description": "The store that received the goods."
+  },
+  {
+   "fieldname": "reason_section",
+   "fieldtype": "Section Break",
+   "label": "Reason"
+  },
+  {
+   "fieldname": "reason",
+   "fieldtype": "Select",
+   "label": "Reason",
+   "options": "\nDefective\nWrong item\nCustomer changed mind\nDamaged in delivery\nExchange\nOther",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Small Text",
+   "label": "Notes",
+   "read_only": 1
+  },
+  {
+   "fieldname": "items_section",
+   "fieldtype": "Section Break",
+   "label": "Items"
+  },
+  {
+   "fieldname": "items",
+   "fieldtype": "Table",
+   "label": "Items",
+   "options": "Customer Return Item",
+   "read_only": 1
+  },
+  {
+   "fieldname": "money_section",
+   "fieldtype": "Section Break",
+   "label": "Money"
+  },
+  {
+   "fieldname": "return_amount",
+   "fieldtype": "Currency",
+   "label": "Return Value",
+   "options": "currency",
+   "read_only": 1,
+   "description": "The value of the returned and cancelled goods (Credit Note)."
+  },
+  {
+   "fieldname": "cleared_amount",
+   "fieldtype": "Currency",
+   "label": "Debt Cleared",
+   "options": "currency",
+   "read_only": 1,
+   "description": "Part of the return value that cancelled what the customer still owed."
+  },
+  {
+   "fieldname": "column_break_m",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "refunded_amount",
+   "fieldtype": "Currency",
+   "label": "Cash Refunded",
+   "options": "currency",
+   "in_list_view": 1,
+   "read_only": 1,
+   "description": "Cash given back from the cashier's shift (on the Credit Note)."
+  },
+  {
+   "fieldname": "mode_of_payment",
+   "fieldtype": "Link",
+   "label": "Refund Mode",
+   "options": "Mode of Payment",
+   "read_only": 1
+  },
+  {
+   "fieldname": "credit_amount",
+   "fieldtype": "Currency",
+   "label": "Kept as Credit",
+   "options": "currency",
+   "read_only": 1,
+   "description": "Left on the customer's account; the POS offers it as Customer Credit on the next sale."
+  },
+  {
+   "fieldname": "documents_section",
+   "fieldtype": "Section Break",
+   "label": "Documents"
+  },
+  {
+   "fieldname": "credit_note",
+   "fieldtype": "Link",
+   "label": "Credit Note",
+   "options": "Sales Invoice",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_d",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "return_delivery_notes",
+   "fieldtype": "Small Text",
+   "label": "Return Delivery Notes",
+   "read_only": 1
+  },
+  {
+   "fieldname": "request_id",
+   "fieldtype": "Data",
+   "label": "Request ID",
+   "hidden": 1,
+   "unique": 1,
+   "no_copy": 1,
+   "read_only": 1
+  }
+ ],
+ "in_create": 1,
+ "modified": "2026-10-26 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Delivery Management",
+ "name": "Customer Return",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "report": 1,
+   "print": 1,
+   "export": 1
+  },
+  {
+   "role": "Accounts Manager",
+   "read": 1,
+   "report": 1,
+   "print": 1,
+   "export": 1
+  },
+  {
+   "role": "Accounts User",
+   "read": 1,
+   "report": 1,
+   "print": 1,
+   "export": 1
+  },
+  {
+   "role": "Sales User",
+   "read": 1,
+   "report": 1,
+   "print": 1,
+   "export": 1
+  },
+  {
+   "role": "Sales Manager",
+   "read": 1,
+   "report": 1,
+   "print": 1,
+   "export": 1
+  },
+  {
+   "role": "Stock User",
+   "read": 1,
+   "report": 1,
+   "print": 1,
+   "export": 1
+  }
+ ],
+ "search_fields": "customer_name,sales_invoice",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "customer_name",
+ "track_changes": 1
+}

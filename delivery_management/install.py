@@ -136,6 +136,11 @@ def get_custom_fields() -> dict:
 			{"fieldname": "dm_road_no", "fieldtype": "Data", "label": "Road No", "insert_after": "dm_block_no"},
 			{"fieldname": "dm_building_no", "fieldtype": "Data", "label": "Building No", "insert_after": "dm_road_no"},
 		],
+		"Sales Order Item": [
+			{"fieldname": "dm_returned_qty", "fieldtype": "Float", "label": "Returned / Cancelled Qty",
+				"insert_after": "delivered_qty", "read_only": 1, "allow_on_submit": 1, "no_copy": 1,
+				"description": "Given back or cancelled through a Customer Return: never delivered again."},
+		],
 		# On the Details tab, just above the items.
 		"Sales Order": _delivery_fields("ignore_pricing_rule", editable=True),
 		"Sales Invoice": _delivery_fields("ignore_pricing_rule", editable=False),

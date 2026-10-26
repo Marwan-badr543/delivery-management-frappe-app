@@ -1,0 +1,79 @@
+/* delivery_management: POS Return / Exchange (public/js/pos_returns.bundle.js). */
+.dmr-open { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; margin: 0 6px;
+	border-radius: 16px; border: 1px solid rgba(201, 77, 31, .4); background: rgba(201, 77, 31, .08); color: #b5451b;
+	font-weight: 600; font-size: 13px; cursor: pointer; white-space: nowrap; }
+.dmr-open:hover { background: rgba(201, 77, 31, .16); }
+@media (max-width: 768px) { .dmr-open span { display: none; } .dmr-open { padding: 0 8px; } }
+
+.dmr-overlay { position: fixed; inset: 0; z-index: 2000; background: rgba(15, 23, 20, .45); display: flex;
+	align-items: flex-start; justify-content: center; padding: 4vh 12px; overflow-y: auto; }
+.dmr-modal { background: var(--card-bg, #fff); color: var(--text-color, #1d2420); width: min(720px, 100%);
+	border-radius: 14px; box-shadow: 0 20px 60px rgba(0, 0, 0, .25); display: flex; flex-direction: column;
+	max-height: 92vh; }
+.dmr-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px;
+	border-bottom: 1px solid var(--border-color, #e3e7e4); }
+.dmr-head h3 { margin: 0; font-size: 18px; }
+.dmr-x { border: 0; background: none; font-size: 26px; line-height: 1; cursor: pointer; color: inherit; }
+.dmr-body { padding: 16px 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+.dmr-foot { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; padding: 14px 20px;
+	border-top: 1px solid var(--border-color, #e3e7e4); }
+
+.dmr-label { font-size: 13px; font-weight: 600; color: var(--text-muted, #5d6a63); margin-bottom: 4px; display: block; }
+.dmr-input { width: 100%; font-size: 16px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border-color, #cfd6d2);
+	background: var(--control-bg, #fff); color: inherit; }
+select.dmr-input { appearance: none; padding-inline-end: 36px; background-repeat: no-repeat;
+	background-position: right 12px center; background-size: 14px;
+	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236b7770' stroke-width='2.5'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); }
+.dmr-input:focus { outline: 2px solid #1f6feb55; border-color: #1f6feb; }
+.dmr-muted { color: var(--text-muted, #6b7770); font-size: 13px; }
+.dmr-link { border: 0; background: none; color: #1f6feb; font-weight: 600; cursor: pointer; }
+
+.dmr-list { display: flex; flex-direction: column; gap: 8px; }
+.dmr-sale { text-align: start; border: 1px solid var(--border-color, #e3e7e4); border-radius: 12px; padding: 12px 14px;
+	background: var(--card-bg, #fff); color: inherit; cursor: pointer; display: flex; flex-direction: column; gap: 4px; }
+.dmr-sale:hover, .dmr-sale:focus-visible { border-color: #1f6feb; }
+.dmr-sale-top { display: flex; justify-content: space-between; gap: 8px; font-size: 15px; }
+.dmr-sale-sub { font-size: 13px; color: var(--text-muted, #6b7770); }
+.dmr-sale-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+.dmr-pill { font-size: 12px; padding: 2px 8px; border-radius: 10px; background: #eef1ef; color: #4d5a53; }
+.dmr-green { background: #e3f4ea; color: #1d7a45; } .dmr-red { background: #fbe6e6; color: #a3262c; }
+.dmr-blue { background: #e4eefc; color: #1f5fa8; }
+
+.dmr-sale-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.dmr-lines { display: flex; flex-direction: column; gap: 8px; }
+.dmr-line { border: 1px solid var(--border-color, #e3e7e4); border-radius: 12px; padding: 10px 12px;
+	display: flex; flex-direction: column; gap: 8px; }
+.dmr-line-top { display: flex; justify-content: space-between; gap: 8px; }
+.dmr-step { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.dmr-step-label { font-size: 13px; font-weight: 600; min-width: 150px; }
+.dmr-step button { width: 40px; height: 40px; border-radius: 10px; border: 1px solid var(--border-color, #cfd6d2);
+	background: var(--control-bg, #f6f8f7); font-size: 20px; cursor: pointer; color: inherit; }
+.dmr-step button:disabled { opacity: .35; cursor: default; }
+.dmr-step b { min-width: 24px; text-align: center; font-size: 18px; }
+.dmr-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.dmr-chip { border: 1px solid var(--border-color, #cfd6d2); border-radius: 18px; padding: 6px 12px; cursor: pointer;
+	background: var(--control-bg, #fff); color: inherit; font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+.dmr-chip.on { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+
+.dmr-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 560px) { .dmr-grid { grid-template-columns: 1fr; } .dmr-step-label { min-width: 0; width: 100%; } }
+
+.dmr-money { border-radius: 12px; background: var(--subtle-fg, #f3f6f4); padding: 12px 14px; display: flex;
+	flex-direction: column; gap: 8px; font-variant-numeric: tabular-nums; }
+.dmr-row { display: flex; justify-content: space-between; gap: 8px; }
+.dmr-strong { font-size: 16px; border-top: 1px solid var(--border-color, #dde3df); padding-top: 8px; }
+.dmr-modes { display: flex; gap: 8px; flex-wrap: wrap; }
+.dmr-mode { flex: 1 1 140px; padding: 10px; border-radius: 10px; border: 1px solid var(--border-color, #cfd6d2);
+	background: var(--card-bg, #fff); color: inherit; font-weight: 600; cursor: pointer; }
+.dmr-mode.on { border-color: #0f6b5a; background: #e2f0ec; color: #0f6b5a; }
+.dmr-error { color: #a3262c; background: #fbe6e6; border-radius: 10px; padding: 10px 12px; }
+
+.dmr-btn { min-height: 42px; padding: 0 18px; border-radius: 10px; border: 1px solid var(--border-color, #cfd6d2);
+	background: var(--card-bg, #fff); color: inherit; font-weight: 600; cursor: pointer; }
+.dmr-modal .dmr-primary { background: #0f6b5a; border-color: #0f6b5a; color: #fff !important; }
+.dmr-primary:disabled { opacity: .45; cursor: not-allowed; }
+
+.dmr-done { text-align: center; display: flex; flex-direction: column; gap: 8px; align-items: center; }
+.dmr-tick { width: 56px; height: 56px; border-radius: 50%; background: #e3f4ea; color: #1d7a45; font-size: 30px;
+	display: flex; align-items: center; justify-content: center; }
+.dmr-big { font-size: 20px; font-weight: 700; }

@@ -307,7 +307,7 @@ def _set_client_serials(row: dict, serials: list[str] | None) -> None:
 
 
 def _make_unpaid(invoice: dict, data: dict) -> None:
-	"""No money taken now: zero every payment row and drop change/credit handling."""
+	"""No cash taken now: zero every payment row and drop change handling."""
 	for payment in invoice.get("payments") or []:
 		payment["amount"] = 0
 		payment["base_amount"] = 0
@@ -315,8 +315,8 @@ def _make_unpaid(invoice: dict, data: dict) -> None:
 		write_off_amount=0, base_write_off_amount=0)
 	if not invoice.get("due_date") or getdate(invoice["due_date"]) < getdate(invoice.get("posting_date") or nowdate()):
 		invoice["due_date"] = invoice.get("posting_date") or nowdate()
-	for key in ("credit_change", "redeemed_customer_credit", "customer_credit_dict"):
-		data.pop(key, None)
+	# Customer Credit the cashier applied (an exchange) still pays part of it.
+	data.pop("credit_change", None)
 
 
 def _address_fields(delivery: dict | None) -> dict:

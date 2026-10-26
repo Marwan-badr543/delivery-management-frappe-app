@@ -22,12 +22,14 @@ add_to_apps_screen = [
 app_include_css = [
 	"header_search.bundle.css",
 	"drivers_pages.bundle.css",
+	"pos_returns.bundle.css",
 ]
 app_include_js = [
 	"header_search.bundle.js",
 	"drivers_common.bundle.js",
 	"support_pages.bundle.js",
 	"pos_reload_qty.bundle.js",
+	"pos_returns.bundle.js",
 	"slot_move.bundle.js",
 ]
 
@@ -160,8 +162,10 @@ doc_events = {
 		],
 		"before_submit": [
 			"delivery_management.drivers.delivery_note.before_submit",
+			"delivery_management.returns.service.check_not_returned",
 			"delivery_management.orders.reservation.deliver",
 		],
+		"on_submit": "delivery_management.returns.service.settle_after_delivery",
 		"before_cancel": "delivery_management.orders.reservation.undeliver",
 		"on_update": "delivery_management.drivers.delivery_note.on_update",
 		"on_cancel": "delivery_management.drivers.delivery_note.on_cancel",

@@ -715,3 +715,50 @@ notes, and the **Rooms** table (AC Site Check Room: room, size, recommendations)
 On save the customer is found by phone (`customer_support.tickets.find_customer`); if none,
 a new Customer is created from the name and phone. The address is saved on the customer
 like the POS does. Tests: `tests/test_ac_site_check.py`.
+
+## 15. Return / Exchange from the POS (2026-10-26)
+
+The cashier does every return in the POS: header button **Return / Exchange**
+(`public/js/pos_returns.bundle.js`, `.css`). No accountant step.
+
+1. **Find the sale**: invoice or order number, customer name or mobile (`api.returns.search_sales`).
+2. **What comes back** (`api.returns.get_sale` → `returns.service.get_sale`): per line, *Brought
+   back* (goods with the customer; serials are tapped, only serials that went out on this sale
+   and are not back yet) and, on a delivery order, *Cancel (not delivered)*. Limits come from
+   the documents: sold − already credited, delivered, not delivered. Store that receives the
+   goods (default: the POS profile's), reason (required), notes.
+3. **Money**: return value, minus what the customer still owed on the sale (cleared first), =
+   what the customer gets: **Give back cash**, **Keep as credit (exchange)** or **Part cash**.
+4. **Done**: Customer Return `CR-YYYY-#####`; *Print credit note*; *New sale for this customer*
+   (sets the customer; the credit is offered by POS Awesome's own **Customer Credit** in Payments).
+
+`api.returns.submit_return` → `returns.service.make_return`, one transaction, retry-safe
+(`request_id`), the original invoice row locked:
+
+| Sale | Stock | Money |
+|---|---|---|
+| Branch invoice (update stock) | Credit Note **with stock** into the receiving store | |
+| Order, delivered goods | **Return Delivery Note** against the notes they left on (serials matched), receiving store, original cost | Credit Note **without stock** |
+| Order, goods not delivered | Removed from the draft Delivery Note (empty note deleted); its Stock Reservation released | Credit Note without stock |
+
+* **Cash** is a negative cash payment on the Credit Note in the cashier's POS Opening Shift: the
+  shift closing counts it once. No Payment Entry (POS Awesome's Customer Credit misreads the
+  negative allocation of a refund Payment Entry on a part refund).
+* **Debt first**: when the sale is not fully paid, Payment Reconciliation applies the note to it;
+  the refund can never be more than what was paid for the returned goods.
+* **Sales Order**: never edited or cancelled. `Sales Order Item.dm_returned_qty` remembers what was
+  given back or cancelled; a Delivery Note can never deliver it again
+  (`check_not_returned`, before submit). A delivery type (AC / Non AC) with nothing left to deliver
+  that was never delivered frees its booking; with nothing left at all the order is **Closed**,
+  now or after its last delivery (`settle_after_delivery`).
+* **Exchange into an unpaid Order** (Save/New) keeps the Customer Credit applied
+  (`orders.service._make_unpaid` no longer drops it).
+
+Tests: `tests/test_returns.py` (25 cases: branch, other store, partial, double return, serials,
+credit / part cash / refund limits, retry, shift closing, delivered / undelivered / mixed AC+TV /
+bundle / unpaid / part-paid orders, re-delivery refused, auto close, exchange into Invoice, paid
+Order, unpaid Order, credit bigger than the new sale). Every test also checks the stock ledger
+value equals the stock accounts in the GL.
+
+Not changed: POS Awesome's own **Sales Return** button (for an Order ERPNext refuses a stock
+Credit Note, so use Return / Exchange); TV (IPTV) accounts of a returned TV; technician payments.

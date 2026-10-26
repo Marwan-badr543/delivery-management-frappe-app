@@ -1,0 +1,101 @@
+{
+ "actions": [],
+ "creation": "2026-10-26 10:00:00",
+ "doctype": "DocType",
+ "editable_grid": 0,
+ "engine": "InnoDB",
+ "field_order": [
+  "item_code",
+  "item_name",
+  "returned_qty",
+  "cancelled_qty",
+  "rate",
+  "amount",
+  "serial_no",
+  "si_detail",
+  "so_detail"
+ ],
+ "fields": [
+  {
+   "fieldname": "item_code",
+   "fieldtype": "Link",
+   "label": "Item",
+   "options": "Item",
+   "in_list_view": 1,
+   "columns": 3,
+   "read_only": 1
+  },
+  {
+   "fieldname": "item_name",
+   "fieldtype": "Data",
+   "label": "Item Name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "returned_qty",
+   "fieldtype": "Float",
+   "label": "Returned (in hand)",
+   "in_list_view": 1,
+   "columns": 2,
+   "read_only": 1,
+   "description": "Goods the customer brought back."
+  },
+  {
+   "fieldname": "cancelled_qty",
+   "fieldtype": "Float",
+   "label": "Cancelled (not delivered)",
+   "in_list_view": 1,
+   "columns": 2,
+   "read_only": 1,
+   "description": "Ordered goods that had not left the store yet."
+  },
+  {
+   "fieldname": "rate",
+   "fieldtype": "Currency",
+   "label": "Rate",
+   "options": "currency",
+   "in_list_view": 1,
+   "columns": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "amount",
+   "fieldtype": "Currency",
+   "label": "Amount",
+   "options": "currency",
+   "in_list_view": 1,
+   "columns": 2,
+   "read_only": 1
+  },
+  {
+   "fieldname": "serial_no",
+   "fieldtype": "Small Text",
+   "label": "Serial Nos",
+   "read_only": 1
+  },
+  {
+   "fieldname": "si_detail",
+   "fieldtype": "Data",
+   "label": "Sales Invoice Item",
+   "hidden": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "so_detail",
+   "fieldtype": "Data",
+   "label": "Sales Order Item",
+   "hidden": 1,
+   "read_only": 1
+  }
+ ],
+ "istable": 1,
+ "modified": "2026-10-26 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Delivery Management",
+ "name": "Customer Return Item",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}
