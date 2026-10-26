@@ -692,13 +692,18 @@ Port of the old system's support part (old pages `/support`, `/support/technicia
   AC units only) and `Non AC` (other goods, delivery charge, services; delivery date and
   time only). Admin slot moves (`orders.schedule.stamp_schedule`) update each note with
   its own fields only.
-* Delivery Note workflow `delivery note on the way` (fixtures: Workflow, Workflow State,
-  Workflow Action Master): Draft → **On the way** (submitted by the stock keeper in the
-  desk, after scanning the serials) → **Delivered**; Cancel from On the way / Delivered.
+* **Delivery Status** (`dm_delivery_status`, 2026-10-26; replaces the workflow
+  `delivery note on the way`, which overrode ERPNext's status and is now switched off by
+  the patch `delivery_status_replaces_workflow`): submitting a non-return note sets it
+  **On the way**; the driver (Delivery Schedule) or the office (**Mark Delivered** button,
+  System Manager / Delivery Manager, `api.drivers.mark_delivered_by_office`) sets
+  **Delivered**. While On the way, the list and form show "On the way" (orange,
+  `public/js/delivery_note_list.js`); otherwise ERPNext's own status (To Bill, Completed,
+  Return…).
 * Delivery Schedule page lists only On the way / Delivered notes (status filter). The
   driver's **Mark as delivered** (`api.drivers.mark_delivered`) needs a photo or video and
   the customer's signature attached first. That check is on the page only: the
-  Delivered action in the Delivery Note form has no such guard. Installation Statistics
+  office's Mark Delivered button has no such guard. Installation Statistics
   do not count notes still On the way.
 
 ## 14. AC Site Check (2026-10-13)

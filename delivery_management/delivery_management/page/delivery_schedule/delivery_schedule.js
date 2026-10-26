@@ -283,7 +283,7 @@ class DeliverySchedulePage {
 					<button class="btn btn-primary btn-sm" data-save-sign>${frappe.utils.icon("upload", "xs")} ${__("Upload signature")}</button>
 				</div>
 			</div>
-			${o.workflow_state === "On the way" ? `<div class="dd-box" style="margin-top:12px"><h5>${ac ? __("Installed") : __("Delivered")}</h5>
+			${o.dm_delivery_status === "On the way" ? `<div class="dd-box" style="margin-top:12px"><h5>${ac ? __("Installed") : __("Delivered")}</h5>
 				<div class="dd-kv">
 					<span>${__("Photo / video")}</span><b class="${hasMedia ? "dd-ok" : "dd-no"}">${hasMedia ? __("Uploaded") : __("Missing")}</b>
 					<span>${__("Customer signature")}</span><b class="${signed ? "dd-ok" : "dd-no"}">${signed ? __("Uploaded") : __("Missing")}</b>

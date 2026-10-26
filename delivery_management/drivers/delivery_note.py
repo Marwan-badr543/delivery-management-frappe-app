@@ -18,6 +18,13 @@ SCHEDULE_FIELDS = (
 )
 
 
+# Delivery Status (dm_delivery_status): submitting a note sends it On the way, the
+# driver confirms it Delivered. Shown as the note's status while On the way
+# (public/js/delivery_note_list.js); ERPNext's own statuses otherwise.
+ON_THE_WAY = "On the way"
+DELIVERED = "Delivered"
+
+
 # Fields that belong to the other team. A mixed order is split into an AC and a Non AC
 # Delivery Note (``orders.delivery_note``); each keeps only its own schedule.
 OTHER_TYPE_FIELDS = {
@@ -82,6 +89,7 @@ def before_submit(doc, method=None):
 		doc.dm_delivery_type = asg.order_type_of(doc.items)
 	if not doc.get("dm_delivery_type"):
 		frappe.throw(_("Choose the Order Type (AC or Non AC) before submitting."), title=_("Order Type required"))
+	doc.dm_delivery_status = None if doc.get("is_return") else ON_THE_WAY
 
 
 def on_update(doc, method=None):

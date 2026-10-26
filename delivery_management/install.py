@@ -47,7 +47,7 @@ def _delivery_note_fields() -> list[dict]:
 	fields = [f for f in _delivery_fields("ignore_pricing_rule", editable=False) if f["fieldname"] != "dm_order_type"]
 	for f in fields:
 		if f["fieldname"] == "dm_delivery_area":
-			f["insert_after"] = "dm_driver"
+			f["insert_after"] = "dm_delivery_status"
 		if f["fieldname"] == "dm_delivery_date":
 			f["in_list_view"] = 1
 	return fields[:1] + [
@@ -60,6 +60,11 @@ def _delivery_note_fields() -> list[dict]:
 			"insert_after": "dm_delivery_type", "read_only": 1, "no_copy": 1, "in_list_view": 1,
 			"in_standard_filter": 1, "search_index": 1,
 			"description": "Assigned on the <a href='/desk/driver-assignment'>Driver Assignment</a> page."},
+		{"fieldname": "dm_delivery_status", "fieldtype": "Select", "label": "Delivery Status",
+			"options": "\nOn the way\nDelivered", "insert_after": "dm_driver", "read_only": 1, "allow_on_submit": 1,
+			"no_copy": 1, "in_standard_filter": 1, "search_index": 1,
+			"description": "On the way when the note is submitted (the goods left the store), Delivered when the "
+				"driver confirms on the Delivery Schedule page."},
 	] + fields[1:]
 
 

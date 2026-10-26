@@ -4,7 +4,6 @@ installation statistics, POS order rules (AC/non-AC guard, delivery charge), bun
 import datetime
 
 import frappe
-from frappe.model.workflow import apply_workflow
 from frappe.utils import add_days, getdate, nowdate
 
 from delivery_management.api import drivers as api
@@ -70,9 +69,9 @@ class DriversTestCase(DeliveryTestCase):
 		return doc
 
 	def send(self, dn):
-		"""The stock keeper's workflow step: submit the note as On the way."""
+		"""The stock keeper submits the note: it is On the way."""
 		dn.reload()
-		apply_workflow(dn, "On the way")
+		dn.submit()
 
 
 class TestOrderType(DriversTestCase):
@@ -239,7 +238,7 @@ class TestDriverAccess(DriversTestCase):
 			asg.assign(dn.name, self.tv1)
 		self.send(sent)
 		rows = api.get_schedule("Non AC", str(DAY), str(DAY))["rows"]
-		self.assertEqual([(r.name, r.workflow_state) for r in rows], [(sent.name, "On the way")])
+		self.assertEqual([(r.name, r.dm_delivery_status) for r in rows], [(sent.name, "On the way")])
 		self.assertEqual(api.get_schedule("Non AC", str(DAY), str(DAY), status="delivered")["rows"], [])
 
 	def test_driver_delivers_only_with_a_photo_or_video_and_a_signature(self):
@@ -258,7 +257,7 @@ class TestDriverAccess(DriversTestCase):
 		api.upload_attachment(dn.name, "door.mp4", png)
 		api.mark_delivered(dn.name)
 		self.assertEqual(frappe.session.user, self.tv1)
-		self.assertEqual(frappe.db.get_value("Delivery Note", dn.name, "workflow_state"), "Delivered")
+		self.assertEqual(frappe.db.get_value("Delivery Note", dn.name, "dm_delivery_status"), "Delivered")
 		self.assertEqual([r.name for r in api.get_schedule("Non AC", str(DAY), str(DAY), status="delivered")["rows"]],
 			[dn.name])
 
@@ -266,8 +265,12 @@ class TestDriverAccess(DriversTestCase):
 		dn = self.dn([(self.tv, 1)])
 		asg.assign(dn.name, self.tv1)
 		self.send(dn)
-		apply_workflow(frappe.get_doc("Delivery Note", dn.name), "Deliver")
-		self.assertEqual(frappe.db.get_value("Delivery Note", dn.name, "workflow_state"), "Delivered")
+		self.assertEqual(frappe.db.get_value("Delivery Note", dn.name, "status"), "To Bill")
+		frappe.set_user(self.tv1)
+		self.assertRaises(frappe.PermissionError, api.mark_delivered_by_office, dn.name)
+		frappe.set_user("Administrator")
+		api.mark_delivered_by_office(dn.name)
+		self.assertEqual(frappe.db.get_value("Delivery Note", dn.name, "dm_delivery_status"), "Delivered")
 
 
 class TestInstallationStats(DriversTestCase):
@@ -283,7 +286,7 @@ class TestInstallationStats(DriversTestCase):
 		for dn in (ac_dn, tv_dn, on_the_way):
 			self.send(dn)
 		for dn in (ac_dn, tv_dn):
-			apply_workflow(frappe.get_doc("Delivery Note", dn.name), "Deliver")
+			api.mark_delivered_by_office(dn.name)
 		rows = {r["technician"]: r for r in stats.installation_stats(DAY, DAY)}
 		self.assertEqual((rows[self.ac1]["ac_units"], rows[self.ac1]["non_ac_units"]), (2, 0))
 		# The draft, the note still on the way and the non-stock delivery charge do not count.

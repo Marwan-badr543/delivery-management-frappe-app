@@ -23,12 +23,12 @@ def stamp_schedule(reference_doctype: str, reference_name: str) -> None:
 		frappe.db.set_value("Sales Invoice", invoice, values)
 	# Delivery Notes of the order not delivered yet show the same schedule; keep their driver row in step.
 	from delivery_management.drivers.assignment import sync_assignment
-	from delivery_management.drivers.delivery_note import OTHER_TYPE_FIELDS
+	from delivery_management.drivers.delivery_note import DELIVERED, OTHER_TYPE_FIELDS
 
 	notes = frappe.get_all("Delivery Note Item", filters={"against_sales_order": reference_name, "docstatus": ["<", 2]},
 		pluck="parent", distinct=True)
 	for note in notes:
-		if frappe.db.get_value("Delivery Note", note, "workflow_state") == "Delivered":
+		if frappe.db.get_value("Delivery Note", note, "dm_delivery_status") == DELIVERED:
 			continue
 		# The AC note of a split order keeps no delivery slot, the Non AC note no AC day.
 		skip = OTHER_TYPE_FIELDS.get(frappe.db.get_value("Delivery Note", note, "dm_delivery_type"), ())

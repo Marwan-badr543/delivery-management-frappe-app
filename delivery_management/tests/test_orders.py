@@ -226,7 +226,7 @@ class TestOrderFlow(OrdersTestCase):
 		self.assertEqual(to_time_str(frappe.db.get_value("Delivery Note", notes["Non AC"], "dm_delivery_time"))[:5],
 			new_time)
 		# A delivered note keeps the schedule it was delivered on.
-		frappe.db.set_value("Delivery Note", notes["Non AC"], "workflow_state", "Delivered")
+		frappe.db.set_value("Delivery Note", notes["Non AC"], "dm_delivery_status", "Delivered")
 		moved = admin.get_delivery_note_booking(notes["Non AC"])
 		admin.move_reservation(moved["reservation"], area=self.area, date=self.slot_date, time="10:00")
 		self.assertEqual(to_time_str(frappe.db.get_value("Delivery Note", notes["Non AC"], "dm_delivery_time"))[:5],

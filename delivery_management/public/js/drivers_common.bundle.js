@@ -40,7 +40,7 @@
 
 	function statusPill(row) {
 		const ac = row.order_type === "AC";
-		if (row.workflow_state === "On the way")
+		if (row.dm_delivery_status === "On the way")
 			return `<span class="dd-pill dd-pill-blue">${frappe.utils.icon("truck", "xs")} ${__("On the way")}</span>`;
 		if (row.docstatus === 1)
 			return `<span class="dd-pill dd-pill-green">${frappe.utils.icon("check", "xs")} ${ac ? __("Installed") : __("Delivered")}</span>`;

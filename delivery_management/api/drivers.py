@@ -18,15 +18,11 @@ from frappe import _
 from frappe.utils import add_months, cint, flt, getdate, nowdate, strip_html
 
 from delivery_management.drivers import assignment as asg
-from delivery_management.drivers.delivery_note import sales_order_of
+from delivery_management.drivers.delivery_note import DELIVERED, ON_THE_WAY, sales_order_of
 from delivery_management.drivers import stats
 
 DN = "Delivery Note"
 MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024
-# Delivery Note workflow (fixtures/workflow.json): the stock keeper moves a note to
-# On the way, the driver to Delivered.
-ON_THE_WAY = "On the way"
-DELIVERED = "Delivered"
 SIGNATURE_PREFIX = "signature_"
 MEDIA_EXTENSIONS = ("jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "mp4", "mov", "webm", "3gp", "mkv")
 
@@ -87,7 +83,7 @@ def _date_column(order_type: str) -> str:
 # Shared row building
 # ---------------------------------------------------------------------------
 
-_ROW_FIELDS = """dn.name, dn.customer, dn.customer_name, dn.contact_mobile, dn.docstatus, dn.status, dn.workflow_state,
+_ROW_FIELDS = """dn.name, dn.customer, dn.customer_name, dn.contact_mobile, dn.docstatus, dn.status, dn.dm_delivery_status,
 	dn.dm_delivery_type as order_type, dn.dm_driver as driver, dn.dm_delivery_area as area,
 	dn.dm_delivery_date as delivery_date, dn.dm_delivery_time as delivery_time,
 	dn.dm_ac_installation_date as ac_date, dn.dm_ac_units as ac_units, dn.dm_block_no as block_no,
@@ -280,7 +276,7 @@ def get_schedule(order_type, start_date=None, end_date=None, status=None, search
 	start = getdate(start_date or nowdate())
 	end = getdate(end_date or add_months(start, 1))
 	conditions = ["dn.docstatus = 1", "dn.is_return = 0", "dn.dm_delivery_type = %(type)s",
-		"dn.workflow_state in %(states)s", "ifnull(dn.dm_driver, '') != ''",
+		"dn.dm_delivery_status in %(states)s", "ifnull(dn.dm_driver, '') != ''",
 		f"{date_col} between %(start)s and %(end)s"]
 	values = {"type": order_type, "start": start, "end": end, "states": (ON_THE_WAY, DELIVERED)}
 	if not asg.can_manage():
@@ -290,10 +286,10 @@ def get_schedule(order_type, start_date=None, end_date=None, status=None, search
 		conditions.append("dn.dm_driver = %(driver)s")
 		values["driver"] = driver
 	if status == "on_the_way":
-		conditions.append("dn.workflow_state = %(state)s")
+		conditions.append("dn.dm_delivery_status = %(state)s")
 		values["state"] = ON_THE_WAY
 	elif status == "delivered":
-		conditions.append("dn.workflow_state = %(state)s")
+		conditions.append("dn.dm_delivery_status = %(state)s")
 		values["state"] = DELIVERED
 	if area:
 		conditions.append("dn.dm_delivery_area = %(area)s")
@@ -409,14 +405,10 @@ def upload_attachment(delivery_note, filename, filedata):
 
 @frappe.whitelist(methods=["POST"])
 def mark_delivered(delivery_note):
-	"""Move an On the way Delivery Note to Delivered.
-
-	Only this page asks for a photo / video and the customer's signature first; the
-	Delivery Note form can still apply the workflow action without them.
-	"""
+	"""The driver confirms an On the way Delivery Note Delivered, after uploading a photo
+	or video and the customer's signature (the office uses ``mark_delivered_by_office``)."""
 	_require_order_access(delivery_note)
-	if frappe.db.get_value(DN, delivery_note, "workflow_state") != ON_THE_WAY:
-		frappe.throw(_("Only an order that is On the way can be marked as delivered."))
+	_require_on_the_way(delivery_note)
 	files = frappe.get_all("File", filters={"attached_to_doctype": DN, "attached_to_name": delivery_note},
 		pluck="file_name")
 	signed = any(f.startswith(SIGNATURE_PREFIX) for f in files)
@@ -427,12 +419,27 @@ def mark_delivered(delivery_note):
 	if missing:
 		frappe.throw(_("Upload {0} first.").format(_(" and ").join(missing)), title=_("Not delivered yet"))
 
-	from frappe.model.workflow import apply_workflow
+	return _set_delivered(delivery_note)
 
-	# The driver has no desk write right on submitted Delivery Notes; his access was checked above.
-	with _with_full_rights():
-		apply_workflow(frappe.get_doc(DN, delivery_note), "Deliver")
-	return {"workflow_state": DELIVERED}
+
+@frappe.whitelist(methods=["POST"])
+def mark_delivered_by_office(delivery_note):
+	"""Delivered from the Delivery Note form (System Manager / Delivery Manager), without the
+	driver's photo and signature."""
+	if not asg.can_manage():
+		frappe.throw(_("Only a Delivery Manager can mark an order delivered from the office."), frappe.PermissionError)
+	_require_on_the_way(delivery_note)
+	return _set_delivered(delivery_note)
+
+
+def _require_on_the_way(delivery_note):
+	if frappe.db.get_value(DN, delivery_note, "dm_delivery_status") != ON_THE_WAY:
+		frappe.throw(_("Only an order that is On the way can be marked as delivered."))
+
+
+def _set_delivered(delivery_note):
+	frappe.db.set_value(DN, delivery_note, "dm_delivery_status", DELIVERED)
+	return {"dm_delivery_status": DELIVERED}
 
 
 # ---------------------------------------------------------------------------
