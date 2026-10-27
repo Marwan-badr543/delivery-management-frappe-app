@@ -9,3 +9,4 @@ delivery_management.patches.pos_profiles_start_as_order
 delivery_management.patches.drop_dm_serial_nos
 delivery_management.patches.reserve_qty_not_serials
 delivery_management.patches.delivery_status_replaces_workflow
+delivery_management.patches.returns_not_reserved

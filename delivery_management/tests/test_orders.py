@@ -382,20 +382,36 @@ class TestWorkHourGuard(OrdersTestCase):
 
 
 class TestUnpaidOrder(OrdersTestCase):
-	"""POS "Save/New" on an Order: everything submitted, nothing paid."""
+	"""POS "Save/New" on an Order: the order is placed, the invoice waits as a draft."""
 
-	def test_save_new_submits_order_and_unpaid_invoice(self):
+	def test_save_new_submits_order_and_keeps_a_draft_invoice(self):
 		invoice = self.w.draft_invoice([(self.w.ac, 1, 300), (self.w.tv, 1, 100)])
 		result = service.submit_pos_order(invoice, dict(DATA), self.delivery, unpaid=True)
 		so = frappe.get_doc("Sales Order", result["sales_order"])
 		si = frappe.get_doc("Sales Invoice", result["name"])
 
-		self.assertEqual(so.docstatus, 1)
-		self.assertEqual(si.docstatus, 1)
-		self.assertEqual(si.paid_amount, 0)
-		self.assertEqual(si.outstanding_amount, si.rounded_total or si.grand_total)
-		self.assertIn(si.status, ("Unpaid", "Overdue"))
+		self.assertEqual((so.docstatus, result["docstatus"]), (1, 0))
+		self.assertEqual((si.docstatus, si.is_pos, si.update_stock, si.posa_pos_opening_shift, si.payments),
+			(0, 0, 0, None, []))
+		self.assertEqual({r.sales_order for r in si.items}, {so.name})
 		self.assertEqual({r.slot_type for r in get_reservations("Sales Order", so.name)}, {"AC", "Delivery"})
+		# Nothing is posted to the customer's account until they pay.
+		self.assertFalse(frappe.db.exists("GL Entry", {"voucher_no": si.name}))
+
+	def test_retried_save_new_makes_no_second_order(self):
+		invoice = self.w.draft_invoice([(self.w.tv, 1, 100)])
+		first = service.submit_pos_order(invoice, dict(DATA), self.delivery, unpaid=True)
+		again = service.already_submitted(dict(invoice, name=first["name"]))
+		self.assertEqual((again["sales_order"], again["docstatus"]), (first["sales_order"], 0))
+
+	def test_closing_the_shift_keeps_the_draft(self):
+		from posawesome.posawesome.doctype.pos_closing_shift.closing_processing.invoices import delete_draft_invoices
+
+		frappe.db.set_value("POS Profile", self.w.pos_profile, "posa_allow_delete", 1)
+		result = service.submit_pos_order(self.w.draft_invoice([(self.w.tv, 1, 100)]), dict(DATA), self.delivery,
+			unpaid=True)
+		delete_draft_invoices(self.w.opening_shift, self.w.pos_profile)
+		self.assertTrue(frappe.db.exists("Sales Invoice", result["name"]))
 
 
 class TestQuietOrderMessages(OrdersTestCase):
@@ -779,6 +795,7 @@ class TestDriverPayment(OrdersTestCase):
 		self.assertRaises(frappe.ValidationError, api.record_payment, dn.name, 100.5, mop)
 		out = api.record_payment(dn.name, 40, mop)
 		self.assertEqual((out["payment"]["paid"], out["payment"]["outstanding"]), (40, 60))
+		self.assertEqual(frappe.db.get_value("Sales Invoice", result["name"], "docstatus"), 1)  # submitted first
 		self.assertEqual(frappe.db.get_value("Payment Entry", out["payment_entry"], ["docstatus", "owner"]), (1, driver))
 		self.assertEqual(frappe.session.user, driver)
 		frappe.set_user("Administrator")

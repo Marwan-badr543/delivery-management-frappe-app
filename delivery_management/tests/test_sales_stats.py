@@ -8,7 +8,7 @@ import frappe
 from frappe.utils import add_days, flt, get_datetime, getdate, nowdate
 
 from delivery_management.api import sales_stats as api
-from delivery_management.orders import service
+from delivery_management.orders import payments, service
 from delivery_management.stats import sales
 from delivery_management.tests.test_orders import DATA, OrdersTestCase
 
@@ -173,10 +173,10 @@ class TestSalesStatistics(SalesStatsCase):
 		unpaid = self.order([(self.w.tv, 1, 100)], owner=SECOND, unpaid=True)
 		self.assertIsNone(self.row(self.stats(), SECOND))
 
-		frappe.db.set_value("Sales Invoice", unpaid, "outstanding_amount", 40)  # partly paid
+		payments.collect(unpaid, 60, "Cash", "test", "partly paid")
 		self.assertIsNone(self.row(self.stats(), SECOND))
 
-		frappe.db.set_value("Sales Invoice", unpaid, "outstanding_amount", 0)  # fully paid
+		payments.collect(unpaid, 40, "Cash", "test", "fully paid")
 		second = self.row(self.stats(), SECOND)
 		self.assertEqual((second["invoices"], second["total"]), (1, 100.0))
 

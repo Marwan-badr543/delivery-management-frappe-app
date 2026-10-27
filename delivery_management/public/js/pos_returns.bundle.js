@@ -6,6 +6,11 @@
 //    (exchange), or part cash.
 // 3. Done: the documents are made (api.returns.submit_return, see returns/service.py).
 //    "New sale for this customer" starts the exchange; the credit is offered in Payments.
+// An unpaid delivery order (draft invoice) has nothing to give back: its bill goes down.
+//
+// "Customer money" tab: find the customer, then take a payment on what they owe (e.g. an
+// unpaid order) or pay out their credit in cash, with the reason. Both go in the
+// cashier's shift (orders/payments.py).
 (() => {
 	const API = "delivery_management.api.returns.";
 	const BTN_ID = "dm-return-btn";
@@ -24,7 +29,7 @@
 	// ---------------------------------------------------------------- state
 
 	function money(v) {
-		return format_currency(v || 0, state.sale?.currency);
+		return format_currency(v || 0, state.sale?.currency || state.cm?.currency);
 	}
 
 	function picked(line) {
@@ -40,6 +45,7 @@
 			value += line.unit_value * (returned + cancelled);
 		}
 		value = round(value);
+		if (state.sale.is_draft) return { value, clears: value, most: 0, refund: 0, credit: 0 };
 		const clears = round(Math.min(Math.max(state.sale.outstanding_amount, 0), value));
 		const most = round(value - clears);
 		let refund = most;
@@ -65,9 +71,18 @@
 			${footer ? `<div class="dmr-foot">${footer}</div>` : ""}</div>`;
 	}
 
+	function tabs() {
+		return `<div class="dmr-tabs" role="tablist">${[["sale", __("Return / Exchange")], ["money", __("Customer money")]]
+			.map(([k, label]) => `<button type="button" role="tab" aria-selected="${state.tab === k}"
+				class="dmr-tab ${state.tab === k ? "on" : ""}" data-act="tab" data-tab="${k}">${label}</button>`).join("")}</div>`;
+	}
+
 	function findView() {
+		if (state.tab === "money") return customersView();
 		const rows = (state.results || []).map((r) => {
-			const owed = r.outstanding_amount > 0
+			const owed = !r.docstatus
+				? `<span class="dmr-pill dmr-red">${__("Not paid yet")} ${format_currency(r.outstanding_amount, r.currency)}</span>`
+				: r.outstanding_amount > 0
 				? `<span class="dmr-pill dmr-red">${__("Owes")} ${format_currency(r.outstanding_amount, r.currency)}</span>`
 				: `<span class="dmr-pill dmr-green">${__("Paid")}</span>`;
 			const kind = r.sales_order
@@ -82,7 +97,7 @@
 		}).join("");
 		const empty = state.results && !state.results.length
 			? `<p class="dmr-muted">${__("No sale found. Try the invoice number, order number, customer name or mobile.")}</p>` : "";
-		return shell(__("Return / Exchange"), `
+		return shell(__("Return / Exchange"), `${tabs()}
 			<label class="dmr-label" for="dmr-q">${__("Find the sale")}</label>
 			<input id="dmr-q" class="dmr-input" type="search" autocomplete="off" value="${esc(state.query || "")}"
 				placeholder="${__("Invoice / order number, customer name or mobile")}">
@@ -141,7 +156,8 @@
 			<textarea id="dmr-notes" class="dmr-input" rows="2">${esc(state.notes || "")}</textarea>
 			<div class="dmr-money">
 				<div class="dmr-row"><span>${__("Return value")}</span><b>${money(t.value)}</b></div>
-				${t.clears > 0 ? `<div class="dmr-row"><span>${__("Clears what the customer still owes")}</span><b>− ${money(t.clears)}</b></div>` : ""}
+				${s.is_draft ? `<p class="dmr-muted">${__("Not paid yet: nothing is given back, the order's bill goes down by {0}.", [money(t.value)])}</p>` : ""}
+				${t.clears > 0 && !s.is_draft ? `<div class="dmr-row"><span>${__("Clears what the customer still owes")}</span><b>− ${money(t.clears)}</b></div>` : ""}
 				<div class="dmr-row dmr-strong"><span>${__("Customer gets")}</span><b>${money(t.most)}</b></div>
 				${t.most > 0 ? `<div class="dmr-modes">${modes}</div>` : ""}
 				${t.most > 0 && state.payMode === "part" ? `<label class="dmr-label" for="dmr-part">${__("Cash now (the rest stays as credit)")}</label>
@@ -163,13 +179,80 @@
 			<h4>${__("Return saved")} · ${esc(r.name)}</h4>
 			${r.refunded_amount > 0 ? `<p class="dmr-big">${__("Give the customer {0} from the drawer", [format_currency(r.refunded_amount, cur)])}</p>` : ""}
 			${r.credit_amount > 0 ? `<p>${__("{0} kept as credit: in Payments turn on <b>Customer Credit</b> on the next sale.", [format_currency(r.credit_amount, cur)])}</p>` : ""}
-			${r.cleared_amount > 0 ? `<p class="dmr-muted">${__("{0} cleared what the customer owed.", [format_currency(r.cleared_amount, cur)])}</p>` : ""}
-			<p class="dmr-muted">${__("Credit Note")} ${esc(r.credit_note)}${r.return_delivery_notes.length ? " · " + __("Return Delivery Note") + " " + r.return_delivery_notes.map(esc).join(", ") : ""}</p>
+			${r.cleared_amount > 0 ? `<p class="dmr-muted">${__("{0} off what the customer owes.", [format_currency(r.cleared_amount, cur)])}</p>` : ""}
+			${r.tv_accounts.length ? `<p class="dmr-muted">${__("TV accounts deleted: {0}", [r.tv_accounts.map(esc).join(", ")])}</p>` : ""}
+			<p class="dmr-muted">${[r.credit_note && __("Credit Note") + " " + esc(r.credit_note),
+				r.return_delivery_notes.length && __("Return Delivery Note") + " " + r.return_delivery_notes.map(esc).join(", ")]
+				.filter(Boolean).join(" · ")}</p>
 		</div>`;
-		const footer = `<button type="button" class="dmr-btn" data-act="print">${__("Print credit note")}</button>
+		const footer = `${r.credit_note ? `<button type="button" class="dmr-btn" data-act="print">${__("Print credit note")}</button>` : ""}
 			<button type="button" class="dmr-btn" data-act="close">${__("Close")}</button>
 			<button type="button" class="dmr-btn dmr-primary" data-act="newsale">${__("New sale for this customer")}</button>`;
 		return shell(__("Return / Exchange"), body, footer);
+	}
+
+	function customersView() {
+		const rows = (state.customers || []).map((c) => `<button type="button" class="dmr-sale" data-act="customer" data-name="${esc(c.name)}">
+			<div class="dmr-sale-top"><b>${esc(c.customer_name || c.name)}</b><span class="dmr-muted">${esc(c.mobile_no || "")}</span></div>
+			<div class="dmr-sale-tags">${c.credit > 0 ? `<span class="dmr-pill dmr-green">${__("Credit")} ${money(c.credit)}</span>` : ""}
+				${c.due > 0 ? `<span class="dmr-pill dmr-red">${__("Owes")} ${money(c.due)}</span>` : ""}</div></button>`).join("");
+		const empty = state.customers && !state.customers.length ? `<p class="dmr-muted">${__("No customer found.")}</p>` : "";
+		return shell(__("Return / Exchange"), `${tabs()}
+			<label class="dmr-label" for="dmr-cq">${__("Find the customer")}</label>
+			<input id="dmr-cq" class="dmr-input" type="search" autocomplete="off" value="${esc(state.cquery || "")}"
+				placeholder="${__("Customer name or mobile")}">
+			<div class="dmr-list">${rows}${empty}</div>`);
+	}
+
+	function modeSelect(id, value) {
+		return `<select id="${id}" class="dmr-input">${state.cm.modes.map((m) =>
+			`<option ${m === value ? "selected" : ""}>${esc(m)}</option>`).join("")}</select>`;
+	}
+
+	function moneyView() {
+		const c = state.cm;
+		const due = c.due.map((d) => `<label class="dmr-due ${state.dueInvoice === d.name ? "on" : ""}">
+			<input type="radio" name="dmr-due" value="${esc(d.name)}" ${state.dueInvoice === d.name ? "checked" : ""}>
+			<span><b>${esc(d.sales_order || d.name)}</b> · ${esc(frappe.datetime.str_to_user(d.posting_date))}
+				${d.docstatus ? "" : `<span class="dmr-pill dmr-red">${__("Not paid yet")}</span>`}</span>
+			<b>${money(d.outstanding_amount)}</b></label>`).join("");
+		const body = `<div class="dmr-sale-head"><div><b>${esc(c.customer_name)}</b></div>
+				<button type="button" class="dmr-link" data-act="back">${__("Change customer")}</button></div>
+			<section class="dmr-money">
+				<div class="dmr-row dmr-strong"><span>${__("Owes")}</span><b>${money(c.due.reduce((a, d) => a + d.outstanding_amount, 0))}</b></div>
+				${c.due.length ? `<div class="dmr-dues">${due}</div>
+					<div class="dmr-grid"><div><label class="dmr-label" for="dmr-pay">${__("Amount received")}</label>
+						<input id="dmr-pay" class="dmr-input" type="number" min="0" step="0.001" value="${esc(state.payAmount ?? "")}"></div>
+					<div><label class="dmr-label" for="dmr-paymode">${__("Paid by")}</label>${modeSelect("dmr-paymode", state.payWith)}</div></div>
+					<button type="button" class="dmr-btn dmr-primary dmr-wide" data-act="collect" ${+state.payAmount > 0 ? "" : "disabled"}>${__("Take payment")}</button>`
+				: `<p class="dmr-muted">${__("Nothing to pay.")}</p>`}
+			</section>
+			<section class="dmr-money">
+				<div class="dmr-row dmr-strong"><span>${__("Credit (from returns)")}</span><b>${money(c.credit)}</b></div>
+				${c.credit > 0 ? `<div class="dmr-grid"><div><label class="dmr-label" for="dmr-out">${__("Pay out from the drawer")}</label>
+						<input id="dmr-out" class="dmr-input" type="number" min="0" step="0.001" max="${c.credit}" value="${esc(state.outAmount ?? "")}"></div>
+					<div><label class="dmr-label" for="dmr-outmode">${__("Paid by")}</label>${modeSelect("dmr-outmode", state.outWith)}</div></div>
+					<label class="dmr-label" for="dmr-why">${__("Reason")}</label>
+					<input id="dmr-why" class="dmr-input" type="text" value="${esc(state.outReason || "")}"
+						placeholder="${__("e.g. returned yesterday, came back for the cash")}">
+					<button type="button" class="dmr-btn dmr-primary dmr-wide" data-act="payout"
+						${+state.outAmount > 0 && +state.outAmount <= c.credit && (state.outReason || "").trim() ? "" : "disabled"}>${__("Pay out credit")}</button>`
+				: `<p class="dmr-muted">${__("No credit to pay out.")}</p>`}
+			</section>
+			${state.error ? `<div class="dmr-error">${state.error}</div>` : ""}`;
+		return shell(__("Customer money"), body);
+	}
+
+	function moneyDoneView() {
+		const r = state.result;
+		const text = r.payment_type === "Pay" ? __("Give the customer {0} from the drawer", [money(r.amount)])
+			: __("Put {0} into the drawer", [money(r.amount)]);
+		const body = `<div class="dmr-done"><div class="dmr-tick" aria-hidden="true">✓</div>
+			<h4>${__("Saved")} · ${esc(r.payment_entry)}</h4>
+			<p class="dmr-big">${r.mode_of_payment === state.cm.modes[0] ? text : `${text} (${esc(r.mode_of_payment)})`}</p></div>`;
+		const footer = `<button type="button" class="dmr-btn" data-act="close">${__("Close")}</button>
+			<button type="button" class="dmr-btn dmr-primary" data-act="customer" data-name="${esc(r.party)}">${__("Back to the customer")}</button>`;
+		return shell(__("Customer money"), body, footer);
 	}
 
 	function render() {
@@ -183,19 +266,20 @@
 			document.body.appendChild(root);
 		}
 		const focus = document.activeElement?.id;
-		root.innerHTML = { find: findView, return: returnView, done: doneView }[state.step]();
+		root.innerHTML = { find: findView, return: returnView, done: doneView, money: moneyView,
+			moneyDone: moneyDoneView }[state.step]();
 		const el = focus && root.querySelector("#" + focus);
 		if (el) {
 			el.focus();
 			if (el.setSelectionRange && el.type !== "number") el.setSelectionRange(el.value.length, el.value.length);
-		} else if (state.step === "find") root.querySelector("#dmr-q")?.focus();
+		} else if (state.step === "find") root.querySelector(state.tab === "money" ? "#dmr-cq" : "#dmr-q")?.focus();
 	}
 
 	// ---------------------------------------------------------------- actions
 
 	function open() {
 		if (!profile()) return frappe.show_alert({ message: __("Open the POS first."), indicator: "orange" });
-		state = { step: "find", query: "", results: null };
+		state = { step: "find", tab: "sale", query: "", results: null, cquery: "", customers: null };
 		render();
 		search();
 	}
@@ -209,13 +293,32 @@
 	function search() {
 		clearTimeout(searchTimer);
 		searchTimer = setTimeout(async () => {
-			const query = state.query;
-			const results = await call("search_sales", { pos_profile: profile(), query });
-			if (state?.step === "find" && state.query === query) {
-				state.results = results;
+			const money = state.tab === "money";
+			const query = money ? state.cquery : state.query;
+			const results = await call(money ? "search_customers" : "search_sales", { pos_profile: profile(), query });
+			if (state?.step === "find" && (money ? state.cquery : state.query) === query) {
+				state[money ? "customers" : "results"] = results;
 				render();
 			}
 		}, 250);
+	}
+
+	async function openCustomer(customer) {
+		const cm = await call("get_customer_money", { pos_profile: profile(), customer });
+		const first = cm.due[0];
+		Object.assign(state, { step: "money", cm, error: null, dueInvoice: first?.name, payAmount: first?.outstanding_amount,
+			payWith: cm.modes[0], outAmount: null, outWith: cm.modes[0], outReason: "", requestId: newId() });
+		render();
+	}
+
+	async function moneyAction(method, data) {
+		try {
+			state.result = await call(method, { data: JSON.stringify({ pos_profile: profile(), request_id: state.requestId, ...data }) }, true);
+			state.step = "moneyDone";
+		} catch (e) {
+			state.error = __("Not saved. Check the message and try again.");
+		}
+		render();
 	}
 
 	async function pick(invoice) {
@@ -236,7 +339,7 @@
 		}).filter((l) => l.returned_qty + l.cancelled_qty > 0);
 		const data = { sales_invoice: state.sale.name, pos_profile: profile(), lines, warehouse: state.store,
 			reason: state.reason, notes: state.notes, request_id: state.requestId };
-		if (state.payMode === "all") data.refund_all = 1;
+		if (state.payMode === "all" && !state.sale.is_draft) data.refund_all = 1;
 		else data.refund_amount = state.payMode === "credit" ? 0 : t.refund;
 		try {
 			state.result = await call("submit_return", { data: JSON.stringify(data) }, true);
@@ -275,6 +378,16 @@
 			state.step = "find";
 			render();
 			search();
+		} else if (act === "tab") {
+			state.tab = btn.dataset.tab;
+			render();
+			search();
+		} else if (act === "customer") openCustomer(btn.dataset.name);
+		else if (act === "collect") {
+			moneyAction("collect_payment", { invoice: state.dueInvoice, amount: +state.payAmount, mode_of_payment: state.payWith });
+		} else if (act === "payout") {
+			moneyAction("pay_out_credit", { customer: state.cm.customer, amount: +state.outAmount, mode_of_payment: state.outWith,
+				reason: state.outReason });
 		}
 		else if (act === "inc" || act === "dec") {
 			row[btn.dataset.field] += act === "inc" ? 1 : -1;
@@ -296,7 +409,21 @@
 		if (id === "dmr-q") {
 			state.query = e.target.value;
 			search();
-		} else if (id === "dmr-store") state.store = e.target.value;
+		} else if (id === "dmr-cq") {
+			state.cquery = e.target.value;
+			search();
+		} else if (e.target.name === "dmr-due") {
+			state.dueInvoice = e.target.value;
+			state.payAmount = state.cm.due.find((d) => d.name === e.target.value)?.outstanding_amount;
+			render();
+		} else if (["dmr-pay", "dmr-out", "dmr-why"].includes(id)) {
+			state[{ "dmr-pay": "payAmount", "dmr-out": "outAmount", "dmr-why": "outReason" }[id]] = e.target.value;
+			const btn = root.querySelector(id === "dmr-pay" ? '[data-act="collect"]' : '[data-act="payout"]');
+			if (btn) btn.disabled = id === "dmr-pay" ? !(+state.payAmount > 0)
+				: !(+state.outAmount > 0 && +state.outAmount <= state.cm.credit && (state.outReason || "").trim());
+		} else if (id === "dmr-paymode") state.payWith = e.target.value;
+		else if (id === "dmr-outmode") state.outWith = e.target.value;
+		else if (id === "dmr-store") state.store = e.target.value;
 		else if (id === "dmr-reason") {
 			state.reason = e.target.value;
 			render();
@@ -318,7 +445,7 @@
 		btn.id = BTN_ID;
 		btn.type = "button";
 		btn.className = "dmr-open";
-		btn.title = __("Return or exchange goods of a sale");
+		btn.title = __("Return or exchange goods of a sale, or take / pay out a customer's money");
 		btn.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2"
 			stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-4"/></svg>
 			<span>${__("Return / Exchange")}</span>`;

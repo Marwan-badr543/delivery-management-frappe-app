@@ -9,10 +9,14 @@ The accounts live in the external accounts database (table ``lines``), not in ER
 Usernames continue the member's ``ERP-<n>`` series, which the website orders also use,
 so the next number is read from that database. The password is the customer's mobile.
 The credentials go in ``posa_notes``, so they show on the invoice and the order.
+
+A return or cancellation of TVs (``returns.service``) deletes as many accounts, the last
+ones of the sale, once the return is saved.
 """
 
 from __future__ import annotations
 
+import re
 import time
 from dataclasses import dataclass
 
@@ -24,6 +28,7 @@ from delivery_management.slots.cart import _group_range, stock_qty
 from delivery_management.slots.settings import get_settings
 
 USERNAME_PREFIX = "ERP-"
+CREDENTIAL = re.compile(r"^(?:Username|Password) \((\d+)\): (.*)$")
 
 _INSERT = """insert into `lines` (
 	member_id, username, password, exp_date, admin_enabled, enabled, admin_notes, reseller_notes,
@@ -125,6 +130,30 @@ def add_to_pos_sale(invoice: str, sales_order: str | None = None) -> None:
 				update_modified=False)
 
 
+def remove_from_sale(invoice: str, sales_order: str | None, units: int) -> list[str]:
+	"""``units`` TVs of the sale came back: delete that many of its accounts, the last
+	ones listed in the invoice notes, and take their credentials off the invoice and
+	order notes. The accounts database is changed only once the return is committed, so
+	a return that fails deletes nothing. Returns the usernames deleted."""
+	db = get_accounts_db()
+	if not db or units <= 0:
+		return []
+	accounts = [(m.group(1), m.group(2)) for line in (frappe.db.get_value("Sales Invoice", invoice, "posa_notes") or "")
+		.split("\n") if (m := CREDENTIAL.match(line)) and line.startswith("Username")]
+	gone = accounts[-units:]
+	if not gone:
+		return []
+	numbers = {n for n, _u in gone}
+	for doctype, name in (("Sales Invoice", invoice), ("Sales Order", sales_order)):
+		notes = name and frappe.db.get_value(doctype, name, "posa_notes")
+		if notes:
+			kept = [line for line in notes.split("\n") if not ((m := CREDENTIAL.match(line)) and m.group(1) in numbers)]
+			frappe.db.set_value(doctype, name, "posa_notes", "\n".join(kept), update_modified=False)
+	usernames = [u for _n, u in gone]
+	frappe.db.after_commit.add(lambda: _delete_accounts(db, usernames))
+	return usernames
+
+
 def _insert_accounts(db: AccountsDB, units: int, password: str) -> list[str]:
 	conn = db.connect()
 	try:
@@ -149,7 +178,7 @@ def _insert_accounts(db: AccountsDB, units: int, password: str) -> list[str]:
 
 
 def _delete_accounts(db: AccountsDB, usernames: list[str]) -> None:
-	"""The sale failed after the accounts were made: remove them."""
+	"""Remove accounts: of a sale that failed after they were made, or of returned TVs."""
 	try:
 		conn = db.connect()
 		try:
@@ -160,4 +189,4 @@ def _delete_accounts(db: AccountsDB, usernames: list[str]) -> None:
 		finally:
 			conn.close()
 	except Exception:
-		frappe.log_error(_("TV accounts of a failed sale not deleted: {0}").format(", ".join(usernames)))
+		frappe.log_error(_("TV accounts not deleted: {0}").format(", ".join(usernames)))

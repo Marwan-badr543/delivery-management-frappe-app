@@ -137,9 +137,10 @@ def get_custom_fields() -> dict:
 			{"fieldname": "dm_building_no", "fieldtype": "Data", "label": "Building No", "insert_after": "dm_road_no"},
 		],
 		"Sales Order Item": [
-			{"fieldname": "dm_returned_qty", "fieldtype": "Float", "label": "Returned / Cancelled Qty",
+			{"fieldname": "dm_cancelled_qty", "fieldtype": "Float", "label": "Cancelled Qty",
 				"insert_after": "delivered_qty", "read_only": 1, "allow_on_submit": 1, "no_copy": 1,
-				"description": "Given back or cancelled through a Customer Return: never delivered again."},
+				"description": "Cancelled before delivery through a Customer Return. Counted in Returned Qty: "
+					"never delivered, not reserved."},
 		],
 		# On the Details tab, just above the items.
 		"Sales Order": _delivery_fields("ignore_pricing_rule", editable=True),
@@ -225,10 +226,17 @@ def ensure_support_roles():
 			add_permission("Issue", role, 0)
 
 
+def ensure_returns_not_reserved():
+	"""Goods returned (or cancelled) on a Sales Order are not reserved for it any more
+	(``returns.service``)."""
+	frappe.db.set_single_value("Selling Settings", "dont_reserve_sales_order_qty_on_sales_return", 1)
+
+
 def after_migrate():
 	ensure_role()
 	ensure_driver_roles()
 	ensure_support_roles()
 	create_custom_fields(get_custom_fields(), ignore_validate=True, update=True)
 	ensure_default_settings()
+	ensure_returns_not_reserved()
 	ensure_indexes()

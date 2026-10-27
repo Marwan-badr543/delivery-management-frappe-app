@@ -92,6 +92,11 @@ class TVAccountsTestCase(DeliveryTestCase):
 		patcher.start()
 		self.addCleanup(patcher.stop)
 
+	def sale(self, lines, mobile="36001122"):
+		invoice = self.w.draft_invoice(lines)
+		invoice["contact_mobile"] = mobile
+		return invoice
+
 
 class TestTVClassification(TVAccountsTestCase):
 	def test_listed_item_group_member_and_exclusion(self):
@@ -105,11 +110,6 @@ class TestTVClassification(TVAccountsTestCase):
 
 
 class TestTVAccountsOnPosSale(TVAccountsTestCase):
-	def sale(self, lines, mobile="36001122"):
-		invoice = self.w.draft_invoice(lines)
-		invoice["contact_mobile"] = mobile
-		return invoice
-
 	def test_invoice_gets_one_account_per_unit_in_its_notes(self):
 		invoice = self.sale([(self.w.tv, 2, 100), (self.w.pipe, 1, 2)])
 		result = service.submit_pos_invoice(invoice, DATA, {})
@@ -161,3 +161,36 @@ class TestTVAccountsOnPosSale(TVAccountsTestCase):
 		self.settings(tv_account_host=None)
 		service.submit_pos_invoice(self.sale([(self.w.tv, 1, 100)]), DATA, {})
 		self.assertEqual(len(self.accounts.rows), 2)
+
+
+class TestTVAccountsOnReturn(TVAccountsTestCase):
+	"""TVs given back lose their accounts, once the return is saved."""
+
+	def give_back(self, invoice, returned=0, cancelled=0):
+		from delivery_management.returns import service as returns
+
+		line = returns.get_sale(invoice)["lines"][0]
+		return returns.make_return({"sales_invoice": invoice, "pos_profile": self.w.pos_profile, "refund_all": 1,
+			"lines": [{"si_detail": line["si_detail"], "returned_qty": returned, "cancelled_qty": cancelled,
+				"serial_nos": line["serial_nos"][:returned]}]})
+
+	def test_returned_tv_deletes_the_last_account_of_the_sale(self):
+		si = service.submit_pos_invoice(self.sale([(self.w.tv, 2, 100)]), DATA, {})["name"]
+		result = self.give_back(si, returned=1)
+
+		self.assertEqual(result["tv_accounts"], ["ERP-9200"])
+		self.assertIn((1410, "ERP-9200", "36001122"), self.accounts.rows)  # only once the return is committed
+		frappe.db.after_commit.run()
+		self.assertEqual([r[1] for r in self.accounts.rows if r[0] == 1410], ["ERP-9198", "ERP-9199"])
+		self.assertEqual(frappe.db.get_value("Sales Invoice", si, "posa_notes"),
+			"Username (1): ERP-9199\nPassword (1): 36001122")
+
+	def test_cancelled_order_tv_deletes_its_account_from_the_order_too(self):
+		invoice = self.sale([(self.w.tv, 1, 100)])
+		invoice["posa_notes"] = "Call before coming"
+		result = service.submit_pos_order(invoice, DATA, {"block_no": "1", "road_no": "2", "building_no": "3",
+			"area": self.make_area(), "delivery_date": "2031-03-04", "delivery_time": "10:00"})
+		self.give_back(result["name"], cancelled=1)
+		frappe.db.after_commit.run()
+		self.assertNotIn("ERP-9199", [r[1] for r in self.accounts.rows])
+		self.assertEqual(frappe.db.get_value("Sales Order", result["sales_order"], "posa_notes"), "Call before coming")

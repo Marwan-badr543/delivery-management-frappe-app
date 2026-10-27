@@ -20,6 +20,7 @@ from frappe.utils import add_months, cint, flt, getdate, nowdate, strip_html
 from delivery_management.drivers import assignment as asg
 from delivery_management.drivers.delivery_note import DELIVERED, ON_THE_WAY, sales_order_of
 from delivery_management.drivers import stats
+from delivery_management.orders import payments
 
 DN = "Delivery Note"
 MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024
@@ -121,29 +122,39 @@ def _full_names(users) -> dict:
 
 
 def payment_summary(delivery_notes: list[str]) -> dict[str, dict]:
-	"""Paid / outstanding of the Sales Invoice(s) of each Delivery Note's order."""
+	"""Paid / outstanding of the Sales Invoice(s) of each Delivery Note's order.
+
+	An unpaid order's invoice is a draft: all of it is outstanding. Goods returned are
+	not paid money: the total is net of the order's Credit Notes.
+	"""
 	if not delivery_notes:
 		return {}
 	links = frappe.db.sql(
 		"""select distinct dni.parent as dn, coalesce(nullif(dni.against_sales_invoice, ''), sii.parent) as si
 		from `tabDelivery Note Item` dni
 		left join `tabSales Invoice Item` sii on sii.sales_order = dni.against_sales_order
-			and ifnull(dni.against_sales_order, '') != '' and sii.docstatus = 1
+			and ifnull(dni.against_sales_order, '') != '' and sii.docstatus < 2
 		where dni.parent in %(dns)s""",
 		{"dns": tuple(delivery_notes)},
 		as_dict=True,
 	)
-	invoices = {l.si for l in links if l.si}
+	invoices = list({l.si for l in links if l.si})
 	si = {}
 	if invoices:
-		for r in frappe.get_all("Sales Invoice", filters={"name": ["in", list(invoices)], "docstatus": 1,
-				"is_return": 0}, fields=["name", "rounded_total", "grand_total", "outstanding_amount", "currency"]):
+		returned = dict(frappe.db.sql("""select return_against, sum(if(rounded_total = 0, grand_total, rounded_total))
+			from `tabSales Invoice` where docstatus = 1 and is_return = 1 and return_against in %(si)s
+			group by return_against""", {"si": invoices}))
+		for r in frappe.get_all("Sales Invoice", filters={"name": ["in", invoices], "docstatus": ["<", 2],
+				"is_return": 0}, fields=["name", "docstatus", "rounded_total", "grand_total", "outstanding_amount",
+				"currency"]):
+			r.total = flt(r.rounded_total or r.grand_total) + flt(returned.get(r.name))
+			r.outstanding = max(flt(r.outstanding_amount), 0) if r.docstatus == 1 else r.total
 			si[r.name] = r
 	out = {}
 	for dn in delivery_notes:
 		rows = [si[l.si] for l in links if l.dn == dn and l.si in si]
-		total = sum(flt(r.rounded_total or r.grand_total) for r in rows)
-		outstanding = sum(max(flt(r.outstanding_amount), 0) for r in rows)
+		total = sum(r.total for r in rows)
+		outstanding = sum(r.outstanding for r in rows)
 		out[dn] = {
 			"invoices": [r.name for r in rows],
 			"total": total,
@@ -335,48 +346,23 @@ def modes_of_payment(company) -> list[str]:
 
 @frappe.whitelist(methods=["POST"])
 def record_payment(delivery_note, amount, mode_of_payment):
-	"""Payment Entry for the order's invoice (the old "Record Payment" on delivery)."""
+	"""Payment Entry for the order's invoice (the old "Record Payment" on delivery). An
+	unpaid order's draft invoice is submitted first."""
 	_require_order_access(delivery_note)
-	amount = flt(amount, 3)
-	if amount <= 0:
-		frappe.throw(_("Enter an amount greater than zero."))
-	invoices = payment_summary([delivery_note]).get(delivery_note, {}).get("invoices") or []
-	if not invoices:
-		frappe.throw(_("No submitted Sales Invoice is linked to this order."))
-	# Re-read under a lock so two payments cannot both pass the outstanding check.
-	si = None
-	for name in invoices:
-		outstanding = frappe.db.sql("select outstanding_amount from `tabSales Invoice` where name = %s for update",
-			name)[0][0]
-		if flt(outstanding) > 0:
-			si = name
-			break
-	if not si:
+	summary = payment_summary([delivery_note]).get(delivery_note, {})
+	if not summary.get("invoices"):
+		frappe.throw(_("No Sales Invoice is linked to this order."))
+	if summary["outstanding"] <= 0.005:
 		frappe.throw(_("This order is already fully paid."))
-	if amount > flt(outstanding, 3) + 0.0005:
-		frappe.throw(_("Amount paid ({0}) cannot be greater than the outstanding amount ({1}).").format(
-			amount, flt(outstanding, 3)))
-
-	from erpnext.accounts.doctype.payment_entry.payment_entry import get_payment_entry
-	from erpnext.accounts.doctype.sales_invoice.sales_invoice import get_bank_cash_account
+	si = next(name for name in summary["invoices"] if frappe.db.get_value("Sales Invoice", name, "docstatus") == 0
+		or flt(frappe.db.get_value("Sales Invoice", name, "outstanding_amount")) > 0)
 
 	# ERPNext / HRMS check desk permissions on the invoice while building and validating
 	# the Payment Entry; a driver has none on invoices. His access to this order was
 	# checked above, so the entry is made with full rights and then credited to him.
 	with _with_full_rights() as user:
-		pe = get_payment_entry("Sales Invoice", si, party_amount=amount)
-		pe.mode_of_payment = mode_of_payment
-		pe.paid_to = get_bank_cash_account(mode_of_payment, pe.company)["account"]
-		pe.paid_to_account_currency = frappe.get_cached_value("Account", pe.paid_to, "account_currency")
-		pe.paid_amount = amount
-		pe.received_amount = amount
-		for ref in pe.references:
-			ref.allocated_amount = amount if ref.reference_name == si else 0
-		pe.reference_no = pe.reference_no or f"{delivery_note}"
-		pe.reference_date = pe.reference_date or nowdate()
-		pe.remarks = _("Collected on delivery of {0} by {1}").format(delivery_note, user)
-		pe.insert()
-		pe.submit()
+		pe = payments.collect(si, amount, mode_of_payment, delivery_note,
+			_("Collected on delivery of {0} by {1}").format(delivery_note, user))
 		frappe.db.set_value("Payment Entry", pe.name, {"owner": user, "modified_by": user}, update_modified=False)
 	return {"payment_entry": pe.name, "payment": payment_summary([delivery_note])[delivery_note]}
 

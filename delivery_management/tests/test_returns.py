@@ -12,7 +12,8 @@ import frappe
 from erpnext.selling.doctype.sales_order.sales_order import make_delivery_note
 from frappe.utils import add_days, flt, getdate, nowdate
 
-from delivery_management.orders import service
+from delivery_management.api import drivers, returns as api
+from delivery_management.orders import payments, service
 from delivery_management.orders.stock import get_sellable_qty
 from delivery_management.returns import service as returns
 from delivery_management.slots import get_reservations
@@ -34,6 +35,12 @@ def outstanding(invoice):
 	return flt(frappe.db.get_value("Sales Invoice", invoice, "outstanding_amount"), 3)
 
 
+def store_reserved(item_code, wh):
+	"""What the store sees as reserved for Sales Orders (Bin), as opposed to the Stock
+	Reservation Entries the POS sells around."""
+	return flt(frappe.db.get_value("Bin", {"item_code": item_code, "warehouse": wh}, "reserved_qty"))
+
+
 class ReturnsTestCase(DeliveryTestCase):
 	def setUp(self):
 		super().setUp()
@@ -47,6 +54,7 @@ class ReturnsTestCase(DeliveryTestCase):
 			"delivery_date": str(self.slot_date), "delivery_time": "10:00",
 			"ac_date": str(add_days(self.slot_date, 1))}
 		self.stock_gap_before = self.stock_gap()
+		self.reserved_before = store_reserved(self.w.tv, self.w.main)
 
 	def tearDown(self):
 		# Whatever a test did, the stock ledger and the stock accounts still agree.
@@ -132,9 +140,8 @@ class ReturnsTestCase(DeliveryTestCase):
 		return sum(flt(p.expected_amount) for p in closing.payment_reconciliation if p.mode_of_payment == "Cash")
 
 	def available_credit(self):
-		from posawesome.posawesome.api.payments import get_available_credit
-
-		return flt(sum(r["total_credit"] for r in get_available_credit(self.customer, self.w.company.name)), 3)
+		"""Customer Credit as POS Awesome offers it (its endpoint is replaced by the app's)."""
+		return flt(sum(r["total_credit"] for r in api.get_available_credit(self.customer, self.w.company.name)), 3)
 
 
 class TestBranchReturn(ReturnsTestCase):
@@ -296,25 +303,37 @@ class TestOrderReturn(ReturnsTestCase):
 		self.assertEqual(frappe.db.get_value("Sales Order", so, "status"), "Closed")
 		self.assertEqual(balance(self.customer), 0)
 
-	def test_unpaid_order_delivered_and_returned_clears_the_debt(self):
-		si, so = self.order([(self.w.tv, 1, 100)], unpaid=True)
+	def test_unpaid_order_delivered_and_returned(self):
+		"""Nothing was paid: the TV comes back and simply comes off the draft bill."""
+		si, so = self.order([(self.w.tv, 1, 100), (self.w.pipe, 2, 5)], unpaid=True)
 		self.deliver(so, {self.w.tv: ["_DMTV-M-1"]})
-		self.assertEqual(balance(self.customer), 100)
+		self.assertEqual(api.search_sales(self.w.pos_profile, si)[0]["outstanding_amount"], 110)
 		cash = self.expected_cash()
-		result = self.give_back(si, {self.w.tv: (1, 0)}, refund=0)
-		self.assertEqual((result["cleared_amount"], result["refunded_amount"], result["credit_amount"]), (100, 0, 0))
-		self.assertEqual((balance(self.customer), outstanding(si), outstanding(result["credit_note"])), (0, 0, 0))
-		self.assertEqual(self.expected_cash(), cash)
+		result = self.give_back(si, {self.w.tv: (1, 0)}, refund="all")
+		self.assertEqual((result["return_amount"], result["cleared_amount"], result["refunded_amount"],
+			result["credit_amount"], result["credit_note"]), (100, 100, 0, 0, None))
+		draft = frappe.get_doc("Sales Invoice", si)
+		self.assertEqual((draft.docstatus, [r.item_code for r in draft.items], draft.grand_total), (0, [self.w.pipe], 10))
+		self.assertEqual((balance(self.customer), self.expected_cash()), (0, cash))
 		self.assertEqual(serial_status("_DMTV-M-1"), ("Active", self.w.branch))
+		# Driver collects the rest: the draft is submitted, then paid.
+		dn = self.notes(so, docstatus=1)[0]
+		self.assertEqual(drivers.payment_summary([dn])[dn]["outstanding"], 10)
+		payments.collect(si, 10, "Cash", dn, "on delivery")
+		self.assertEqual((frappe.db.get_value("Sales Invoice", si, "status"), balance(self.customer)), ("Paid", 0))
+
+	def test_unpaid_order_all_cancelled_deletes_the_draft(self):
+		si, so = self.order([(self.w.tv, 1, 100)], unpaid=True)
+		first = self.give_back(si, {self.w.tv: (0, 1)})
+		self.assertFalse(frappe.db.exists("Sales Invoice", si))
+		self.assertEqual(frappe.db.get_value("Customer Return", first["name"], ["sales_invoice", "sales_order"]),
+			(None, so))
+		self.assertEqual((frappe.db.get_value("Sales Order", so, "status"), store_reserved(self.w.tv, self.w.main)),
+			("Closed", self.reserved_before))
 
 	def test_part_paid_order_refunds_only_what_was_paid(self):
 		si, so = self.order([(self.w.tv, 1, 100)], unpaid=True)
-		from erpnext.accounts.doctype.payment_entry.payment_entry import get_payment_entry
-
-		pe = get_payment_entry("Sales Invoice", si, party_amount=40)
-		pe.reference_no, pe.reference_date = "x", nowdate()
-		pe.insert()
-		pe.submit()
+		payments.collect(si, 40, "Cash", "x", "deposit")
 		self.deliver(so, {self.w.tv: ["_DMTV-M-1"]})
 		self.assertEqual(balance(self.customer), 60)
 		self.assertRaisesRegex(frappe.ValidationError, "at most", self.give_back, si, {self.w.tv: (1, 0)}, refund=100)
@@ -405,3 +424,84 @@ class TestExchange(ReturnsTestCase):
 		result = service.submit_pos_invoice(invoice, self.with_credit(cn, 5), {})
 		self.assertEqual((outstanding(result["name"]), outstanding(cn), balance(self.customer)), (0, -5, -5))
 		self.assertEqual(self.available_credit(), 5)
+
+
+class TestStoreReservation(ReturnsTestCase):
+	"""Goods given back are not reserved for the order any more (Bin reserved qty, what the
+	store sees), while the rest of the order stays reserved."""
+
+	def test_returned_after_delivery_not_reserved_again(self):
+		si, so = self.order([(self.w.tv, 2, 100)])
+		self.deliver(so, {self.w.tv: ["_DMTV-M-1"]}, qty={self.w.tv: 1})
+		self.assertEqual(store_reserved(self.w.tv, self.w.main), self.reserved_before + 1)
+		self.give_back(si, {self.w.tv: (1, 0, ["_DMTV-M-1"])}, wh=self.w.main)
+		self.assertEqual(store_reserved(self.w.tv, self.w.main), self.reserved_before + 1)  # only the pending one
+		self.assertEqual(frappe.db.get_value("Sales Order Item", {"parent": so}, "returned_qty"), 1)
+
+	def test_cancelled_before_delivery_not_reserved(self):
+		si, so = self.order([(self.w.tv, 2, 100), (self.w.pipe, 2, 5)])
+		self.give_back(si, {self.w.tv: (0, 1)})
+		self.assertEqual(store_reserved(self.w.tv, self.w.main), self.reserved_before + 1)
+		self.assertNotEqual(frappe.db.get_value("Sales Order", so, "status"), "Closed")
+
+	def test_cancelled_then_delivered_one_returned(self):
+		"""ERPNext recounts returned_qty from the Return Delivery Notes: the cancelled qty stays."""
+		si, so = self.order([(self.w.tv, 3, 100)])
+		self.give_back(si, {self.w.tv: (0, 1)})
+		self.deliver(so, {self.w.tv: ["_DMTV-M-1"]}, qty={self.w.tv: 1})
+		self.give_back(si, {self.w.tv: (1, 0, ["_DMTV-M-1"])}, wh=self.w.main)
+		row = frappe.db.get_value("Sales Order Item", {"parent": so}, ["returned_qty", "dm_cancelled_qty"], as_dict=True)
+		self.assertEqual((row.returned_qty, row.dm_cancelled_qty), (2, 1))
+		self.assertEqual(store_reserved(self.w.tv, self.w.main), self.reserved_before + 1)
+		self.assertEqual(returns.get_sale(si)["lines"][0]["max_cancel"], 1)
+
+
+class TestCustomerMoney(ReturnsTestCase):
+	"""Money at the till outside a sale: a payment on what a customer owes, and their
+	credit paid out in cash. Both are in the cashier's shift."""
+
+	def money(self, method, **data):
+		data = {"pos_profile": self.w.pos_profile, "request_id": frappe.generate_hash(), **data}
+		return getattr(api, method)(json.dumps(data))
+
+	def test_customer_pays_an_unpaid_order_at_the_till(self):
+		si, so = self.order([(self.w.tv, 1, 100)], unpaid=True)
+		found = api.search_customers(self.w.pos_profile, self.customer)[0]
+		self.assertEqual((found["due"], found["credit"]), (100, 0))
+		cash = self.expected_cash()
+		self.money("collect_payment", invoice=si, amount=60)
+		self.assertEqual((outstanding(si), balance(self.customer), self.expected_cash()), (40, 40, cash + 60))
+		self.assertRaisesRegex(frappe.ValidationError, "cannot be greater", self.money, "collect_payment",
+			invoice=si, amount=41)
+
+	def test_credit_paid_out_later_from_the_drawer(self):
+		si = self.branch_sale([(self.w.pipe, 4, 5)])
+		cn = self.give_back(si, {self.w.pipe: (4, 0)}, refund=0)["credit_note"]
+		self.assertEqual(api.get_customer_money(self.w.pos_profile, self.customer)["credit"], 20)
+		cash = self.expected_cash()
+		self.assertRaisesRegex(frappe.ValidationError, "why", self.money, "pay_out_credit", customer=self.customer,
+			amount=15)
+		out = self.money("pay_out_credit", customer=self.customer, amount=15, reason="Came back next day")
+		self.assertEqual(out["payment_type"], "Pay")
+		self.assertEqual((outstanding(cn), balance(self.customer), self.available_credit()), (-5, -5, 5))
+		self.assertEqual(self.expected_cash(), cash - 15)
+		self.assertRaisesRegex(frappe.ValidationError, "most that can be paid out", self.money, "pay_out_credit",
+			customer=self.customer, amount=6, reason="again")
+		self.assert_balanced(out["payment_entry"])
+
+	def test_pay_out_takes_the_oldest_credit_first(self):
+		for qty in (1, 2):
+			si = self.branch_sale([(self.w.pipe, qty, 5)])
+			self.give_back(si, {self.w.pipe: (qty, 0)}, refund=0)
+		notes = payments.open_credit_notes(self.customer, self.w.company.name)
+		self.money("pay_out_credit", customer=self.customer, amount=8, reason="cash")
+		self.assertEqual([outstanding(n.name) for n in notes], [0, -7])  # 5 then 10 of credit
+		self.assertEqual(self.available_credit(), 7)
+
+	def test_retried_request_pays_once(self):
+		si, so = self.order([(self.w.tv, 1, 100)], unpaid=True)
+		request_id = frappe.generate_hash()
+		first = self.money("collect_payment", invoice=si, amount=30, request_id=request_id)
+		frappe.db.after_commit.run()  # what a committed request leaves behind
+		again = self.money("collect_payment", invoice=si, amount=30, request_id=request_id)
+		self.assertEqual((first["payment_entry"], outstanding(si)), (again["payment_entry"], 70))

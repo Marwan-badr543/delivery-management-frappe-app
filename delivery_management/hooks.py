@@ -165,10 +165,16 @@ doc_events = {
 			"delivery_management.returns.service.check_not_returned",
 			"delivery_management.orders.reservation.deliver",
 		],
-		"on_submit": "delivery_management.returns.service.settle_after_delivery",
+		"on_submit": [
+			"delivery_management.returns.service.settle_after_delivery",
+			"delivery_management.returns.service.keep_cancelled_as_returned",
+		],
 		"before_cancel": "delivery_management.orders.reservation.undeliver",
 		"on_update": "delivery_management.drivers.delivery_note.on_update",
-		"on_cancel": "delivery_management.drivers.delivery_note.on_cancel",
+		"on_cancel": [
+			"delivery_management.drivers.delivery_note.on_cancel",
+			"delivery_management.returns.service.keep_cancelled_as_returned",
+		],
 		"on_trash": "delivery_management.drivers.delivery_note.on_trash",
 	},
 	"Sales Invoice": {
@@ -209,4 +215,7 @@ has_permission = {
 
 extend_bootinfo = "delivery_management.api.pos.extend_bootinfo"
 
-
+# POS Awesome's Customer Credit counted a credit paid out from the drawer twice.
+override_whitelisted_methods = {
+	"posawesome.posawesome.api.payments.get_available_credit": "delivery_management.api.returns.get_available_credit",
+}

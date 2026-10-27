@@ -1,4 +1,4 @@
-/* delivery_management: POS Return / Exchange (public/js/pos_returns.bundle.js). */
+/* delivery_management: POS Return / Exchange and Customer money (public/js/pos_returns.bundle.js). */
 .dmr-open { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; margin: 0 6px;
 	border-radius: 16px; border: 1px solid rgba(201, 77, 31, .4); background: rgba(201, 77, 31, .08); color: #b5451b;
 	font-weight: 600; font-size: 13px; cursor: pointer; white-space: nowrap; }
@@ -77,3 +77,14 @@ select.dmr-input { appearance: none; padding-inline-end: 36px; background-repeat
 .dmr-tick { width: 56px; height: 56px; border-radius: 50%; background: #e3f4ea; color: #1d7a45; font-size: 30px;
 	display: flex; align-items: center; justify-content: center; }
 .dmr-big { font-size: 20px; font-weight: 700; }
+
+.dmr-tabs { display: flex; gap: 6px; padding: 4px; border-radius: 12px; background: var(--subtle-fg, #f3f6f4); }
+.dmr-tab { flex: 1; min-height: 40px; border: 0; border-radius: 9px; background: none; color: inherit; font-weight: 600;
+	cursor: pointer; }
+.dmr-tab.on { background: var(--card-bg, #fff); color: #0f6b5a; box-shadow: 0 1px 3px rgba(0, 0, 0, .12); }
+.dmr-dues { display: flex; flex-direction: column; gap: 6px; }
+.dmr-due { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; cursor: pointer;
+	border: 1px solid var(--border-color, #dde3df); background: var(--card-bg, #fff); }
+.dmr-due > span { flex: 1; }
+.dmr-due.on { border-color: #0f6b5a; }
+.dmr-wide { width: 100%; }

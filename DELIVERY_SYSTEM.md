@@ -740,25 +740,63 @@ The cashier does every return in the POS: header button **Return / Exchange**
 | Branch invoice (update stock) | Credit Note **with stock** into the receiving store | |
 | Order, delivered goods | **Return Delivery Note** against the notes they left on (serials matched), receiving store, original cost | Credit Note **without stock** |
 | Order, goods not delivered | Removed from the draft Delivery Note (empty note deleted); its Stock Reservation released | Credit Note without stock |
+| Unpaid Order (draft invoice) | as above | **No Credit Note**: the lines come off the draft invoice (all of them: the draft is deleted) |
 
 * **Cash** is a negative cash payment on the Credit Note in the cashier's POS Opening Shift: the
   shift closing counts it once. No Payment Entry (POS Awesome's Customer Credit misreads the
   negative allocation of a refund Payment Entry on a part refund).
 * **Debt first**: when the sale is not fully paid, Payment Reconciliation applies the note to it;
   the refund can never be more than what was paid for the returned goods.
-* **Sales Order**: never edited or cancelled. `Sales Order Item.dm_returned_qty` remembers what was
-  given back or cancelled; a Delivery Note can never deliver it again
-  (`check_not_returned`, before submit). A delivery type (AC / Non AC) with nothing left to deliver
-  that was never delivered frees its booking; with nothing left at all the order is **Closed**,
-  now or after its last delivery (`settle_after_delivery`).
+* **Sales Order**: never cancelled. ERPNext's `Sales Order Item.returned_qty` counts goods brought
+  back (Return Delivery Note, reloaded before submit so ERPNext updates it); goods cancelled
+  before delivery are added to it and kept in `dm_cancelled_qty`, re-added each time ERPNext
+  recounts it from the return notes (`keep_cancelled_as_returned`). Selling Settings *Don't
+  Reserve Sales Order Qty on Sales Return* is on (`install.ensure_returns_not_reserved`, patch
+  `returns_not_reserved`), so the store's reserved qty (Bin) drops for both at once while the rest
+  of the order stays reserved. The Credit Note has *Update Billed Amount in Sales Order*. A
+  Delivery Note can never deliver returned goods again (`check_not_returned`). A delivery type
+  (AC / Non AC) with nothing left to deliver that was never delivered frees its booking; with
+  nothing left at all the order is **Closed**, now or after its last delivery.
+* **TV accounts**: as many accounts as TVs given back (returned or cancelled) are deleted, the
+  last ones of the sale, once the return is committed (`tv_accounts.remove_from_sale`); their
+  credentials leave the invoice and order notes and are listed on the Customer Return.
 * **Exchange into an unpaid Order** (Save/New) keeps the Customer Credit applied
-  (`orders.service._make_unpaid` no longer drops it).
+  (`orders.service._make_unpaid` no longer drops it); that order's invoice is submitted.
 
-Tests: `tests/test_returns.py` (25 cases: branch, other store, partial, double return, serials,
+### Unpaid orders keep a draft invoice (2026-10-27)
+
+"Save/New" on an Order (no payment, no credit) books the order as before, but its Sales Invoice
+stays a **draft** (`orders.service._save_unpaid_draft`: POS Awesome's own save, then *Is POS* and
+*Update Stock* off and no shift, so closing a shift neither deletes nor submits it). A return
+before payment only edits the draft. It is submitted when the customer pays
+(`orders.payments.collect` → `submit_draft_order`): the driver's *Record Payment* on the Delivery
+Schedule, or *Customer money* in the POS. An order closed by a return is re-opened for that submit
+and closed again. A retried Save/New finds the draft and makes no second order.
+
+### Customer money in the POS (2026-10-27)
+
+Second tab of the Return / Exchange window: find the customer (`search_customers`), then
+(`get_customer_money`):
+
+* **Take payment** on a sale still owed (an unpaid order's draft is submitted first): Payment Entry
+  *Receive*, Reference No = the cashier's shift (`collect_payment`).
+* **Pay out credit** from the drawer, with a required reason: Payment Entry *Pay* to the customer,
+  allocated to the open Credit Notes oldest first, Reference No = the shift (`pay_out_credit`).
+
+POS Awesome's shift closing counts both (in / out). Retry-safe (request id). POS Awesome's
+Customer Credit subtracted a paid-out credit twice; `get_available_credit` is replaced
+(`override_whitelisted_methods`) to read each return's credit from its outstanding amount.
+
+Expenses paid from the drawer are POS Awesome's own **Cash Movement** (POS menu), enabled per POS
+Profile (*Enable Cash Movement*, *Allow POS Expense*, the expense accounts); the closing deducts them.
+
+Tests: `tests/test_returns.py` (33 cases: branch, other store, partial, double return, serials,
 credit / part cash / refund limits, retry, shift closing, delivered / undelivered / mixed AC+TV /
-bundle / unpaid / part-paid orders, re-delivery refused, auto close, exchange into Invoice, paid
-Order, unpaid Order, credit bigger than the new sale). Every test also checks the stock ledger
-value equals the stock accounts in the GL.
+bundle / unpaid (draft) / part-paid orders, re-delivery refused, auto close, store reservation,
+exchange into Invoice, paid Order, unpaid Order, credit bigger than the new sale, payment at the
+till, credit paid out later), `tests/test_tv_accounts.py` (returned / cancelled TVs, failed return),
+`tests/test_orders.py` (draft invoice, retry, shift closing). Every return test also checks the
+stock ledger value equals the stock accounts in the GL.
 
 Not changed: POS Awesome's own **Sales Return** button (for an Order ERPNext refuses a stock
-Credit Note, so use Return / Exchange); TV (IPTV) accounts of a returned TV; technician payments.
+Credit Note, so use Return / Exchange); technician payments.
