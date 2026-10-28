@@ -84,7 +84,7 @@ function longDate(date) {
 function slotState(s) {
 	if ((s.reasons || []).some((r) => ["too_soon", "past_date"].includes(r))) return "past";
 	if (s.manually_disabled || (s.reasons || []).some((r) => ["manually_disabled", "area_disabled"].includes(r))) return "closed";
-	if ((s.reasons || []).includes("full") || s.remaining <= 0) return "full";
+	if ((s.reasons || []).includes("full")) return "full";
 	return s.reserved > 0 ? "partial" : "free";
 }
 
@@ -251,7 +251,8 @@ class AreaSection {
 		}
 		this.$w.find(".dm-slots").html(slots.map((s) => {
 			const state = slotState(s);
-			const status = s.available
+			const status = s.available && s.remaining <= 0 ? __("Reopened: the next order closes it again")
+				: s.available
 				? (s.remaining === 1 ? __("1 car left") : __("{0} cars left", [s.remaining]))
 				: (s.reasons || []).map((r) => REASON_LABELS[r] || r).join(", ");
 			return `
@@ -264,7 +265,7 @@ class AreaSection {
 				${meter(s.reserved, s.capacity)}
 				<div class="dm-slot-status">${esc(status)}</div>
 				<div class="dm-slot-actions">
-					${s.manually_disabled
+					${s.manually_disabled || slotState(s) === "full"
 						? `<button class="btn btn-xs btn-default" data-toggle-block="0" data-time="${s.time}">${frappe.utils.icon("unlock", "xs")} ${__("Reopen")}</button>`
 						: `<button class="btn btn-xs btn-default dm-btn-quiet" data-toggle-block="1" data-time="${s.time}">${frappe.utils.icon("lock", "xs")} ${__("Close")}</button>`}
 				</div>

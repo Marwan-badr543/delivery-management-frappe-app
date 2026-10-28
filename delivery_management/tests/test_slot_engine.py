@@ -248,13 +248,26 @@ class TestManualBlocks(DeliveryTestCase):
 		self.assertTrue(self.capacity_block(area, TOMORROW, "10:00", source="Manual"))
 		self.assertFalse(self.slot(area, TOMORROW, "10:00")["available"])
 
-	def test_unblocking_full_slot_keeps_it_full(self):
+	def test_reopened_full_slot_takes_one_order_then_closes(self):
+		"""Old system: reopening removes the block; the booking that reaches capacity blocks it again."""
 		area = self.make_area(cars=1)
 		reserve(REF, self.ref("SO-1"), area=area, delivery_date=TOMORROW, delivery_time="10:00", now=NOW)
+		self.assertEqual(self.slot(area, TOMORROW, "10:00")["reasons"], [engine.REASON_FULL])
+		set_slot_manual_block(area, TOMORROW, "10:00", False)
+		self.assertTrue(self.slot(area, TOMORROW, "10:00")["available"])
+		reserve(REF, self.ref("SO-2"), area=area, delivery_date=TOMORROW, delivery_time="10:00", now=NOW)
+		self.assertEqual(self.slot(area, TOMORROW, "10:00")["reasons"], [engine.REASON_FULL])
+		with self.assertRaises(SlotUnavailableError):
+			reserve(REF, self.ref("SO-3"), area=area, delivery_date=TOMORROW, delivery_time="10:00", now=NOW)
+
+	def test_reopened_empty_slot_fills_up_as_usual(self):
+		area = self.make_area(cars=2)
 		set_slot_manual_block(area, TOMORROW, "10:00", True)
 		set_slot_manual_block(area, TOMORROW, "10:00", False)
-		slot = self.slot(area, TOMORROW, "10:00")
-		self.assertEqual(slot["reasons"], [engine.REASON_FULL])
+		for n in (1, 2):
+			reserve(REF, self.ref(f"SO-{n}"), area=area, delivery_date=TOMORROW, delivery_time="10:00", now=NOW)
+		with self.assertRaises(SlotUnavailableError):
+			reserve(REF, self.ref("SO-3"), area=area, delivery_date=TOMORROW, delivery_time="10:00", now=NOW)
 
 	def test_block_is_idempotent(self):
 		area = self.make_area()

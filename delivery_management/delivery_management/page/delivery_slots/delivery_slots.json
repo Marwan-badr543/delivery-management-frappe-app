@@ -5,15 +5,19 @@
  "doctype": "Page",
  "icon": "calendar",
  "idx": 0,
- "modified": "2026-10-22 12:10:00.000000",
+ "modified": "2026-10-28 11:41:31.294756",
  "modified_by": "Administrator",
  "module": "Delivery Management",
  "name": "delivery-slots",
  "owner": "Administrator",
  "page_name": "delivery-slots",
  "roles": [
-  {"role": "System Manager"},
-  {"role": "Delivery Manager"}
+  {
+   "role": "System Manager"
+  },
+  {
+   "role": "Delivery Manager"
+  }
  ],
  "script": null,
  "standard": "Yes",

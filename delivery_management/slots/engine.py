@@ -23,8 +23,11 @@ primary key instead of creating duplicates, and every change happens under
 
 ``Delivery Disabled Slot`` holds blocked slots. Rows have a ``source``:
 
-* ``Capacity`` rows are owned by the engine and are added or removed only when
-  the count crosses capacity.
+* ``Capacity`` rows are added by the engine when a booking or a release leaves
+  the slot at or over capacity, and removed when it is under. As in the old
+  system, the row (not the count) decides: **Reopen** removes it, so a full slot
+  takes one more order and then closes again, and a slot under capacity fills
+  up as usual.
 * ``Manual`` rows are owned by the admin and are never touched by a recompute,
   so cancelling an order cannot silently reopen a slot the admin closed.
 
@@ -171,7 +174,7 @@ def _delivery_reasons(area_row, date, time, reserved, sources, lead, now) -> lis
 		reasons.append(REASON_TOO_SOON)
 	if SOURCE_MANUAL in sources:
 		reasons.append(REASON_MANUAL)
-	if reserved >= area_row.cars_number or SOURCE_CAPACITY in sources:
+	if SOURCE_CAPACITY in sources or area_row.cars_number <= 0:
 		reasons.append(REASON_FULL)
 	return reasons
 
@@ -348,7 +351,7 @@ def _reserve_delivery(area, delivery_date, delivery_time, force, now, common) ->
 			_unavailable(_("The {0} slot on {1} is too soon or already passed.").format(time[:5], date))
 		if _row_exists(DISABLED, disabled_key(SOURCE_MANUAL, area, date, time)):
 			_unavailable(_("The {0} slot on {1} in {2} is closed.").format(time[:5], date, area))
-		if reserved + 1 > area_row.cars_number:
+		if cint(counter.is_full) or area_row.cars_number <= 0:
 			_unavailable(
 				_("The {0} slot on {1} in {2} is full ({3}/{4}).").format(
 					time[:5], date, area, reserved, area_row.cars_number
@@ -455,10 +458,14 @@ def _release_rows(names: list[str]) -> int:
 
 
 def set_slot_manual_block(area: str, date, time, blocked: bool, remarks: str | None = None) -> None:
-	"""Close or reopen a slot by hand. Reopening cannot override a full slot."""
+	"""Close or reopen a slot by hand. Reopening a full slot lets one more order in; the
+	booking that reaches capacity closes it again."""
 	get_area(area)
-	_lock_counter(area, date, time)  # serialise with concurrent bookings of this slot
+	counter = _lock_counter(area, date, time)  # serialise with concurrent bookings of this slot
 	_set_block_row(SOURCE_MANUAL, area, date, time, blocked, remarks)
+	if not blocked:
+		frappe.db.set_value(COUNTER, counter.name, "is_full", 0)
+		_set_block_row(SOURCE_CAPACITY, area, date, time, False)
 
 
 def set_ac_day_manual_block(date, blocked: bool) -> None:
@@ -556,7 +563,7 @@ def _lock_counter(area, date, time) -> frappe._dict:
 	return _lock_or_create(
 		COUNTER,
 		slot_key(area, date, time),
-		"name, reserved_count",
+		"name, reserved_count, is_full",
 		dict(area=area, delivery_date=date, delivery_time=time, reserved_count=0),
 	)
 
