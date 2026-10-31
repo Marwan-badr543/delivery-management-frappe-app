@@ -66,7 +66,8 @@ def pos_profile(branch_wh, name="_DM POS"):
 			"write_off_account": comp.write_off_account, "write_off_cost_center": comp.cost_center,
 			"cost_center": comp.cost_center,
 			"payments": [{"mode_of_payment": "Cash", "default": 1}],
-			"applicable_for_users": [{"user": frappe.session.user, "default": 1}],
+			# Not the user's default: a site may already have one (tests pass the profile by name).
+			"applicable_for_users": [{"user": frappe.session.user, "default": 0}],
 		}).insert()
 	return name
 

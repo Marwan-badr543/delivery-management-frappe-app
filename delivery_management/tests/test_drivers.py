@@ -47,6 +47,8 @@ class DriversTestCase(DeliveryTestCase):
 		settings.set("ac_excluded_items", [])
 		settings.delivery_charge_item = self.charge
 		settings.ac_tech_max_orders_per_day = 2
+		settings.tv_driver_gap_hours_manager = 0.5
+		settings.tv_driver_gap_hours = 1.0
 		settings.save()
 		frappe.clear_document_cache("Delivery Settings", "Delivery Settings")
 		self.customer = customer()
