@@ -25,7 +25,8 @@ def make_user(email, roles):
 class SalesStatsCase(OrdersTestCase):
 	def setUp(self):
 		super().setUp()
-		self.today = getdate(nowdate())
+		# Far from today: the site's own sales of today never mix into the numbers.
+		self.today = getdate(add_days(nowdate(), 4000))
 		self.company = self.w.company.name
 		make_user(SECOND, ["Sales User"])
 
@@ -53,8 +54,9 @@ class SalesStatsCase(OrdersTestCase):
 		return name
 
 	def set_owner(self, name, owner):
-		"""``owner`` placed the sale: logged in and verified as the POS cashier."""
-		frappe.db.set_value("Sales Invoice", name, {"owner": owner, "posa_cashier": owner}, update_modified=False)
+		"""``owner`` placed the sale, on ``self.today``: logged in and verified as the POS cashier."""
+		frappe.db.set_value("Sales Invoice", name, {"owner": owner, "posa_cashier": owner,
+			"creation": get_datetime(f"{self.today} 12:00:00")}, update_modified=False)
 
 	def set_created(self, name, when):
 		frappe.db.set_value("Sales Invoice", name, "creation", get_datetime(when), update_modified=False)
