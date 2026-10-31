@@ -293,6 +293,8 @@ def sync_assignment(dn) -> None:
 	if not dn.get("dm_driver") or not dn.get("dm_delivery_type") or dn.docstatus == 2:
 		remove_assignment(dn.name)
 		return
+	if dn.dm_delivery_type == TYPE_AC:
+		set_invoice_ac_tech(dn.name, dn.dm_driver)
 	day, time, area = schedule_of(dn)
 	values = {
 		"order_type": dn.dm_delivery_type,
@@ -311,6 +313,25 @@ def sync_assignment(dn) -> None:
 def remove_assignment(delivery_note: str) -> None:
 	if frappe.db.exists(ASSIGNMENT, delivery_note):
 		frappe.delete_doc(ASSIGNMENT, delivery_note, ignore_permissions=True, force=True)
+	if frappe.db.get_value(DN, delivery_note, "dm_delivery_type") == TYPE_AC:
+		set_invoice_ac_tech(delivery_note, None)
+
+
+def set_invoice_ac_tech(delivery_note: str, tech: str | None) -> None:
+	"""The AC Tech of an AC Delivery Note on its order's invoices (printed there), or none."""
+	invoices = frappe.db.sql(
+		"""select distinct sii.parent from `tabSales Invoice Item` sii
+		join `tabDelivery Note Item` dni on dni.parent = %(dn)s
+			and (sii.sales_order = dni.against_sales_order or sii.parent = dni.against_sales_invoice)
+		where sii.docstatus < 2""",
+		{"dn": delivery_note},
+		pluck=True,
+	)
+	user = frappe.db.get_value("User", tech, ["full_name", "mobile_no", "phone"], as_dict=True) if tech else None
+	values = {"dm_ac_tech": tech, "dm_ac_tech_name": user.full_name if user else None,
+		"dm_ac_tech_mobile": (user.mobile_no or user.phone) if user else None}
+	for invoice in invoices:
+		frappe.db.set_value("Sales Invoice", invoice, values, update_modified=False)
 
 
 def set_day_limit(driver: str, work_date, max_orders) -> None:

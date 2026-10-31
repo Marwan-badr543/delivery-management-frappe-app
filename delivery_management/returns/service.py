@@ -354,6 +354,7 @@ def _return_delivered(plan, warehouse: str) -> list[str]:
 			if serials:
 				r.update({"serial_no": "\n".join(serials), "use_serial_batch_fields": 1, "serial_and_batch_bundle": None})
 		ret.set_warehouse = warehouse
+		ret.dm_returned_before_delivery = frappe.db.get_value(DN, note, "dm_delivery_status") == "On the way"
 		ret.set("packed_items", [])  # rebuilt from the kept rows
 		ret.flags.ignore_permissions = True
 		ret.insert()

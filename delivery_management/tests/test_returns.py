@@ -13,11 +13,13 @@ from erpnext.selling.doctype.sales_order.sales_order import make_delivery_note
 from frappe.utils import add_days, flt, getdate, nowdate
 
 from delivery_management.api import drivers, returns as api
+from delivery_management.drivers import assignment as asg, stats
 from delivery_management.orders import payments, service
 from delivery_management.orders.stock import get_sellable_qty
 from delivery_management.returns import service as returns
 from delivery_management.slots import get_reservations
 from delivery_management.tests.fixtures import PosWorld, receive, warehouse
+from delivery_management.tests.test_drivers import user
 from delivery_management.tests.test_orders import DATA, reserved_qty, scan, serial_status, tv_bundle
 from delivery_management.tests.utils import DeliveryTestCase
 
@@ -391,6 +393,50 @@ class TestOrderReturn(ReturnsTestCase):
 		self.give_back(si, {self.w.pipe: (3, 0)}, wh=self.other)
 		self.assertEqual((stock(self.w.pipe, self.w.main), stock(self.w.pipe, self.other)), (47, 3))
 		self.assertEqual((balance(self.customer), frappe.db.get_value("Sales Order", so, "status")), (0, "Closed"))
+
+
+	def test_installation_stats_count_only_goods_returned_after_delivery(self):
+		def units():
+			rows = stats.installation_stats(self.slot_date, self.slot_date, technician="Administrator")
+			return (rows[0]["non_ac_units"], rows[0]["orders"]) if rows else (0, 0)
+
+		def sent(lines, serial):
+			si, so = self.order(lines)
+			self.deliver(so, {self.w.tv: [serial]})
+			note = self.notes(so, docstatus=1)[0]
+			frappe.db.set_value("Delivery Note", note, "dm_driver", "Administrator")
+			return si, note
+
+		# Brought back the day after it was delivered: the work was done, it still counts.
+		si, note = sent([(self.w.tv, 1, 100), (self.w.pipe, 2, 5)], "_DMTV-M-1")
+		drivers.mark_delivered_by_office(note)
+		ret = self.give_back(si, {self.w.pipe: (2, 0)})["return_delivery_notes"][0]
+		self.assertFalse(frappe.db.get_value("Delivery Note", ret, "dm_returned_before_delivery"))
+		self.assertEqual(units(), (3, 1))
+		# Taken back while still on the way: never delivered, taken off; nothing left, no order.
+		si, note = sent([(self.w.tv, 1, 100)], "_DMTV-M-2")
+		ret = self.give_back(si, {self.w.tv: (1, 0, ["_DMTV-M-2"])})["return_delivery_notes"][0]
+		self.assertTrue(frappe.db.get_value("Delivery Note", ret, "dm_returned_before_delivery"))
+		drivers.mark_delivered_by_office(note)
+		self.assertEqual(units(), (3, 1))
+
+
+class TestInvoiceAcTech(ReturnsTestCase):
+	def test_assigned_ac_tech_is_on_the_invoice(self):
+		tech = user("_dm.ac1@example.com", asg.ROLE_AC)
+		frappe.db.set_value("User", tech, "mobile_no", "+973 3300 1122")
+		driver = user("_dm.tv1@example.com", asg.ROLE_TV)
+		si, so = self.order([(self.w.ac, 1, 300), (self.w.tv, 1, 100)])
+		notes = {frappe.db.get_value("Delivery Note", n, "dm_delivery_type"): n for n in self.notes(so)}
+		tech_of = lambda: frappe.db.get_value("Sales Invoice", si, ["dm_ac_tech", "dm_ac_tech_name", "dm_ac_tech_mobile"])
+		asg.assign(notes["AC"], tech)
+		expected = (tech, frappe.db.get_value("User", tech, "full_name"), "+973 3300 1122")
+		self.assertEqual(tech_of(), expected)
+		# The TV driver of the same order does not touch it; unassigning the AC Tech clears it.
+		asg.assign(notes["Non AC"], driver)
+		self.assertEqual(tech_of(), expected)
+		asg.unassign(notes["AC"])
+		self.assertEqual(tech_of(), (None, None, None))
 
 
 class TestExchange(ReturnsTestCase):

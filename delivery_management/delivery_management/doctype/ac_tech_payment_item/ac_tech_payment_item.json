@@ -1,0 +1,80 @@
+{
+ "actions": [],
+ "creation": "2026-10-29 12:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "delivery_note",
+  "customer_name",
+  "installation_date",
+  "ac_units",
+  "unit_cost",
+  "amount"
+ ],
+ "fields": [
+  {
+   "fieldname": "delivery_note",
+   "fieldtype": "Link",
+   "label": "Delivery Note",
+   "options": "Delivery Note",
+   "reqd": 1,
+   "in_list_view": 1,
+   "columns": 2,
+   "search_index": 1
+  },
+  {
+   "fieldname": "customer_name",
+   "fieldtype": "Data",
+   "label": "Customer",
+   "fetch_from": "delivery_note.customer_name",
+   "in_list_view": 1,
+   "columns": 3,
+   "read_only": 1
+  },
+  {
+   "fieldname": "installation_date",
+   "fieldtype": "Date",
+   "label": "Installation Date",
+   "in_list_view": 1,
+   "columns": 2,
+   "read_only": 1
+  },
+  {
+   "fieldname": "ac_units",
+   "fieldtype": "Int",
+   "label": "AC Units",
+   "in_list_view": 1,
+   "columns": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "unit_cost",
+   "fieldtype": "Currency",
+   "label": "Unit Cost",
+   "options": "currency",
+   "in_list_view": 1,
+   "columns": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "amount",
+   "fieldtype": "Currency",
+   "label": "Amount",
+   "options": "currency",
+   "in_list_view": 1,
+   "columns": 1,
+   "read_only": 1
+  }
+ ],
+ "istable": 1,
+ "modified": "2026-10-29 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Delivery Management",
+ "name": "AC Tech Payment Item",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "creation",
+ "sort_order": "ASC",
+ "states": []
+}

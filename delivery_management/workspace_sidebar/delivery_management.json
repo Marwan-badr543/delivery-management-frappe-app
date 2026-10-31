@@ -172,6 +172,19 @@
   {
    "child": 1,
    "collapsible": 1,
+   "icon": "wallet",
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "AC Tech Payments",
+   "link_to": "AC Tech Payment",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link",
+   "idx": 14
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
    "icon": "bar-chart",
    "indent": 0,
    "keep_closed": 0,
@@ -180,7 +193,7 @@
    "link_type": "Page",
    "show_arrow": 0,
    "type": "Link",
-   "idx": 14
+   "idx": 15
   },
   {
    "child": 1,
@@ -193,7 +206,7 @@
    "link_type": "Page",
    "show_arrow": 0,
    "type": "Link",
-   "idx": 15
+   "idx": 16
   },
   {
    "child": 0,
@@ -204,7 +217,7 @@
    "label": "Setup",
    "show_arrow": 0,
    "type": "Section Break",
-   "idx": 16
+   "idx": 17
   },
   {
    "child": 1,
@@ -217,7 +230,7 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "idx": 17
+   "idx": 18
   },
   {
    "child": 1,
@@ -230,10 +243,10 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "idx": 18
+   "idx": 19
   }
  ],
- "modified": "2026-10-20 10:00:00.000000",
+ "modified": "2026-10-29 13:00:00.000000",
  "modified_by": "Administrator",
  "module": "Delivery Management",
  "name": "Delivery Management",

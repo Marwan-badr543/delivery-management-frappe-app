@@ -1,0 +1,208 @@
+{
+ "actions": [],
+ "autoname": "format:ACP-{YYYY}-{#####}",
+ "creation": "2026-10-29 12:00:00",
+ "description": "Pays an AC Tech for AC units installed: each delivered installation is paid once, at the cost per unit it was paid at. Submitting posts the expense (Journal Entry).",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "technician",
+  "technician_name",
+  "up_to_date",
+  "column_break_a",
+  "company",
+  "posting_date",
+  "currency",
+  "accounts_section",
+  "paid_from",
+  "column_break_b",
+  "expense_account",
+  "cost_center",
+  "items_section",
+  "items",
+  "total_units",
+  "column_break_t",
+  "total_amount",
+  "more_section",
+  "remarks",
+  "column_break_m",
+  "journal_entry",
+  "amended_from"
+ ],
+ "fields": [
+  {
+   "fieldname": "technician",
+   "fieldtype": "Link",
+   "label": "AC Tech",
+   "options": "User",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "technician_name",
+   "fieldtype": "Data",
+   "label": "AC Tech Name",
+   "fetch_from": "technician.full_name",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "up_to_date",
+   "fieldtype": "Date",
+   "label": "Installed Up To",
+   "default": "Today",
+   "description": "Get Unpaid Installations brings the AC Tech's installations not paid yet, up to this day."
+  },
+  {
+   "fieldname": "column_break_a",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "reqd": 1,
+   "remember_last_selected_value": 1
+  },
+  {
+   "fieldname": "posting_date",
+   "fieldtype": "Date",
+   "label": "Payment Date",
+   "default": "Today",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "currency",
+   "fieldtype": "Link",
+   "label": "Currency",
+   "options": "Currency",
+   "fetch_from": "company.default_currency",
+   "read_only": 1,
+   "hidden": 1
+  },
+  {
+   "fieldname": "accounts_section",
+   "fieldtype": "Section Break",
+   "label": "Accounts"
+  },
+  {
+   "fieldname": "paid_from",
+   "fieldtype": "Link",
+   "label": "Paid From",
+   "options": "Account",
+   "reqd": 1,
+   "description": "The cash or bank account the money is paid from."
+  },
+  {
+   "fieldname": "column_break_b",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "expense_account",
+   "fieldtype": "Link",
+   "label": "Expense Account",
+   "options": "Account",
+   "description": "Empty: the company's AC Installation Cost account."
+  },
+  {
+   "fieldname": "cost_center",
+   "fieldtype": "Link",
+   "label": "Cost Center",
+   "options": "Cost Center",
+   "description": "Empty: the company's default cost center."
+  },
+  {
+   "fieldname": "items_section",
+   "fieldtype": "Section Break",
+   "label": "Installations"
+  },
+  {
+   "fieldname": "items",
+   "fieldtype": "Table",
+   "label": "Installations",
+   "options": "AC Tech Payment Item",
+   "reqd": 1
+  },
+  {
+   "fieldname": "total_units",
+   "fieldtype": "Int",
+   "label": "Total AC Units",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_t",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "total_amount",
+   "fieldtype": "Currency",
+   "label": "Total Amount",
+   "options": "currency",
+   "read_only": 1,
+   "bold": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "more_section",
+   "fieldtype": "Section Break",
+   "label": "More"
+  },
+  {
+   "fieldname": "remarks",
+   "fieldtype": "Small Text",
+   "label": "Remarks"
+  },
+  {
+   "fieldname": "column_break_m",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "journal_entry",
+   "fieldtype": "Link",
+   "label": "Journal Entry",
+   "options": "Journal Entry",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "options": "AC Tech Payment",
+   "read_only": 1,
+   "no_copy": 1,
+   "print_hide": 1
+  }
+ ],
+ "is_submittable": 1,
+ "modified": "2026-10-29 14:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Delivery Management",
+ "name": "AC Tech Payment",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "submit": 1,
+   "cancel": 1,
+   "amend": 1,
+   "report": 1,
+   "print": 1,
+   "export": 1
+  }
+ ],
+ "search_fields": "technician_name",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "technician_name",
+ "track_changes": 1
+}

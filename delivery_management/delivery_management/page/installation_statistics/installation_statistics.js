@@ -1,6 +1,6 @@
 // Installation Statistics: units each driver / AC Tech delivered or installed, counted
 // from submitted Delivery Notes. Port of the old "Installation Statistics" page.
-// A driver sees only his own numbers. No caching: every change reads the database.
+// A driver sees only his own numbers and unpaid amount. No caching: every change reads the database.
 
 frappe.pages["installation-statistics"].on_page_load = function (wrapper) {
 	const page = frappe.ui.make_app_page({ parent: wrapper, title: __("Installation Statistics"), single_column: true });
@@ -28,7 +28,7 @@ class InstallationStatsPage {
 					<p>${__("Submitted Delivery Notes only (delivered / installed). AC units = AC items; TV & non-AC = other stock items.")}</p></div></div>
 				<div class="dd-scroll"><table class="dd-table dd-cards dd-stats-table"><thead><tr>
 					<th>${__("Technician / Driver")}</th><th>${__("AC units")}</th><th>${__("TV & non-AC units")}</th>
-					<th>${__("Orders")}</th><th>${__("Total units")}</th></tr></thead><tbody></tbody><tfoot></tfoot></table></div>
+					<th>${__("Orders")}</th><th>${__("Total units")}</th><th>${__("Unpaid")}</th></tr></thead><tbody></tbody><tfoot></tfoot></table></div>
 			</div>
 		</div>`).appendTo(page.main);
 		page.set_secondary_action(__("Refresh"), () => this.load(), "refresh");
@@ -87,11 +87,12 @@ class InstallationStatsPage {
 			return;
 		}
 		const $tbody = this.$root.find(".dd-stats-table tbody");
-		if (!this.rows) $tbody.html(D.skeleton(5, 4));
+		if (!this.rows) $tbody.html(D.skeleton(6, 4));
 		const seq = (this.seq = (this.seq || 0) + 1);
 		const res = await D.call("get_installation_stats", this.f);
 		if (seq !== this.seq) return;
 		this.rows = res.rows;
+		this.currency = res.currency;
 		const firstLoad = this.canManage === undefined;
 		this.canManage = res.can_manage;
 		if (firstLoad || (res.technicians.length && !this.technicians)) {
@@ -108,6 +109,8 @@ class InstallationStatsPage {
 		const tv = rows.reduce((s, r) => s + r.non_ac_units, 0);
 		const orders = rows.reduce((s, r) => s + r.orders, 0);
 		const total = ac + tv;
+		const unpaid = rows.reduce((s, r) => s + r.unpaid, 0);
+		const money = (v) => D.money(v, this.currency);
 		const n = (v) => format_number(v, null, v % 1 ? 2 : 0);
 		this.$root.find(".dd-kpis").html(`
 			<div class="dd-kpi dd-kpi-ac"><div><span>${__("AC units installed")}</span><b>${n(ac)}</b><small>${__("Items in the AC item groups")}</small></div>
@@ -115,11 +118,13 @@ class InstallationStatsPage {
 			<div class="dd-kpi dd-kpi-tv"><div><span>${__("TV & non-AC delivered")}</span><b>${n(tv)}</b><small>${__("TVs and other stock items")}</small></div>
 				<div class="dd-kpi-icon">${frappe.utils.icon("truck", "lg")}</div></div>
 			<div class="dd-kpi dd-kpi-all"><div><span>${__("Total units")}</span><b>${n(total)}</b><small>${__("{0} orders", [orders])}</small></div>
-				<div class="dd-kpi-icon">${frappe.utils.icon("check", "lg")}</div></div>`);
+				<div class="dd-kpi-icon">${frappe.utils.icon("check", "lg")}</div></div>
+			<div class="dd-kpi dd-kpi-ac"><div><span>${__("Unpaid installations")}</span><b>${money(unpaid)}</b><small>${__("AC units not paid yet x the unit cost")}</small></div>
+				<div class="dd-kpi-icon">${frappe.utils.icon("wallet", "lg")}</div></div>`);
 		const $tbody = this.$root.find(".dd-stats-table tbody");
 		const $tfoot = this.$root.find(".dd-stats-table tfoot");
 		if (!rows.length) {
-			$tbody.html(D.emptyRow(5, __("No installations"), __("No submitted Delivery Note with a driver in this period.")));
+			$tbody.html(D.emptyRow(6, __("No installations"), __("No submitted Delivery Note with a driver in this period.")));
 			$tfoot.empty();
 			return;
 		}
@@ -134,8 +139,9 @@ class InstallationStatsPage {
 					<span class="dd-bar dd-bar-tv"><i style="width:${pct(r.non_ac_units)}%"></i></span></div></td>
 				<td data-label="${__("Orders")}">${r.orders}</td>
 				<td data-label="${__("Total")}"><b>${n(r.total_units)}</b></td>
+				<td data-label="${__("Unpaid")}">${money(r.unpaid)}</td>
 			</tr>`).join(""));
-		$tfoot.html(`<tr><th>${__("Total")}</th><th>${n(ac)}</th><th>${n(tv)}</th><th>${orders}</th><th>${n(total)}</th></tr>`);
+		$tfoot.html(`<tr><th>${__("Total")}</th><th>${n(ac)}</th><th>${n(tv)}</th><th>${orders}</th><th>${n(total)}</th><th>${money(unpaid)}</th></tr>`);
 		$tbody.find("tr[data-user]").on("click", (e) => {
 			const row = rows.find((r) => r.technician === $(e.currentTarget).data("user"));
 			frappe.route_options = { name: ["in", row.delivery_notes] };

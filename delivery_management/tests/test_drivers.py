@@ -291,6 +291,10 @@ class TestInstallationStats(DriversTestCase):
 		self.assertEqual((rows[self.ac1]["ac_units"], rows[self.ac1]["non_ac_units"]), (2, 0))
 		# The draft, the note still on the way and the non-stock delivery charge do not count.
 		self.assertEqual((rows[self.tv1]["ac_units"], rows[self.tv1]["non_ac_units"]), (0, 4))
+		# Unpaid: AC units x the AC Tech's unit cost; a TV driver has none.
+		frappe.db.set_value("User", self.ac1, "dm_ac_unit_cost", 7.5)
+		rows = {r["technician"]: r for r in stats.installation_stats(DAY, DAY)}
+		self.assertEqual((rows[self.ac1]["unpaid"], rows[self.tv1]["unpaid"]), (15, 0))
 		self.assertEqual(list({r["technician"] for r in stats.installation_stats(DAY, DAY, unit="ac")}), [self.ac1])
 		# A driver sees only himself.
 		frappe.set_user(self.tv1)

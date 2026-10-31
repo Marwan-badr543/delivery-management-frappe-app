@@ -65,6 +65,10 @@ def _delivery_note_fields() -> list[dict]:
 			"no_copy": 1, "in_standard_filter": 1, "search_index": 1,
 			"description": "On the way when the note is submitted (the goods left the store), Delivered when the "
 				"driver confirms on the Delivery Schedule page."},
+		{"fieldname": "dm_returned_before_delivery", "fieldtype": "Check", "label": "Returned Before Delivery",
+			"insert_after": "dm_delivery_status", "read_only": 1, "no_copy": 1, "depends_on": "eval:doc.is_return",
+			"description": "The note it returns was still On the way: never delivered or installed, so its "
+				"units are taken off the Installation Statistics."},
 	] + fields[1:]
 
 
@@ -129,6 +133,12 @@ def get_custom_fields() -> dict:
 					"once per order."},
 		],
 		"Delivery Note": _delivery_note_fields(),
+		# Level 1: only a System Manager sees or sets it, not the user on their own profile.
+		"User": [
+			{"fieldname": "dm_ac_unit_cost", "fieldtype": "Currency", "label": "AC Unit Installation Cost",
+				"insert_after": "mobile_no", "permlevel": 1, "non_negative": 1,
+				"description": "Paid to this AC Tech for each AC unit installed (Installation Statistics)."},
+		],
 		"Address": [
 			{"fieldname": "dm_delivery_area", "fieldtype": "Link", "label": "Delivery Area",
 				"options": "Delivery Area", "insert_after": "address_line2"},
@@ -144,7 +154,16 @@ def get_custom_fields() -> dict:
 		],
 		# On the Details tab, just above the items.
 		"Sales Order": _delivery_fields("ignore_pricing_rule", editable=True),
-		"Sales Invoice": _delivery_fields("ignore_pricing_rule", editable=False),
+		"Sales Invoice": _delivery_fields("ignore_pricing_rule", editable=False) + [
+			# Set when the order's AC Delivery Note is assigned (drivers/assignment.py), printed on the invoice.
+			{"fieldname": "dm_ac_tech", "fieldtype": "Link", "label": "AC Tech", "options": "User",
+				"insert_after": "dm_ac_units", "read_only": 1, "allow_on_submit": 1, "no_copy": 1,
+				"description": "Set from the Driver Assignment page."},
+			{"fieldname": "dm_ac_tech_name", "fieldtype": "Data", "label": "AC Tech Name", "insert_after": "dm_ac_tech",
+				"read_only": 1, "allow_on_submit": 1, "no_copy": 1},
+			{"fieldname": "dm_ac_tech_mobile", "fieldtype": "Data", "label": "AC Tech Mobile", "options": "Phone",
+				"insert_after": "dm_ac_tech_name", "read_only": 1, "allow_on_submit": 1, "no_copy": 1},
+		],
 	}
 
 
@@ -232,6 +251,21 @@ def ensure_returns_not_reserved():
 	frappe.db.set_single_value("Selling Settings", "dont_reserve_sales_order_qty_on_sales_return", 1)
 
 
+def ensure_ac_installation_account():
+	"""Expense account AC Tech Payments are posted to, under Direct Expenses of each company."""
+	from delivery_management.delivery_management.doctype.ac_tech_payment.ac_tech_payment import (
+		EXPENSE_ACCOUNT_NAME,
+		expense_account_of,
+	)
+
+	for company in frappe.get_all("Company", pluck="name"):
+		parent = frappe.db.get_value("Account", {"account_name": "Direct Expenses", "company": company, "is_group": 1})
+		if not parent or expense_account_of(company):
+			continue
+		frappe.get_doc({"doctype": "Account", "account_name": EXPENSE_ACCOUNT_NAME, "parent_account": parent,
+			"company": company, "account_type": "Expense Account"}).insert(ignore_permissions=True)
+
+
 def after_migrate():
 	ensure_role()
 	ensure_driver_roles()
@@ -239,4 +273,5 @@ def after_migrate():
 	create_custom_fields(get_custom_fields(), ignore_validate=True, update=True)
 	ensure_default_settings()
 	ensure_returns_not_reserved()
+	ensure_ac_installation_account()
 	ensure_indexes()

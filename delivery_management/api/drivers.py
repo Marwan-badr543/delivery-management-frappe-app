@@ -448,4 +448,5 @@ def get_installation_stats(start_date, end_date, technician=None, unit="all"):
 			{d.user: d for d in asg.drivers_for(asg.TYPE_NON_AC) + asg.drivers_for(asg.TYPE_AC)}.values(),
 			key=lambda d: (d.full_name or "").lower()),
 		"can_manage": see_all,
+		"currency": frappe.defaults.get_global_default("currency"),
 	}
