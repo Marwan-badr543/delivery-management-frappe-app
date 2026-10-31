@@ -12,3 +12,4 @@ delivery_management.patches.delivery_status_replaces_workflow
 delivery_management.patches.returns_not_reserved
 delivery_management.patches.flag_returns_before_delivery
 delivery_management.patches.ac_tech_on_invoices
+delivery_management.patches.sync_stock_settings_defaults
