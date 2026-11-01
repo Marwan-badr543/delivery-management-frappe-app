@@ -12,9 +12,9 @@
     3. The POS Sales Invoice (``update_stock = 0``), linked line by line to the
        Sales Order, then paid and submitted by POS
        Awesome's own ``submit_invoice``, so payments, credit and change behave
-       exactly as before. An order placed without any payment ("Save/New") keeps a
-       **draft** invoice until the customer pays (``orders.payments``): a return
-       before then only takes lines off it.
+       exactly as before. An order placed without any payment ("Save/New") gets a
+       submitted invoice that the customer owes (outstanding) until paid
+       (``orders.payments``); a return makes a Credit Note against it, which clears the debt.
 
 Everything runs in the request transaction. If any step fails (slot just got
 full, out of stock, payment error), none of the documents or bookings persist.
@@ -109,9 +109,9 @@ def submit_pos_invoice(invoice: dict, data: dict, delivery: dict | None = None) 
 
 def submit_pos_order(invoice: dict, data: dict, delivery: dict | None, unpaid: bool = False) -> dict:
 	"""``unpaid``: the POS "Save/New" button. The order is placed the same way, but no
-	cash is taken and the invoice stays a draft (the usual case: the customer pays on
+	cash is taken: the invoice is submitted unpaid (the usual case: the customer pays on
 	delivery). Customer Credit applied to it (an exchange) is a payment: then the
-	invoice is submitted, partly paid."""
+	invoice goes through POS Awesome, partly paid."""
 	if cint(invoice.get("is_return")):
 		frappe.throw(_("Returns cannot be placed as delivery Orders."))
 	delivery = delivery or {}
@@ -160,7 +160,7 @@ def submit_pos_order(invoice: dict, data: dict, delivery: dict | None, unpaid: b
 	if unpaid:
 		_make_unpaid(invoice, data)
 	if unpaid and not flt(data.get("redeemed_customer_credit")):
-		result = _save_unpaid_draft(invoice)
+		result = _submit_unpaid(invoice)
 	else:
 		result = _submit_with_posawesome(invoice, data)
 	result["sales_order"] = so.name
@@ -238,7 +238,6 @@ def already_submitted(invoice: dict, data: dict | None = None) -> dict | None:
 
 	POS Awesome V15 replays a submitted invoice by its request id, but an Order would
 	first get a second Sales Order and slot booking here. Return the first result instead.
-	An unpaid Order's draft invoice already has its Sales Order: it went through too.
 	"""
 	data = data or {}
 	request_id = (invoice.get("posa_client_request_id") or data.get("client_request_id")
@@ -247,9 +246,7 @@ def already_submitted(invoice: dict, data: dict | None = None) -> dict | None:
 	if request_id and frappe.db.has_column("Sales Invoice", "posa_client_request_id"):
 		name = frappe.db.get_value("Sales Invoice", {"posa_client_request_id": request_id, "docstatus": 1}, "name")
 	if not name and invoice.get("name"):
-		name = frappe.db.get_value("Sales Invoice", {"name": invoice["name"], "docstatus": 1}, "name") or \
-			frappe.db.get_value("Sales Invoice Item", {"parent": invoice["name"], "docstatus": 0,
-				"sales_order": ["is", "set"]}, "parent")
+		name = frappe.db.get_value("Sales Invoice", {"name": invoice["name"], "docstatus": 1}, "name")
 	if not name:
 		return None
 	sales_order = frappe.db.get_value("Sales Invoice Item", {"parent": name, "sales_order": ["is", "set"]},
@@ -329,10 +326,10 @@ def _make_unpaid(invoice: dict, data: dict) -> None:
 	data.pop("credit_change", None)
 
 
-def _save_unpaid_draft(invoice: dict) -> dict:
-	"""Save the unpaid Order's invoice as a draft (POS Awesome's own save), outside the
-	cashier's shift: closing a shift deletes (or, if printed, submits) the shift's drafts,
-	and the invoice is not a POS sale until it is paid."""
+def _submit_unpaid(invoice: dict) -> dict:
+	"""Submit the unpaid Order's invoice without payment: the customer owes it. Saved with
+	POS Awesome's own save, then submitted outside the cashier's shift: no money came into
+	the drawer, and the payment later is a Payment Entry (``orders.payments``)."""
 	from posawesome.posawesome.api.invoice_processing.creation import update_invoice
 
 	name = update_invoice(json.dumps(invoice, default=str))["name"]
@@ -341,8 +338,8 @@ def _save_unpaid_draft(invoice: dict) -> dict:
 	doc.update({"is_pos": 0, "update_stock": 0, "posa_pos_opening_shift": None})
 	doc.set("payments", [])
 	doc.flags.ignore_permissions = True
-	doc.save()
-	return {"name": name, "status": 0, "docstatus": 0, "doctype": "Sales Invoice"}
+	doc.submit()
+	return {"name": name, "status": doc.status, "docstatus": 1, "doctype": "Sales Invoice"}
 
 
 def _address_fields(delivery: dict | None) -> dict:

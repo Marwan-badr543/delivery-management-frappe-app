@@ -11,6 +11,9 @@ a Product Bundle (its Packed Items), reserved against the bundle's order row:
 * **Delivery Note submit / cancel:** their entries are marked delivered / reserved again,
   *before* ERPNext posts the stock ledger (which refuses to take reserved stock).
 * **Sales Order cancel:** ERPNext cancels every entry of the order, these included.
+* **Sales Order closed** (``settle_order``, or Close on the form / list): ERPNext keeps the
+  entries, so stock no one will deliver stays reserved for good. What they still hold is
+  released (``release_undelivered``).
 """
 
 from __future__ import annotations
@@ -133,3 +136,27 @@ def deliver(dn, method=None):
 def undeliver(dn, method=None):
 	"""Delivery Note ``before_cancel``: the components are reserved for the order again."""
 	_update_delivered(dn, deliver=False)
+
+
+def release(sre, qty: float) -> None:
+	"""Stop ``sre`` holding ``qty`` (stock UOM): cancelled when nothing of it was delivered and
+	nothing stays held, otherwise its reserved quantity goes down."""
+	sre.flags.ignore_permissions = True
+	if not flt(sre.delivered_qty) and flt(sre.reserved_qty) - qty <= 1e-6:
+		sre.cancel()
+		return
+	sre.reserved_qty = flt(sre.reserved_qty) - qty
+	sre.db_update()
+	sre.update_reserved_qty_in_voucher()
+	sre.update_status()
+	sre.update_reserved_stock_in_bin()
+
+
+def release_undelivered(sales_order: str) -> None:
+	"""A closed order delivers nothing more: free what its entries still hold."""
+	for name in frappe.get_all(SRE, filters={"voucher_type": "Sales Order", "voucher_no": sales_order,
+			"docstatus": 1}, pluck="name"):
+		sre = frappe.get_doc(SRE, name)
+		held = flt(sre.reserved_qty) - flt(sre.delivered_qty)
+		if held > 1e-6:
+			release(sre, held)

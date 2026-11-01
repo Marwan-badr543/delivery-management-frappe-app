@@ -34,8 +34,10 @@ WORK_DATE = """(case when dn.dm_delivery_type = 'AC'
 def delivered_notes(start_date=None, end_date=None, technician: str | None = None, order_type: str | None = None,
 		names: list[str] | None = None) -> list[dict]:
 	"""Delivered notes with a driver: name, driver, order type and work date, oldest first."""
-	# Submitted notes still On the way are not delivered yet (older notes have no Delivery Status).
-	conditions = ["dn.docstatus = 1", "ifnull(dn.dm_delivery_status, '') != 'On the way'", "dn.is_return = 0",
+	# Submitted notes still On the way (or that all came back) were not delivered (older notes
+	# have no Delivery Status).
+	conditions = ["dn.docstatus = 1", "ifnull(dn.dm_delivery_status, '') not in ('On the way', 'Returned')",
+		"dn.is_return = 0",
 		"ifnull(dn.dm_driver, '') != ''"]
 	if start_date:
 		conditions.append(f"{WORK_DATE} >= %(start)s")

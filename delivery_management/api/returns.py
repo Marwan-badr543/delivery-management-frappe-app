@@ -15,9 +15,8 @@ from delivery_management.orders import payments
 from delivery_management.orders.service import quiet_messages
 from delivery_management.returns import service
 
-# A sale the return screen can open: submitted, or the draft invoice of an unpaid Order.
-_RETURNABLE = """si.is_return = 0 and (si.docstatus = 1 or (si.docstatus = 0 and exists (select 1
-	from `tabSales Invoice Item` o where o.parent = si.name and ifnull(o.sales_order, '') != '')))"""
+# A sale the return screen can open.
+_RETURNABLE = "si.is_return = 0 and si.docstatus = 1"
 
 
 def _profile(pos_profile):
@@ -37,9 +36,7 @@ def search_sales(pos_profile, query=""):
 	like = f"%{(query or '').strip()}%"
 	return frappe.db.sql(
 		f"""select si.name, si.docstatus, si.customer, si.customer_name, si.contact_mobile, si.posting_date,
-			si.rounded_total, si.grand_total, si.currency, si.update_stock,
-			if(si.docstatus = 1, si.outstanding_amount, if(si.rounded_total = 0, si.grand_total, si.rounded_total))
-				as outstanding_amount,
+			si.rounded_total, si.grand_total, si.currency, si.update_stock, si.outstanding_amount,
 			(select soi.sales_order from `tabSales Invoice Item` soi where soi.parent = si.name
 				and ifnull(soi.sales_order, '') != '' limit 1) as sales_order
 		from `tabSales Invoice` si
@@ -89,10 +86,9 @@ def search_customers(pos_profile, query=""):
 			(select -ifnull(sum(si.outstanding_amount), 0) from `tabSales Invoice` si where si.customer = c.name
 				and si.company = %(company)s and si.docstatus = 1 and si.is_return = 1 and si.outstanding_amount < 0)
 				as credit,
-			(select ifnull(sum(if(si.docstatus = 1, si.outstanding_amount,
-					if(si.rounded_total = 0, si.grand_total, si.rounded_total))), 0)
+			(select ifnull(sum(si.outstanding_amount), 0)
 				from `tabSales Invoice` si where si.customer = c.name and si.company = %(company)s and {_RETURNABLE}
-				and (si.docstatus = 0 or si.outstanding_amount > 0)) as due
+				and si.outstanding_amount > 0) as due
 		from `tabCustomer` c
 		where c.disabled = 0 and (c.name like %(q)s or c.customer_name like %(q)s or ifnull(c.mobile_no, '') like %(q)s)
 		order by c.modified desc
@@ -107,15 +103,13 @@ def get_customer_money(pos_profile, customer):
 	"""The customer's credit (Credit Notes still open) and the sales they still owe on."""
 	profile = _profile(pos_profile)
 	due = frappe.db.sql(
-		f"""select si.name, si.docstatus, si.posting_date,
-			if(si.docstatus = 1, si.outstanding_amount, if(si.rounded_total = 0, si.grand_total, si.rounded_total))
-				as outstanding_amount,
+		f"""select si.name, si.docstatus, si.posting_date, si.outstanding_amount,
 			if(si.rounded_total = 0, si.grand_total, si.rounded_total) as total,
 			(select soi.sales_order from `tabSales Invoice Item` soi where soi.parent = si.name
 				and ifnull(soi.sales_order, '') != '' limit 1) as sales_order
 		from `tabSales Invoice` si
 		where si.customer = %(customer)s and si.company = %(company)s and {_RETURNABLE}
-			and (si.docstatus = 0 or si.outstanding_amount > 0)
+			and si.outstanding_amount > 0
 		order by si.posting_date, si.creation""",
 		{"customer": customer, "company": profile.company},
 		as_dict=True,

@@ -1,8 +1,8 @@
 """Customer money outside a sale: a payment on a sale that is still owed, or cash out of
 the customer's credit.
 
-* ``collect``: the customer pays (part of) a sale. An unpaid Order's invoice is still a
-  draft (``orders.service``); it is submitted first, then paid.
+* ``collect``: the customer pays (part of) a sale still owed (an unpaid Order's invoice,
+  ``orders.service``).
 * ``pay_out``: the customer takes in cash the credit that returns left (the Credit
   Notes still open), oldest first.
 
@@ -21,27 +21,6 @@ SI = "Sales Invoice"
 EPSILON = 0.0005
 
 
-def submit_draft_order(invoice: str) -> None:
-	"""The customer pays an unpaid Order: its draft invoice is submitted (still unpaid).
-
-	An order closed by a return (nothing left to deliver) is opened for the submit, as
-	ERPNext bills no closed order, and closed again."""
-	from delivery_management.returns.service import settle_order
-
-	si = frappe.get_doc(SI, invoice)
-	if si.docstatus != 0:
-		return
-	closed = [frappe.get_doc("Sales Order", name) for name in {r.sales_order for r in si.items if r.sales_order}
-		if frappe.db.get_value("Sales Order", name, "status") == "Closed"]
-	for so in closed:
-		so.flags.ignore_permissions = True
-		so.update_status("Draft")  # ERPNext's "Re-open"
-	si.flags.ignore_permissions = True
-	si.submit()
-	for so in closed:
-		settle_order(so.name)
-
-
 def collect(invoice: str, amount, mode_of_payment: str, reference_no: str, remarks: str):
 	"""Payment Entry of ``amount`` for the invoice, at most what it still owes."""
 	from erpnext.accounts.doctype.payment_entry.payment_entry import get_payment_entry
@@ -50,7 +29,6 @@ def collect(invoice: str, amount, mode_of_payment: str, reference_no: str, remar
 	amount = flt(amount, 3)
 	if amount <= 0:
 		frappe.throw(_("Enter an amount greater than zero."))
-	submit_draft_order(invoice)
 	# Under a lock, so two payments cannot both pass the check.
 	outstanding = flt(frappe.db.sql("select outstanding_amount from `tabSales Invoice` where name = %s for update",
 		invoice)[0][0], 3)

@@ -6,7 +6,6 @@
 //    (exchange), or part cash.
 // 3. Done: the documents are made (api.returns.submit_return, see returns/service.py).
 //    "New sale for this customer" starts the exchange; the credit is offered in Payments.
-// An unpaid delivery order (draft invoice) has nothing to give back: its bill goes down.
 //
 // "Customer money" tab: find the customer, then take a payment on what they owe (e.g. an
 // unpaid order) or pay out their credit in cash, with the reason. Both go in the
@@ -45,7 +44,6 @@
 			value += line.unit_value * (returned + cancelled);
 		}
 		value = round(value);
-		if (state.sale.is_draft) return { value, clears: value, most: 0, refund: 0, credit: 0 };
 		const clears = round(Math.min(Math.max(state.sale.outstanding_amount, 0), value));
 		const most = round(value - clears);
 		let refund = most;
@@ -80,9 +78,7 @@
 	function findView() {
 		if (state.tab === "money") return customersView();
 		const rows = (state.results || []).map((r) => {
-			const owed = !r.docstatus
-				? `<span class="dmr-pill dmr-red">${__("Not paid yet")} ${format_currency(r.outstanding_amount, r.currency)}</span>`
-				: r.outstanding_amount > 0
+			const owed = r.outstanding_amount > 0
 				? `<span class="dmr-pill dmr-red">${__("Owes")} ${format_currency(r.outstanding_amount, r.currency)}</span>`
 				: `<span class="dmr-pill dmr-green">${__("Paid")}</span>`;
 			const kind = r.sales_order
@@ -156,8 +152,7 @@
 			<textarea id="dmr-notes" class="dmr-input" rows="2">${esc(state.notes || "")}</textarea>
 			<div class="dmr-money">
 				<div class="dmr-row"><span>${__("Return value")}</span><b>${money(t.value)}</b></div>
-				${s.is_draft ? `<p class="dmr-muted">${__("Not paid yet: nothing is given back, the order's bill goes down by {0}.", [money(t.value)])}</p>` : ""}
-				${t.clears > 0 && !s.is_draft ? `<div class="dmr-row"><span>${__("Clears what the customer still owes")}</span><b>− ${money(t.clears)}</b></div>` : ""}
+				${t.clears > 0 ? `<div class="dmr-row"><span>${__("Clears what the customer still owes")}</span><b>− ${money(t.clears)}</b></div>` : ""}
 				<div class="dmr-row dmr-strong"><span>${__("Customer gets")}</span><b>${money(t.most)}</b></div>
 				${t.most > 0 ? `<div class="dmr-modes">${modes}</div>` : ""}
 				${t.most > 0 && state.payMode === "part" ? `<label class="dmr-label" for="dmr-part">${__("Cash now (the rest stays as credit)")}</label>
@@ -213,8 +208,7 @@
 		const c = state.cm;
 		const due = c.due.map((d) => `<label class="dmr-due ${state.dueInvoice === d.name ? "on" : ""}">
 			<input type="radio" name="dmr-due" value="${esc(d.name)}" ${state.dueInvoice === d.name ? "checked" : ""}>
-			<span><b>${esc(d.sales_order || d.name)}</b> · ${esc(frappe.datetime.str_to_user(d.posting_date))}
-				${d.docstatus ? "" : `<span class="dmr-pill dmr-red">${__("Not paid yet")}</span>`}</span>
+			<span><b>${esc(d.sales_order || d.name)}</b> · ${esc(frappe.datetime.str_to_user(d.posting_date))}</span>
 			<b>${money(d.outstanding_amount)}</b></label>`).join("");
 		const body = `<div class="dmr-sale-head"><div><b>${esc(c.customer_name)}</b></div>
 				<button type="button" class="dmr-link" data-act="back">${__("Change customer")}</button></div>
@@ -339,7 +333,7 @@
 		}).filter((l) => l.returned_qty + l.cancelled_qty > 0);
 		const data = { sales_invoice: state.sale.name, pos_profile: profile(), lines, warehouse: state.store,
 			reason: state.reason, notes: state.notes, request_id: state.requestId };
-		if (state.payMode === "all" && !state.sale.is_draft) data.refund_all = 1;
+		if (state.payMode === "all") data.refund_all = 1;
 		else data.refund_amount = state.payMode === "credit" ? 0 : t.refund;
 		try {
 			state.result = await call("submit_return", { data: JSON.stringify(data) }, true);

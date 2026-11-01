@@ -74,10 +74,9 @@ app_include_js = [
 # ----------
 
 # add methods and filters to jinja environment
-# jinja = {
-# 	"methods": "delivery_management.utils.jinja_methods",
-# 	"filters": "delivery_management.utils.jinja_filters"
-# }
+jinja = {
+	"methods": ["delivery_management.printing.dm_delivery_note_print"],
+}
 
 # Installation
 # ------------
@@ -163,19 +162,24 @@ doc_events = {
 		"before_submit": [
 			"delivery_management.drivers.delivery_note.before_submit",
 			"delivery_management.returns.service.check_not_returned",
+			"delivery_management.returns.service.flag_before_delivery",
 			"delivery_management.orders.reservation.deliver",
 		],
 		"on_submit": [
 			"delivery_management.returns.service.settle_after_delivery",
-			"delivery_management.returns.service.keep_cancelled_as_returned",
+			"delivery_management.returns.service.after_return",
 		],
 		"before_cancel": "delivery_management.orders.reservation.undeliver",
 		"on_update": "delivery_management.drivers.delivery_note.on_update",
 		"on_cancel": [
 			"delivery_management.drivers.delivery_note.on_cancel",
-			"delivery_management.returns.service.keep_cancelled_as_returned",
+			"delivery_management.returns.service.after_return",
 		],
 		"on_trash": "delivery_management.drivers.delivery_note.on_trash",
+		"onload": "delivery_management.drivers.delivery_note.onload",
+	},
+	"Payment Entry": {
+		"on_submit": "delivery_management.returns.service.settle_after_payment",
 	},
 	"Sales Invoice": {
 		"validate": "delivery_management.orders.serial_choice.apply_to_packed_items",
@@ -218,4 +222,9 @@ extend_bootinfo = "delivery_management.api.pos.extend_bootinfo"
 # POS Awesome's Customer Credit counted a credit paid out from the drawer twice.
 override_whitelisted_methods = {
 	"posawesome.posawesome.api.payments.get_available_credit": "delivery_management.api.returns.get_available_credit",
+	# Closing an order frees the stock still reserved for it (orders.reservation.release_undelivered).
+	"erpnext.selling.doctype.sales_order.sales_order.update_status":
+		"delivery_management.orders.sales_order.update_status",
+	"erpnext.selling.doctype.sales_order.sales_order.close_or_unclose_sales_orders":
+		"delivery_management.orders.sales_order.close_or_unclose_sales_orders",
 }

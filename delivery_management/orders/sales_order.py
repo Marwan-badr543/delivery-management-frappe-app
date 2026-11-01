@@ -18,6 +18,7 @@ from frappe import _
 from frappe.utils import cint
 
 from delivery_management.orders import address as address_utils
+from delivery_management.orders import reservation
 from delivery_management.slots import engine, profile_cart
 from delivery_management.slots.timeutils import to_date, to_time_str
 
@@ -144,3 +145,27 @@ def get_schedule_options(area=None, date=None, items=None, sales_order=None):
 	if profile.ac_units:
 		result["ac_days"] = [d for d in engine.get_ac_calendar(None, None, profile.ac_units) if d["available"]]
 	return result
+
+
+@frappe.whitelist(methods=["POST"])
+def update_status(status, name):
+	"""ERPNext's Close / Re-open of the Sales Order form; a closed order's reserved stock is freed."""
+	from erpnext.selling.doctype.sales_order.sales_order import update_status as erpnext_update_status
+
+	erpnext_update_status(status, name)
+	if status == "Closed":
+		reservation.release_undelivered(name)
+
+
+@frappe.whitelist(methods=["POST"])
+def close_or_unclose_sales_orders(names, status):
+	"""ERPNext's Close / Re-open of the Sales Order list; closed orders' reserved stock is freed."""
+	import json
+
+	from erpnext.selling.doctype.sales_order.sales_order import close_or_unclose_sales_orders as erpnext_close
+
+	erpnext_close(names, status)
+	if status == "Closed":
+		for name in json.loads(names):
+			if frappe.db.get_value("Sales Order", name, "status") == "Closed":
+				reservation.release_undelivered(name)

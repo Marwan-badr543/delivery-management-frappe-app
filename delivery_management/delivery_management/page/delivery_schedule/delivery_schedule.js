@@ -248,7 +248,8 @@ class DeliverySchedulePage {
 						<div class="dd-item"><div>${D.esc(i.item_name || i.item_code)}
 							${i.serial_no ? `<small>${__("Serial")}: ${D.esc(i.serial_no.split("\n").join(", "))}</small>` : ""}
 							${(bundles[i.item_code] || []).map((p) => `<small>• ${D.esc(p.item_name || p.item_code)} × ${p.qty}</small>`).join("")}
-						</div><b>× ${i.qty}</b></div>`).join("")}</div></div>
+							${i.returned_qty > 0 ? `<small class="dd-no">${__("Returned")}: ${i.returned_qty} · ${__("Received")}: ${i.qty - i.returned_qty}</small>` : ""}
+						</div><b>× ${i.qty - (i.returned_qty || 0)}</b></div>`).join("")}</div></div>
 					<div class="dd-box"><h5>${__("Payment")}</h5>
 						<div class="dd-kv">
 							<span>${__("Total")}</span><b>${D.money(pay.total, pay.currency)}</b>

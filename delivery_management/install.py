@@ -61,14 +61,18 @@ def _delivery_note_fields() -> list[dict]:
 			"in_standard_filter": 1, "search_index": 1,
 			"description": "Assigned on the <a href='/desk/driver-assignment'>Driver Assignment</a> page."},
 		{"fieldname": "dm_delivery_status", "fieldtype": "Select", "label": "Delivery Status",
-			"options": "\nOn the way\nDelivered", "insert_after": "dm_driver", "read_only": 1, "allow_on_submit": 1,
-			"no_copy": 1, "in_standard_filter": 1, "search_index": 1,
+			"options": "\nOn the way\nDelivered\nReturned", "insert_after": "dm_driver", "read_only": 1,
+			"allow_on_submit": 1, "no_copy": 1, "in_standard_filter": 1, "search_index": 1,
 			"description": "On the way when the note is submitted (the goods left the store), Delivered when the "
-				"driver confirms on the Delivery Schedule page."},
+				"driver confirms on the Delivery Schedule page, Returned when all its goods came back while On the way."},
 		{"fieldname": "dm_returned_before_delivery", "fieldtype": "Check", "label": "Returned Before Delivery",
 			"insert_after": "dm_delivery_status", "read_only": 1, "no_copy": 1, "depends_on": "eval:doc.is_return",
 			"description": "The note it returns was still On the way: never delivered or installed, so its "
 				"units are taken off the Installation Statistics."},
+		{"fieldname": "dm_customer_return", "fieldtype": "Check", "label": "Customer Return",
+			"insert_after": "dm_returned_before_delivery", "read_only": 1, "no_copy": 1, "depends_on": "eval:doc.is_return",
+			"description": "Made by a Customer Return (POS): the customer gave these goods back for good. Without it "
+				"the goods only came back, and the order still has to deliver them (Send Again)."},
 	] + fields[1:]
 
 
@@ -165,6 +169,24 @@ def get_custom_fields() -> dict:
 				"insert_after": "dm_ac_tech_name", "read_only": 1, "allow_on_submit": 1, "no_copy": 1},
 		],
 	}
+
+
+DELIVERY_NOTE_PRINT_FORMAT = "Show Satellite Delivery Note"
+
+
+def ensure_delivery_note_print_format():
+	"""The app's Delivery Note print (driver, returned goods) is the default, unless someone
+	chose a print format of their own (not one of ERPNext's standard ones)."""
+	from frappe.custom.doctype.property_setter.property_setter import make_property_setter
+
+	current = frappe.db.get_value("Property Setter", {"doc_type": "Delivery Note", "property": "default_print_format"},
+		"value")
+	if current == DELIVERY_NOTE_PRINT_FORMAT or not frappe.db.exists("Print Format", DELIVERY_NOTE_PRINT_FORMAT):
+		return
+	if current and frappe.db.get_value("Print Format", current, "standard") != "Yes":
+		return
+	make_property_setter("Delivery Note", None, "default_print_format", DELIVERY_NOTE_PRINT_FORMAT, "Data",
+		for_doctype=True, validate_fields_for_doctype=False)
 
 
 def ensure_role():
@@ -274,4 +296,5 @@ def after_migrate():
 	ensure_default_settings()
 	ensure_returns_not_reserved()
 	ensure_ac_installation_account()
+	ensure_delivery_note_print_format()
 	ensure_indexes()

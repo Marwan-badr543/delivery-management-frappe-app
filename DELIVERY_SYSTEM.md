@@ -171,8 +171,8 @@ serials become Delivered, and the SO is 100% delivered and 100% billed.
 ### Save/New = order without payment (the usual case)
 With Type = Order, **Save/New** does the whole order (steps 1-9: SO submitted,
 slot booked, DN created by the server script, Sales Invoice **submitted**) but
-takes no payment: the invoice is **Unpaid** with the full outstanding amount, for
-the customer to pay later. **PAY** does the same and records the payment. With
+takes no payment: the invoice is submitted **Unpaid** with the full outstanding
+amount, for the customer to pay later (see §15). **PAY** does the same and records the payment. With
 Type = Invoice (or a return), Save/New keeps POS Awesome's old behaviour (a draft).
 
 ### 2.1 Schedule fields on any Sales Order (POS or Desk)
@@ -741,45 +741,80 @@ The cashier does every return in the POS: header button **Return / Exchange**
 | Branch invoice (update stock) | Credit Note **with stock** into the receiving store | |
 | Order, delivered goods | **Return Delivery Note** against the notes they left on (serials matched), receiving store, original cost | Credit Note **without stock** |
 | Order, goods not delivered | Removed from the draft Delivery Note (empty note deleted); its Stock Reservation released | Credit Note without stock |
-| Unpaid Order (draft invoice) | as above | **No Credit Note**: the lines come off the draft invoice (all of them: the draft is deleted) |
+| Unpaid Order | as above | Credit Note without stock; it clears the debt (nothing is refunded) |
 
 * **Cash** is a negative cash payment on the Credit Note in the cashier's POS Opening Shift: the
   shift closing counts it once. No Payment Entry (POS Awesome's Customer Credit misreads the
   negative allocation of a refund Payment Entry on a part refund).
 * **Debt first**: when the sale is not fully paid, Payment Reconciliation applies the note to it;
   the refund can never be more than what was paid for the returned goods.
-* **Sales Order**: never cancelled. ERPNext's `Sales Order Item.returned_qty` counts goods brought
-  back (Return Delivery Note, reloaded before submit so ERPNext updates it); goods cancelled
-  before delivery are added to it and kept in `dm_cancelled_qty`, re-added each time ERPNext
-  recounts it from the return notes (`keep_cancelled_as_returned`). Selling Settings *Don't
+* **Sales Order**: never cancelled. `Sales Order Item.returned_qty` = what the customer gave back
+  **for good**: the Return Delivery Notes made by a Customer Return (flag *Customer Return*,
+  `dm_customer_return`) plus the goods cancelled before delivery (`dm_cancelled_qty`).
+  ERPNext counts every return note in it; `after_return` sets it again on each return submit /
+  cancel (`returned_for_good`) and recounts the store's reservation. Selling Settings *Don't
   Reserve Sales Order Qty on Sales Return* is on (`install.ensure_returns_not_reserved`, patch
-  `returns_not_reserved`), so the store's reserved qty (Bin) drops for both at once while the rest
+  `returns_not_reserved`), so the store's reserved qty (Bin) drops for those goods while the rest
   of the order stays reserved. The Credit Note has *Update Billed Amount in Sales Order*. A
-  Delivery Note can never deliver returned goods again (`check_not_returned`). A delivery type
-  (AC / Non AC) with nothing left to deliver that was never delivered frees its booking; with
-  nothing left at all the order is **Closed**, now or after its last delivery.
+  Delivery Note can never deliver those goods again (`check_not_returned`). A delivery type
+  (AC / Non AC) with nothing left to deliver that was never delivered frees its booking.
+* **The order closes only when it is done** (`settle_order` → `order_done`, 2026-11-01): nothing
+  left to deliver, no Delivery Note of it draft or On the way (Delivered or Returned), and no
+  invoice of it still owed. It is checked after a return, a delivery submit, **Mark Delivered**
+  (`api.drivers._set_delivered`) and every Payment Entry (`settle_after_payment`). A return of
+  one item while the note is On the way no longer closes the order.
+* **Closing frees the reserved stock** (`orders.reservation.release_undelivered`): ERPNext keeps
+  a closed order's Stock Reservation Entries, so stock nobody will deliver stayed reserved.
+  Our close, and ERPNext's Close on the Sales Order form and list (`override_whitelisted_methods`
+  → `orders.sales_order.update_status` / `close_or_unclose_sales_orders`), release what the
+  entries still hold (cancelled when nothing of them was delivered). Patch
+  `release_closed_order_reservations` freed the orders closed before.
 * **TV accounts**: as many accounts as TVs given back (returned or cancelled) are deleted, the
   last ones of the sale, once the return is committed (`tv_accounts.remove_from_sale`); their
   credentials leave the invoice and order notes and are listed on the Customer Return.
 * **Exchange into an unpaid Order** (Save/New) keeps the Customer Credit applied
   (`orders.service._make_unpaid` no longer drops it); that order's invoice is submitted.
 
-### Unpaid orders keep a draft invoice (2026-10-27)
+### Unpaid orders get a submitted invoice (2026-11-01)
 
-"Save/New" on an Order (no payment, no credit) books the order as before, but its Sales Invoice
-stays a **draft** (`orders.service._save_unpaid_draft`: POS Awesome's own save, then *Is POS* and
-*Update Stock* off and no shift, so closing a shift neither deletes nor submits it). A return
-before payment only edits the draft. It is submitted when the customer pays
-(`orders.payments.collect` → `submit_draft_order`): the driver's *Record Payment* on the Delivery
-Schedule, or *Customer money* in the POS. An order closed by a return is re-opened for that submit
-and closed again. A retried Save/New finds the draft and makes no second order.
+"Save/New" on an Order (no payment, no credit) books the order and **submits** its Sales Invoice
+unpaid (`orders.service._submit_unpaid`: POS Awesome's own save, then *Is POS* and *Update Stock*
+off and no shift, then submit): the customer owes it (receivable, outstanding). A return makes a
+Credit Note that clears the debt. The customer pays later with a Payment Entry
+(`orders.payments.collect`): the driver's *Record Payment* on the Delivery Schedule, or *Customer
+money* in the POS. A retried Save/New finds the submitted invoice and makes no second order. The
+drafts of the earlier version (2026-10-27) are submitted by the patch `submit_unpaid_order_drafts`
+(posted on their own date).
+
+### Goods that came back, Send Again (2026-11-01)
+
+* A **Sales Return made on the Delivery Note** (desk, not a Customer Return; e.g. nobody home)
+  only brings the goods back: the order still has to deliver them (not in `returned_qty`).
+* A note On the way whose goods **all** came back gets Delivery Status **Returned** (red in the
+  list); cancelling the return makes it On the way again. Any return of a note On the way is
+  *Returned Before Delivery* (`flag_before_delivery`), so Installation Statistics leave it out.
+* **Send Again** (button, and the menu's **Duplicate**, on a note with such goods; managers):
+  `returns.service.make_resend` makes a **draft** copy of the note with only those goods (same
+  order lines, schedule and address; no serials, no driver), for the store to scan and submit.
+  Goods already on another draft note are not copied twice. The schedule is the old one: move it
+  with *Move Delivery Slot / Move Installation Day*.
+* The note shows what came back: a red **Returned items** box on the form, *Returned / Received*
+  per item on the driver's order page (where the customer signs), and its **AC Units** go down by
+  the AC units returned (`update_returned_note`).
+* **Change Driver** on a note On the way (managers): dialog with the drivers free at that time
+  (`api.drivers.get_driver_options` / `assign_driver`); refused once Delivered or Returned. Draft
+  notes are still assigned on the Driver Assignment page.
+* **Print** "Show Satellite Delivery Note" (default unless a custom format was chosen;
+  `printing.dm_delivery_note_print`): layout of the v14 *Delivery_Note_CC1*, plus the driver /
+  AC technician with mobile, *Returned / Received* columns with a RETURNED tag, the returned items
+  (serials, return note, customer return or came back), the customer's signature and the driver.
 
 ### Customer money in the POS (2026-10-27)
 
 Second tab of the Return / Exchange window: find the customer (`search_customers`), then
 (`get_customer_money`):
 
-* **Take payment** on a sale still owed (an unpaid order's draft is submitted first): Payment Entry
+* **Take payment** on a sale still owed: Payment Entry
   *Receive*, Reference No = the cashier's shift (`collect_payment`).
 * **Pay out credit** from the drawer, with a required reason: Payment Entry *Pay* to the customer,
   allocated to the open Credit Notes oldest first, Reference No = the shift (`pay_out_credit`).

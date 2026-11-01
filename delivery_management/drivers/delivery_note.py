@@ -19,10 +19,12 @@ SCHEDULE_FIELDS = (
 
 
 # Delivery Status (dm_delivery_status): submitting a note sends it On the way, the
-# driver confirms it Delivered. Shown as the note's status while On the way
+# driver confirms it Delivered. A note On the way whose goods all came back is Returned
+# (returns.service.after_return). Shown as the note's status while On the way or Returned
 # (public/js/delivery_note_list.js); ERPNext's own statuses otherwise.
 ON_THE_WAY = "On the way"
 DELIVERED = "Delivered"
+RETURNED = "Returned"
 
 
 # Fields that belong to the other team. A mixed order is split into an AC and a Non AC
@@ -90,6 +92,14 @@ def before_submit(doc, method=None):
 	if not doc.get("dm_delivery_type"):
 		frappe.throw(_("Choose the Order Type (AC or Non AC) before submitting."), title=_("Order Type required"))
 	doc.dm_delivery_status = None if doc.get("is_return") else ON_THE_WAY
+
+
+def onload(doc, method=None):
+	"""Tell the form whether goods of this note came back and wait to be sent again."""
+	if doc.docstatus == 1 and not doc.get("is_return") and doc.get("per_returned"):
+		from delivery_management.returns.service import resend_rows
+
+		doc.set_onload("dm_resend", bool(resend_rows(doc.name)))
 
 
 def on_update(doc, method=None):

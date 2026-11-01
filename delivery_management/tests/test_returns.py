@@ -93,6 +93,12 @@ class ReturnsTestCase(DeliveryTestCase):
 			dn.save()
 			dn.submit()
 
+	def delivered(self, so):
+		"""The drivers confirm every note of the order that is On the way."""
+		for name in self.notes(so, docstatus=1):
+			if frappe.db.get_value("Delivery Note", name, "dm_delivery_status") == "On the way":
+				drivers.mark_delivered_by_office(name)
+
 	# ------------------------------------------------------------------ returns
 
 	def give_back(self, invoice, lines, refund="all", wh=None, **extra):
@@ -291,8 +297,11 @@ class TestOrderReturn(ReturnsTestCase):
 		again.set("items", [r for r in again.items if r.item_code == self.w.pipe])
 		again.save()
 		again.submit()
+		self.assertNotEqual(frappe.db.get_value("Sales Order", so, "status"), "Closed")  # still On the way
+		self.delivered(so)
 		self.assertEqual(frappe.db.get_value("Sales Order", so, "status"), "Closed")
 		self.assertEqual(balance(self.customer), 0)
+
 	def test_part_cancelled_before_delivery(self):
 		si, so = self.order([(self.w.tv, 2, 100)])
 		self.give_back(si, {self.w.tv: (0, 1)})
@@ -302,34 +311,39 @@ class TestOrderReturn(ReturnsTestCase):
 		self.assertNotEqual(frappe.db.get_value("Sales Order", so, "status"), "Closed")
 		self.assertEqual(len(get_reservations("Sales Order", so)), 1)  # still to deliver: slot kept
 		self.deliver(so, {self.w.tv: ["_DMTV-M-1"]})
+		self.assertNotEqual(frappe.db.get_value("Sales Order", so, "status"), "Closed")  # still On the way
+		self.delivered(so)
 		self.assertEqual(frappe.db.get_value("Sales Order", so, "status"), "Closed")
 		self.assertEqual(balance(self.customer), 0)
 
 	def test_unpaid_order_delivered_and_returned(self):
-		"""Nothing was paid: the TV comes back and simply comes off the draft bill."""
+		"""Nothing was paid: the TV comes back and its Credit Note clears that much of the debt."""
 		si, so = self.order([(self.w.tv, 1, 100), (self.w.pipe, 2, 5)], unpaid=True)
 		self.deliver(so, {self.w.tv: ["_DMTV-M-1"]})
 		self.assertEqual(api.search_sales(self.w.pos_profile, si)[0]["outstanding_amount"], 110)
 		cash = self.expected_cash()
 		result = self.give_back(si, {self.w.tv: (1, 0)}, refund="all")
 		self.assertEqual((result["return_amount"], result["cleared_amount"], result["refunded_amount"],
-			result["credit_amount"], result["credit_note"]), (100, 100, 0, 0, None))
-		draft = frappe.get_doc("Sales Invoice", si)
-		self.assertEqual((draft.docstatus, [r.item_code for r in draft.items], draft.grand_total), (0, [self.w.pipe], 10))
-		self.assertEqual((balance(self.customer), self.expected_cash()), (0, cash))
+			result["credit_amount"]), (100, 100, 0, 0))
+		self.assertEqual((outstanding(si), outstanding(result["credit_note"])), (10, 0))
+		self.assertEqual((balance(self.customer), self.expected_cash()), (10, cash))
 		self.assertEqual(serial_status("_DMTV-M-1"), ("Active", self.w.branch))
-		# Driver collects the rest: the draft is submitted, then paid.
+		self.assert_balanced(si, result["credit_note"])
+		# Delivered but not paid: the order stays open. The driver collects the rest: closed.
+		self.delivered(so)
+		self.assertNotEqual(frappe.db.get_value("Sales Order", so, "status"), "Closed")
 		dn = self.notes(so, docstatus=1)[0]
 		self.assertEqual(drivers.payment_summary([dn])[dn]["outstanding"], 10)
 		payments.collect(si, 10, "Cash", dn, "on delivery")
-		self.assertEqual((frappe.db.get_value("Sales Invoice", si, "status"), balance(self.customer)), ("Paid", 0))
+		self.assertEqual((outstanding(si), balance(self.customer)), (0, 0))
+		self.assertEqual(frappe.db.get_value("Sales Order", so, "status"), "Closed")
 
-	def test_unpaid_order_all_cancelled_deletes_the_draft(self):
+	def test_unpaid_order_all_cancelled(self):
 		si, so = self.order([(self.w.tv, 1, 100)], unpaid=True)
-		first = self.give_back(si, {self.w.tv: (0, 1)})
-		self.assertFalse(frappe.db.exists("Sales Invoice", si))
-		self.assertEqual(frappe.db.get_value("Customer Return", first["name"], ["sales_invoice", "sales_order"]),
-			(None, so))
+		self.assertEqual((frappe.db.get_value("Sales Invoice", si, "docstatus"), outstanding(si)), (1, 100))
+		result = self.give_back(si, {self.w.tv: (0, 1)})
+		self.assertEqual((result["cleared_amount"], result["refunded_amount"]), (100, 0))
+		self.assertEqual((outstanding(si), balance(self.customer)), (0, 0))
 		self.assertEqual((frappe.db.get_value("Sales Order", so, "status"), store_reserved(self.w.tv, self.w.main)),
 			("Closed", self.reserved_before))
 
@@ -376,6 +390,7 @@ class TestOrderReturn(ReturnsTestCase):
 		self.assertEqual([[r.item_code for r in n.items] for n in notes], [[self.w.tv]])
 		self.assertEqual((reserved_qty(so, self.w.ac), reserved_qty(so, self.w.tv)), (0, 1))
 		self.deliver(so, {self.w.tv: ["_DMTV-M-1"]})
+		self.delivered(so)
 		self.assertEqual(frappe.db.get_value("Sales Order", so, "status"), "Closed")
 
 	def test_returned_goods_are_sellable_again(self):
@@ -417,8 +432,108 @@ class TestOrderReturn(ReturnsTestCase):
 		si, note = sent([(self.w.tv, 1, 100)], "_DMTV-M-2")
 		ret = self.give_back(si, {self.w.tv: (1, 0, ["_DMTV-M-2"])})["return_delivery_notes"][0]
 		self.assertTrue(frappe.db.get_value("Delivery Note", ret, "dm_returned_before_delivery"))
-		drivers.mark_delivered_by_office(note)
+		self.assertEqual(frappe.db.get_value("Delivery Note", note, "dm_delivery_status"), "Returned")
 		self.assertEqual(units(), (3, 1))
+
+
+class TestCameBack(ReturnsTestCase):
+	"""Goods that came back on a Sales Return made on the Delivery Note (not a Customer Return):
+	the order still has to deliver them, "Send Again" makes the note for it."""
+
+	def bounce(self, note, rows=None):
+		"""Sales Return of the note: all of it, or ``rows`` ({item: (qty, serials)})."""
+		from erpnext.stock.doctype.delivery_note.delivery_note import make_sales_return
+
+		ret = make_sales_return(note)
+		if rows:
+			ret.set("items", [r for r in ret.items if r.item_code in rows])
+			for r in ret.items:
+				qty, serials = rows[r.item_code]
+				r.qty, r.stock_qty = -qty, -qty
+				if serials:
+					r.update({"serial_no": "\n".join(serials), "use_serial_batch_fields": 1,
+						"serial_and_batch_bundle": None})
+			ret.set("packed_items", [])
+		ret.insert()
+		ret = frappe.get_doc("Delivery Note", ret.name)
+		ret.submit()
+		return ret
+
+	def test_whole_note_came_back_and_is_sent_again(self):
+		si, so = self.order([(self.w.tv, 1, 100), (self.w.pipe, 2, 5)])
+		self.deliver(so, {self.w.tv: ["_DMTV-M-1"]})
+		note = self.notes(so, docstatus=1)[0]
+		asg.assign(note, user("_dm.tv1@example.com", asg.ROLE_TV))
+		ret = self.bounce(note)
+		self.assertTrue(frappe.db.get_value("Delivery Note", ret.name, "dm_returned_before_delivery"))
+		self.assertEqual(frappe.db.get_value("Delivery Note", note, "dm_delivery_status"), "Returned")
+		# Not given back by the customer: nothing returned on the order, it still has to deliver.
+		self.assertEqual(sum(frappe.get_all("Sales Order Item", filters={"parent": so}, pluck="returned_qty")), 0)
+		self.assertNotEqual(frappe.db.get_value("Sales Order", so, "status"), "Closed")
+		self.assertEqual(store_reserved(self.w.tv, self.w.main), self.reserved_before + 1)
+		self.assertEqual(returns.get_sale(si)["lines"][0]["max_return"], 0)  # nothing is with the customer
+
+		again = frappe.get_doc("Delivery Note", returns.make_resend(note))
+		self.assertEqual((again.docstatus, again.dm_driver, again.dm_delivery_status or None), (0, None, None))
+		self.assertEqual({r.item_code: (r.qty, r.serial_no or None) for r in again.items},
+			{self.w.tv: (1, None), self.w.pipe: (2, None)})
+		self.assertEqual({r.so_detail for r in again.items},
+			set(frappe.get_all("Sales Order Item", filters={"parent": so}, pluck="name")))
+		self.assertRaisesRegex(frappe.ValidationError, "Nothing", returns.make_resend, note)  # already waiting
+
+		self.deliver(so, {self.w.tv: ["_DMTV-M-2"]})
+		self.assertEqual(frappe.db.get_value("Delivery Note", again.name, "dm_delivery_status"), "On the way")
+		self.delivered(so)
+		self.assertEqual(frappe.db.get_value("Sales Order", so, "status"), "Completed")
+		self.assertEqual(store_reserved(self.w.tv, self.w.main), self.reserved_before)
+		self.assertEqual(balance(self.customer), 0)
+
+	def test_part_came_back_ac_units_and_statistics(self):
+		si, so = self.order([(self.w.ac, 2, 300)])
+		self.deliver(so, {self.w.ac: ["_DMAC-M-OLD1", "_DMAC-M-OLD2"]})
+		note = self.notes(so, docstatus=1)[0]
+		frappe.db.set_value("Delivery Note", note, "dm_driver", "Administrator")
+		self.assertEqual(frappe.db.get_value("Delivery Note", note, "dm_ac_units"), 2)
+		ret = self.bounce(note, {self.w.ac: (1, ["_DMAC-M-OLD2"])})
+		self.assertEqual(frappe.db.get_value("Delivery Note", note, ["dm_ac_units", "dm_delivery_status"]),
+			(1, "On the way"))
+		self.assertEqual(drivers.get_order_detail(note)["items"][0]["returned_qty"], 1)
+		drivers.mark_delivered_by_office(note)
+		day = frappe.db.get_value("Delivery Note", note, "dm_ac_installation_date")
+		rows = stats.installation_stats(day, day, technician="Administrator")
+		self.assertEqual(rows[0]["ac_units"], 1)
+		# The return cancelled: both units on the note again.
+		ret.cancel()
+		self.assertEqual(frappe.db.get_value("Delivery Note", note, "dm_ac_units"), 2)
+
+	def test_customer_return_on_the_way_keeps_the_order_open(self):
+		"""The customer keeps one item and gives one back at the door: the order closes only once
+		the note is delivered and the invoice paid."""
+		si, so = self.order([(self.w.tv, 1, 100), (self.w.pipe, 2, 5)], unpaid=True)
+		self.deliver(so, {self.w.tv: ["_DMTV-M-1"]})
+		note = self.notes(so, docstatus=1)[0]
+		self.give_back(si, {self.w.pipe: (2, 0)}, wh=self.w.main)
+		self.assertEqual(frappe.db.get_value("Delivery Note", note, "dm_delivery_status"), "On the way")
+		self.assertNotEqual(frappe.db.get_value("Sales Order", so, "status"), "Closed")
+		self.assertEqual(returns.resend_rows(note), {})  # given back for good: never sent again
+		self.assertEqual(reserved_qty(so, self.w.pipe), 0)
+		self.delivered(so)
+		self.assertNotEqual(frappe.db.get_value("Sales Order", so, "status"), "Closed")  # not paid yet
+		payments.collect(si, 100, "Cash", note, "on delivery")
+		self.assertEqual(frappe.db.get_value("Sales Order", so, "status"), "Closed")
+
+	def test_driver_changes_while_on_the_way(self):
+		first, second = user("_dm.tv1@example.com", asg.ROLE_TV), user("_dm.tv2@example.com", asg.ROLE_TV)
+		si, so = self.order([(self.w.tv, 1, 100)])
+		asg.assign(self.notes(so)[0], first)
+		self.deliver(so, {self.w.tv: ["_DMTV-M-1"]})
+		note = self.notes(so, docstatus=1)[0]
+		drivers.assign_driver(note, second)
+		self.assertEqual(frappe.db.get_value("Delivery Note", note, "dm_driver"), second)
+		self.assertEqual(frappe.db.get_value("Driver Schedule", note, "driver"), second)
+		drivers.mark_delivered_by_office(note)
+		self.assertRaisesRegex(frappe.ValidationError, "only change while it is On the way",
+			drivers.assign_driver, note, first)
 
 
 class TestInvoiceAcTech(ReturnsTestCase):
@@ -500,6 +615,22 @@ class TestStoreReservation(ReturnsTestCase):
 		self.assertEqual((row.returned_qty, row.dm_cancelled_qty), (2, 1))
 		self.assertEqual(store_reserved(self.w.tv, self.w.main), self.reserved_before + 1)
 		self.assertEqual(returns.get_sale(si)["lines"][0]["max_cancel"], 1)
+
+
+	def test_closed_order_frees_its_reserved_stock(self):
+		"""ERPNext keeps the reservation of a closed order; Close on the form or list frees it."""
+		from delivery_management.orders.sales_order import close_or_unclose_sales_orders, update_status
+
+		sellable = get_sellable_qty([self.w.tv], self.w.main)[self.w.tv]
+		si, so = self.order([(self.w.tv, 2, 100)])
+		self.deliver(so, {self.w.tv: ["_DMTV-M-1"]}, qty={self.w.tv: 1})
+		self.assertEqual(reserved_qty(so, self.w.tv), 1)
+		update_status("Closed", so)
+		self.assertEqual(reserved_qty(so, self.w.tv), 0)
+		self.assertEqual(get_sellable_qty([self.w.tv], self.w.main)[self.w.tv], sellable - 1)  # one TV went out
+		si, so = self.order([(self.w.pipe, 2, 5)])
+		close_or_unclose_sales_orders(json.dumps([so]), "Closed")
+		self.assertEqual(reserved_qty(so, self.w.pipe), 0)
 
 
 class TestCustomerMoney(ReturnsTestCase):

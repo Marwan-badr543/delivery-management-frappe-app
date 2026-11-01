@@ -382,36 +382,33 @@ class TestWorkHourGuard(OrdersTestCase):
 
 
 class TestUnpaidOrder(OrdersTestCase):
-	"""POS "Save/New" on an Order: the order is placed, the invoice waits as a draft."""
+	"""POS "Save/New" on an Order: the order is placed and its invoice submitted unpaid."""
 
-	def test_save_new_submits_order_and_keeps_a_draft_invoice(self):
+	def test_save_new_submits_order_and_an_unpaid_invoice(self):
 		invoice = self.w.draft_invoice([(self.w.ac, 1, 300), (self.w.tv, 1, 100)])
 		result = service.submit_pos_order(invoice, dict(DATA), self.delivery, unpaid=True)
 		so = frappe.get_doc("Sales Order", result["sales_order"])
 		si = frappe.get_doc("Sales Invoice", result["name"])
 
-		self.assertEqual((so.docstatus, result["docstatus"]), (1, 0))
+		self.assertEqual((so.docstatus, result["docstatus"]), (1, 1))
 		self.assertEqual((si.docstatus, si.is_pos, si.update_stock, si.posa_pos_opening_shift, si.payments),
-			(0, 0, 0, None, []))
+			(1, 0, 0, None, []))
+		self.assertEqual((si.status, si.outstanding_amount), ("Unpaid", si.rounded_total or si.grand_total))
 		self.assertEqual({r.sales_order for r in si.items}, {so.name})
 		self.assertEqual({r.slot_type for r in get_reservations("Sales Order", so.name)}, {"AC", "Delivery"})
-		# Nothing is posted to the customer's account until they pay.
-		self.assertFalse(frappe.db.exists("GL Entry", {"voucher_no": si.name}))
+		# The customer owes it: receivable debited, no stock moved by the invoice.
+		owed = frappe.db.sql("""select sum(debit - credit) from `tabGL Entry` where voucher_no = %s
+			and party = %s and is_cancelled = 0""", (si.name, si.customer))[0][0]
+		self.assertEqual(owed, si.outstanding_amount)
+		self.assertFalse(frappe.db.exists("Stock Ledger Entry", {"voucher_no": si.name}))
 
 	def test_retried_save_new_makes_no_second_order(self):
 		invoice = self.w.draft_invoice([(self.w.tv, 1, 100)])
-		first = service.submit_pos_order(invoice, dict(DATA), self.delivery, unpaid=True)
-		again = service.already_submitted(dict(invoice, name=first["name"]))
-		self.assertEqual((again["sales_order"], again["docstatus"]), (first["sales_order"], 0))
-
-	def test_closing_the_shift_keeps_the_draft(self):
-		from posawesome.posawesome.doctype.pos_closing_shift.closing_processing.invoices import delete_draft_invoices
-
-		frappe.db.set_value("POS Profile", self.w.pos_profile, "posa_allow_delete", 1)
-		result = service.submit_pos_order(self.w.draft_invoice([(self.w.tv, 1, 100)]), dict(DATA), self.delivery,
-			unpaid=True)
-		delete_draft_invoices(self.w.opening_shift, self.w.pos_profile)
-		self.assertTrue(frappe.db.exists("Sales Invoice", result["name"]))
+		invoice["posa_client_request_id"] = frappe.generate_hash()
+		first = service.submit_pos_order(dict(invoice), dict(DATA), self.delivery, unpaid=True)
+		again = service.already_submitted(invoice)
+		self.assertEqual((again["name"], again["sales_order"], again["docstatus"]),
+			(first["name"], first["sales_order"], 1))
 
 
 class TestQuietOrderMessages(OrdersTestCase):

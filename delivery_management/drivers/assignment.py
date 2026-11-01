@@ -274,6 +274,8 @@ def assign(delivery_note: str, driver: str, user: str | None = None) -> dict:
 	dn = frappe.get_doc(DN, delivery_note, for_update=True)
 	if dn.docstatus == 2:
 		frappe.throw(_("Delivery Note {0} is cancelled.").format(dn.name))
+	if dn.docstatus == 1 and dn.get("dm_delivery_status") != "On the way":
+		frappe.throw(_("The driver of {0} can only change while it is On the way.").format(dn.name))
 	_lock_driver(driver)
 	check_assignable(dn, driver, user)
 	frappe.db.set_value(DN, dn.name, "dm_driver", driver)
