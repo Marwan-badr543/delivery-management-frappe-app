@@ -37,6 +37,16 @@ class DeliverySettings(Document):
 	def validate_main_warehouse(self):
 		if self.main_warehouse and cint(frappe.db.get_value("Warehouse", self.main_warehouse, "is_group")):
 			frappe.throw(_("Main Store must be a ledger warehouse, not a group."))
+		transit = self.get("transit_warehouse")
+		if not transit:
+			return
+		if cint(frappe.db.get_value("Warehouse", transit, "is_group")):
+			frappe.throw(_("Transit Store must be a ledger warehouse, not a group."))
+		if transit == self.main_warehouse:
+			frappe.throw(_("Transit Store must be another store than the Main Store."))
+		if self.main_warehouse and frappe.db.get_value("Warehouse", transit, "company") != \
+				frappe.db.get_value("Warehouse", self.main_warehouse, "company"):
+			frappe.throw(_("Transit Store and Main Store must belong to the same company."))
 
 	def validate_delivery_charge_item(self):
 		if not self.get("delivery_charge_item"):

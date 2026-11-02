@@ -12,7 +12,9 @@ from delivery_management.drivers import assignment as asg
 from delivery_management.drivers import stats
 from delivery_management.drivers.delivery_note import get_permission_query_conditions, only_own_orders
 from delivery_management.slots.cart import profile_cart, unit_counts
-from delivery_management.tests.fixtures import company, customer, item, item_group, receive, warehouse
+from delivery_management.tests.fixtures import (
+	company, customer, deliver_note, item, item_group, receive, send_out, warehouse,
+)
 from delivery_management.tests.utils import DeliveryTestCase
 
 DAY = getdate(add_days(nowdate(), 220))
@@ -71,9 +73,8 @@ class DriversTestCase(DeliveryTestCase):
 		return doc
 
 	def send(self, dn):
-		"""The stock keeper submits the note: it is On the way."""
-		dn.reload()
-		dn.submit()
+		"""The stock keeper sends the note's goods out: it is On the way (still a draft)."""
+		send_out(dn.name)
 
 
 class TestOrderType(DriversTestCase):
@@ -186,8 +187,8 @@ class TestAvailability(DriversTestCase):
 		asg.unassign(a.name)
 		self.assertFalse(frappe.db.exists("Driver Schedule", a.name))
 		asg.assign(a.name, self.ac1)
+		deliver_note(a.name)
 		a.reload()
-		a.submit()
 		a.cancel()
 		self.assertFalse(frappe.db.exists("Driver Schedule", a.name))
 
@@ -267,7 +268,7 @@ class TestDriverAccess(DriversTestCase):
 		dn = self.dn([(self.tv, 1)])
 		asg.assign(dn.name, self.tv1)
 		self.send(dn)
-		self.assertEqual(frappe.db.get_value("Delivery Note", dn.name, "status"), "To Bill")
+		self.assertEqual(frappe.db.get_value("Delivery Note", dn.name, "docstatus"), 0)
 		frappe.set_user(self.tv1)
 		self.assertRaises(frappe.PermissionError, api.mark_delivered_by_office, dn.name)
 		frappe.set_user("Administrator")

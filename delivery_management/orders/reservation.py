@@ -160,3 +160,20 @@ def release_undelivered(sales_order: str) -> None:
 		held = flt(sre.reserved_qty) - flt(sre.delivered_qty)
 		if held > 1e-6:
 			release(sre, held)
+
+
+def reserve_again(sales_order: str, warehouse: str, lines: dict) -> None:
+	"""Goods of the order that came back to ``warehouse`` are held for it again. ``lines``:
+	``{(order row, item, is bundle component): stock qty}``."""
+	if not sales_order or not _enabled():
+		return
+	so = frappe.get_doc("Sales Order", sales_order)
+	plain = [{"sales_order_item": so_detail, "warehouse": warehouse, "qty_to_reserve": qty, "conversion_factor": 1}
+		for (so_detail, _code, component), qty in lines.items() if not component and qty > 0]
+	if plain:
+		so._create_stock_reservation_entries(plain, notify=False)
+	items = _stock_items(code for (_d, code, component) in lines if component)
+	ordered, _items = _lines(so)
+	for (so_detail, code, component), qty in lines.items():
+		if component and code in items and qty > 0:
+			_make_entry(so, so_detail, items[code], warehouse, ordered.get((so_detail, code, warehouse), qty), qty)

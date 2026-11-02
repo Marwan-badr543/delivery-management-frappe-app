@@ -18,9 +18,10 @@ One call does everything a return needs, in one transaction:
   the Return Delivery Notes made here ("Customer Return") and the goods cancelled
   before delivery (``dm_cancelled_qty``). With Selling Settings "Don't Reserve Sales
   Order Qty on Sales Return" (set by the app) the store stops reserving both.
-* **Goods that came back without a Customer Return** (a Sales Return made on the
-  Delivery Note, e.g. the customer was not home) are only *not delivered* again: the
-  order still has to deliver them ("Send Again" on the Delivery Note, ``make_resend``).
+* **Goods the driver brings back** are never returned on a Delivery Note: the note is a
+  draft until it is installed (``transit.service``). Goods taken off it are cancelled on
+  the order and credited (``cancel_not_installed``); a note that comes back whole is sent
+  again later.
 * **The order closes when it is done** (``settle_order``): nothing left to deliver,
   every Delivery Note of it delivered (or returned whole), and its invoices paid. Its
   delivery / AC bookings not used are freed as soon as nothing is left to deliver.
@@ -38,7 +39,7 @@ from frappe import _
 from frappe.utils import cint, flt, nowdate
 
 from delivery_management.drivers import assignment as asg
-from delivery_management.drivers.delivery_note import ON_THE_WAY, RETURNED
+from delivery_management.drivers.delivery_note import ON_THE_WAY, sales_order_of
 from delivery_management.orders import reservation, tv_accounts
 from delivery_management.slots.cart import profile_cart
 
@@ -72,7 +73,8 @@ def get_sale(invoice: str) -> dict:
 		soi = so_items.get(row.so_detail)
 		if soi:
 			with_customer = max(flt(soi.delivered_qty), 0)
-			not_delivered = max(flt(soi.qty) - flt(soi.delivered_qty) - flt(soi.returned_qty), 0)
+			# Goods out with a driver are not in the store to cancel: they come back first.
+			not_delivered = max(flt(soi.qty) - flt(soi.delivered_qty) - flt(soi.returned_qty) - out_qty(row.so_detail), 0)
 			max_return, max_cancel = min(open_qty, with_customer), min(open_qty, not_delivered)
 			serials = _serials_out(_delivered_rows(row.so_detail)) if soi.has_serial_no else []
 		else:
@@ -166,6 +168,17 @@ def _delivered_rows(so_detail: str) -> list:
 	)
 
 
+def out_qty(so_detail: str) -> float:
+	"""Quantity of an order line out of the store with a driver (draft notes sent out)."""
+	return flt(frappe.db.sql(
+		"""select ifnull(sum(dni.qty), 0) from `tabDelivery Note Item` dni
+		join `tabDelivery Note` dn on dn.name = dni.parent
+		where dn.docstatus = 0 and dn.is_return = 0 and ifnull(dn.dm_delivery_status, '') != ''
+		and dni.so_detail = %s""",
+		so_detail,
+	)[0][0])
+
+
 # ---------------------------------------------------------------------------
 # The return
 # ---------------------------------------------------------------------------
@@ -173,8 +186,7 @@ def _delivered_rows(so_detail: str) -> list:
 
 def make_return(data: dict) -> dict:
 	"""``data``: ``sales_invoice``, ``pos_profile``, ``lines`` (``si_detail``, ``returned_qty``,
-	``cancelled_qty``, ``serial_nos``), ``warehouse`` (receiving store, default the POS
-	profile's), ``refund_amount`` (cash now; the rest stays as credit) or ``refund_all``
+	``cancelled_qty``, ``serial_nos``), ``refund_amount`` (cash now; the rest stays as credit) or ``refund_all``
 	(everything the customer paid for these goods), ``reason``,
 	``notes``, ``request_id`` (a retried request returns the first result)."""
 	data = frappe._dict(data)
@@ -189,7 +201,8 @@ def make_return(data: dict) -> dict:
 	if profile.company != si.company:
 		frappe.throw(_("Invoice {0} belongs to company {1}, not to this POS ({2}).").format(
 			si.name, si.company, profile.company))
-	warehouse = _receiving_warehouse(data.warehouse or profile.warehouse, si.company)
+	# Goods come back into the cashier's own branch store, never another branch's.
+	warehouse = _receiving_warehouse(profile.warehouse, si.company)
 	shift = open_shift(profile.name)
 	plan = _plan(sale, data.lines or [])
 
@@ -248,7 +261,7 @@ def summary(name: str) -> dict:
 def _receiving_warehouse(warehouse: str | None, company: str) -> str:
 	values = warehouse and frappe.db.get_value("Warehouse", warehouse, ["company", "is_group", "disabled"], as_dict=True)
 	if not values or values.company != company or values.is_group or values.disabled:
-		frappe.throw(_("Choose the store that receives the goods (a store of {0}).").format(company))
+		frappe.throw(_("The POS Profile's store must be a store of {0}.").format(company))
 	return warehouse
 
 
@@ -373,19 +386,21 @@ def _returned_per_row(dn_details: list[str]) -> dict[str, float]:
 
 
 def _cancel_undelivered(plan) -> None:
-	"""Take the cancelled goods off the order's draft Delivery Notes (a note left empty is
-	deleted), release their stock reservation and count them as returned on the order."""
+	"""Take the cancelled goods off the order's draft Delivery Notes still in the store (a
+	note left empty is deleted), release their stock reservation and count them as returned
+	on the order."""
 	for p in plan:
 		qty = p.cancelled_qty
 		if qty <= EPSILON:
 			continue
-		_unreserve(p.so_detail, qty)
+		unreserve(p.so_detail, qty)
 		cancelled = frappe.db.get_value(SOI, p.so_detail, "dm_cancelled_qty")
 		frappe.db.set_value(SOI, p.so_detail, "dm_cancelled_qty", flt(cancelled) + qty, update_modified=False)
 		frappe.db.set_value(SOI, p.so_detail, "returned_qty", returned_for_good(p.so_detail), update_modified=False)
 		drafts = frappe.db.sql(
 			"""select dni.parent from `tabDelivery Note Item` dni join `tabDelivery Note` dn on dn.name = dni.parent
-			where dn.docstatus = 0 and dn.is_return = 0 and dni.so_detail = %s order by dn.creation""",
+			where dn.docstatus = 0 and dn.is_return = 0 and ifnull(dn.dm_delivery_status, '') = ''
+			and dni.so_detail = %s order by dn.creation""",
 			p.so_detail,
 			pluck=True,
 		)
@@ -407,7 +422,7 @@ def _cancel_undelivered(plan) -> None:
 				frappe.delete_doc(DN, dn.name, ignore_permissions=True)
 
 
-def _unreserve(so_detail: str, qty: float) -> None:
+def unreserve(so_detail: str, qty: float) -> None:
 	"""Release ``qty`` (order line UOM) of the line's stock reservation, components of a
 	bundle in proportion. Reserved stock that is not delivered is what gets released."""
 	order_qty = flt(frappe.db.get_value(SOI, so_detail, "qty"))
@@ -469,6 +484,68 @@ def _credit_note(si, plan, warehouse: str, shift: str, profile, refund: float | 
 		cn.append("payments", {"mode_of_payment": mode, "amount": -refund, "default": 1})
 		cn.save()
 	return cn
+
+
+def cancel_not_installed(dn, taken) -> list[str]:
+	"""Goods the driver took off a note On the way (``transit.service.take_off_note``): the
+	order no longer delivers them (``dm_cancelled_qty``) and they are credited on the sale.
+	The Credit Note moves no stock (the stock keeper receives the goods) and first clears
+	what the customer owes; the rest is the customer's credit, paid out at the POS. Their
+	TV accounts are deleted. ``taken``: ``[{so_detail, item_code, qty, conversion_factor}]``.
+	Returns the Credit Notes."""
+	per_line: dict[str, float] = defaultdict(float)
+	for t in taken:
+		per_line[t.so_detail] += flt(t.qty)
+	for so_detail, qty in per_line.items():
+		cancelled = flt(frappe.db.get_value(SOI, so_detail, "dm_cancelled_qty")) + qty
+		frappe.db.set_value(SOI, so_detail, "dm_cancelled_qty", cancelled, update_modified=False)
+		frappe.db.set_value(SOI, so_detail, "returned_qty", returned_for_good(so_detail), update_modified=False)
+
+	invoice_rows = frappe.db.sql(
+		"""select sii.parent, sii.name, sii.so_detail, sii.qty from `tabSales Invoice Item` sii
+		join `tabSales Invoice` si on si.name = sii.parent
+		where si.docstatus = 1 and si.is_return = 0 and sii.so_detail in %(lines)s
+		order by si.posting_date, si.creation, sii.idx""",
+		{"lines": tuple(per_line)},
+		as_dict=True,
+	)
+	to_credit: dict[str, dict[str, float]] = defaultdict(dict)  # {invoice: {invoice row: qty}}
+	credited: dict[str, dict[str, float]] = {}
+	left = dict(per_line)
+	for r in invoice_rows:
+		done = credited.setdefault(r.parent, _credited_qty(r.parent))
+		take = min(flt(r.qty) - done.get(r.name, 0), left[r.so_detail])
+		if take > EPSILON:
+			to_credit[r.parent][r.name] = take
+			left[r.so_detail] -= take
+	sales_order = sales_order_of(dn)
+	notes = []
+	for invoice, rows in to_credit.items():
+		notes.append(_credit_not_installed(invoice, rows, dn.name))
+		tv_accounts.remove_from_sale(invoice, sales_order, tv_accounts.tv_units(
+			[{"item_code": t.item_code, "qty": t.qty, "conversion_factor": t.conversion_factor} for t in taken]))
+	if sales_order:
+		settle_order(sales_order)
+	return notes
+
+
+def _credit_not_installed(invoice: str, rows: dict[str, float], delivery_note: str) -> str:
+	from erpnext.accounts.doctype.sales_invoice.sales_invoice import make_sales_return
+
+	cn = make_sales_return(invoice)
+	cn.set("items", [r for r in cn.items if r.sales_invoice_item in rows])
+	for r in cn.items:
+		qty = rows[r.sales_invoice_item]
+		r.qty, r.stock_qty = -qty, -qty * flt(r.conversion_factor or 1)
+	cn.update({"update_stock": 0, "is_pos": 0, "update_outstanding_for_self": 1,
+		"update_billed_amount_in_sales_order": 1,
+		"remarks": _("Not delivered: taken off {0} by the driver.").format(delivery_note)})
+	cn.set("payments", [])
+	cn.flags.ignore_permissions = True
+	cn.insert()
+	cn.submit()
+	_clear_debt(invoice, cn.name)
+	return cn.name
 
 
 def _clear_debt(invoice: str, credit_note: str) -> None:
@@ -615,9 +692,7 @@ def after_return(dn, method=None):
 	* The order lines' ``returned_qty`` is set again to what the customer gave back for good
 	  (ERPNext counts every Return Delivery Note in it): the Customer Return notes' goods
 	  and the goods cancelled before delivery. The store's reservation is recounted with it.
-	* The note it returns shows what is left: its AC Units net of the returned units, and
-	  Delivery Status "Returned" when all of it came back while it was On the way (On the
-	  way again when that return is cancelled).
+	* The note it returns shows its AC Units net of the returned units.
 	"""
 	if not cint(dn.get("is_return")):
 		return
@@ -649,16 +724,9 @@ def returned_for_good(so_detail: str) -> float:
 
 def update_returned_note(delivery_note: str) -> None:
 	dn = frappe.get_doc(DN, delivery_note)
-	values = {}
 	if dn.dm_delivery_type == asg.TYPE_AC:
 		left = [{"item_code": r.item_code, "qty": net_qty(r)} for r in dn.items]
-		values["dm_ac_units"] = profile_cart([r for r in left if r["qty"] > EPSILON]).ac_units
-	if dn.dm_delivery_status == ON_THE_WAY and flt(dn.per_returned) >= 100 - EPSILON:
-		values["dm_delivery_status"] = RETURNED
-	elif dn.dm_delivery_status == RETURNED and flt(dn.per_returned) < 100 - EPSILON:
-		values["dm_delivery_status"] = ON_THE_WAY
-	if values:
-		dn.db_set(values, update_modified=False)
+		dn.db_set("dm_ac_units", profile_cart([r for r in left if r["qty"] > EPSILON]).ac_units, update_modified=False)
 
 
 def net_qty(row) -> float:
@@ -674,66 +742,3 @@ def settle_after_payment(pe, method=None):
 	for sales_order in frappe.get_all("Sales Invoice Item", filters={"parent": ["in", invoices],
 			"sales_order": ["is", "set"]}, pluck="sales_order", distinct=True):
 		settle_order(sales_order)
-
-
-# ---------------------------------------------------------------------------
-# Send again the goods that came back
-# ---------------------------------------------------------------------------
-
-
-def resend_rows(delivery_note: str) -> dict[str, float]:
-	"""``{row of the note: qty}`` that came back without a Customer Return and that the order
-	still has to deliver (not already on another Delivery Note waiting to go)."""
-	dn = frappe.get_doc(DN, delivery_note)
-	if dn.docstatus != 1 or cint(dn.is_return) or not flt(dn.per_returned):
-		return {}
-	given_back = dict(frappe.db.sql(
-		"""select dni.dn_detail, sum(-dni.qty) from `tabDelivery Note Item` dni
-		join `tabDelivery Note` dn on dn.name = dni.parent
-		where dn.docstatus = 1 and dn.is_return = 1 and dn.dm_customer_return = 1 and dn.return_against = %s
-		group by dni.dn_detail""",
-		dn.name,
-	))
-	rows = {}
-	for row in dn.items:
-		back = flt(row.qty) - net_qty(row) - flt(given_back.get(row.name))
-		if back <= EPSILON or not row.get("so_detail"):
-			continue
-		soi = frappe.db.get_value(SOI, row.so_detail, ["qty", "delivered_qty", "returned_qty"], as_dict=True)
-		waiting = frappe.db.sql(
-			"""select ifnull(sum(dni.qty), 0) from `tabDelivery Note Item` dni
-			join `tabDelivery Note` dn on dn.name = dni.parent
-			where dn.docstatus = 0 and dn.is_return = 0 and dni.so_detail = %s""",
-			row.so_detail,
-		)[0][0]
-		left = min(back, flt(soi.qty) - flt(soi.delivered_qty) - flt(soi.returned_qty) - flt(waiting))
-		if left > EPSILON:
-			rows[row.name] = left
-	return rows
-
-
-def make_resend(delivery_note: str) -> str:
-	"""A draft copy of the note with the goods that came back (``resend_rows``), for the store
-	to scan the serials and send again. No driver yet; the schedule is the note's."""
-	rows = resend_rows(delivery_note)
-	if not rows:
-		frappe.throw(_("Nothing of {0} is waiting to be sent again.").format(delivery_note), title=_("Send Again"))
-	source = frappe.get_doc(DN, delivery_note)
-	dn = frappe.copy_doc(source)
-	dn.set("items", [])
-	dn.set("packed_items", [])
-	for src in source.items:
-		if src.name not in rows:
-			continue
-		row = frappe.copy_doc(src).as_dict()
-		for key in ("name", "parent", "idx", "docstatus"):
-			row.pop(key, None)
-		qty = rows[src.name]
-		row.update({"qty": qty, "stock_qty": qty * (flt(src.conversion_factor) or 1), "returned_qty": 0,
-			"serial_no": None, "serial_and_batch_bundle": None, "batch_no": None, "use_serial_batch_fields": 1})
-		dn.append("items", row)
-	dn.update({"docstatus": 0, "posting_date": nowdate(), "set_posting_time": 0, "dm_driver": None,
-		"dm_delivery_status": None})
-	dn.flags.ignore_permissions = True
-	dn.insert()
-	return dn.name

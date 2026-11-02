@@ -1,8 +1,8 @@
 // delivery_management: "Return / Exchange" in the POS Awesome header.
 // 1. Find the sale (invoice / order number, customer name or mobile).
 // 2. Tap what comes back: goods the customer brings (serials by tapping them) and, on a
-//    delivery order, goods not delivered yet to cancel. Choose the store that receives
-//    them, the reason, and how the customer is paid: all in cash, keep as credit
+//    delivery order, goods not delivered yet to cancel. They come back into this POS's
+//    own branch store. Choose the reason, and how the customer is paid: all in cash, keep as credit
 //    (exchange), or part cash.
 // 3. Done: the documents are made (api.returns.submit_return, see returns/service.py).
 //    "New sale for this customer" starts the exchange; the credit is offered in Payments.
@@ -132,7 +132,6 @@
 	function returnView() {
 		const s = state.sale;
 		const t = totals();
-		const stores = s.stores.map((w) => `<option ${w === state.store ? "selected" : ""}>${esc(w)}</option>`).join("");
 		const reasons = REASONS.map((r) => `<option value="${esc(r)}" ${r === state.reason ? "selected" : ""}>${__(r)}</option>`).join("");
 		const modes = [["all", __("Give back cash")], ["credit", __("Keep as credit (exchange)")], ["part", __("Part cash")]]
 			.map(([k, label]) => `<button type="button" class="dmr-mode ${state.payMode === k ? "on" : ""}" data-act="mode" data-mode="${k}">${label}</button>`).join("");
@@ -143,8 +142,8 @@
 				<button type="button" class="dmr-link" data-act="back">${__("Change sale")}</button></div>
 			<div class="dmr-lines">${s.lines.map(lineView).join("")}</div>
 			<div class="dmr-grid">
-				<div><label class="dmr-label" for="dmr-store">${__("Received into store")}</label>
-					<select id="dmr-store" class="dmr-input">${stores}</select></div>
+				<div><span class="dmr-label">${__("Received into store")}</span>
+					<div class="dmr-input">${esc(s.store)}</div></div>
 				<div><label class="dmr-label" for="dmr-reason">${__("Reason")}</label>
 					<select id="dmr-reason" class="dmr-input"><option value=""></option>${reasons}</select></div>
 			</div>
@@ -319,7 +318,7 @@
 		const sale = await call("get_sale", { pos_profile: profile(), invoice });
 		const picked = {};
 		for (const line of sale.lines) picked[line.si_detail] = { returned: 0, cancelled: 0, serials: new Set() };
-		Object.assign(state, { step: "return", sale, picked, store: sale.default_store, reason: "", notes: "",
+		Object.assign(state, { step: "return", sale, picked, reason: "", notes: "",
 			payMode: "all", partAmount: null, error: null, requestId: newId() });
 		render();
 	}
@@ -331,7 +330,7 @@
 			return { si_detail: line.si_detail, returned_qty: returned, cancelled_qty: cancelled,
 				serial_nos: [...state.picked[line.si_detail].serials] };
 		}).filter((l) => l.returned_qty + l.cancelled_qty > 0);
-		const data = { sales_invoice: state.sale.name, pos_profile: profile(), lines, warehouse: state.store,
+		const data = { sales_invoice: state.sale.name, pos_profile: profile(), lines,
 			reason: state.reason, notes: state.notes, request_id: state.requestId };
 		if (state.payMode === "all") data.refund_all = 1;
 		else data.refund_amount = state.payMode === "credit" ? 0 : t.refund;
@@ -417,7 +416,6 @@
 				: !(+state.outAmount > 0 && +state.outAmount <= state.cm.credit && (state.outReason || "").trim());
 		} else if (id === "dmr-paymode") state.payWith = e.target.value;
 		else if (id === "dmr-outmode") state.outWith = e.target.value;
-		else if (id === "dmr-store") state.store = e.target.value;
 		else if (id === "dmr-reason") {
 			state.reason = e.target.value;
 			render();

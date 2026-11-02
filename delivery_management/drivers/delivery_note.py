@@ -18,10 +18,11 @@ SCHEDULE_FIELDS = (
 )
 
 
-# Delivery Status (dm_delivery_status): submitting a note sends it On the way, the
-# driver confirms it Delivered. A note On the way whose goods all came back is Returned
-# (returns.service.after_return). Shown as the note's status while On the way or Returned
-# (public/js/delivery_note_list.js); ERPNext's own statuses otherwise.
+# Delivery Status (dm_delivery_status) of an order's note, a draft until it is delivered
+# (transit.service): On the way once the stock keeper sends its goods out, Returned when
+# they all come back (customer not found), Delivered when the driver submits it at the
+# customer. Notes submitted before the transit store still go On the way -> Delivered.
+# Shown as the note's status while On the way or Returned (public/js/delivery_note_list.js).
 ON_THE_WAY = "On the way"
 DELIVERED = "Delivered"
 RETURNED = "Returned"
@@ -91,15 +92,8 @@ def before_submit(doc, method=None):
 		doc.dm_delivery_type = asg.order_type_of(doc.items)
 	if not doc.get("dm_delivery_type"):
 		frappe.throw(_("Choose the Order Type (AC or Non AC) before submitting."), title=_("Order Type required"))
-	doc.dm_delivery_status = None if doc.get("is_return") else ON_THE_WAY
-
-
-def onload(doc, method=None):
-	"""Tell the form whether goods of this note came back and wait to be sent again."""
-	if doc.docstatus == 1 and not doc.get("is_return") and doc.get("per_returned"):
-		from delivery_management.returns.service import resend_rows
-
-		doc.set_onload("dm_resend", bool(resend_rows(doc.name)))
+	if doc.get("is_return"):
+		doc.dm_delivery_status = None
 
 
 def on_update(doc, method=None):
@@ -108,6 +102,9 @@ def on_update(doc, method=None):
 
 def on_cancel(doc, method=None):
 	asg.remove_assignment(doc.name)
+	# The transfers to / from the Transit Store (Stock Entry "Delivery Note (Transit)") are goods
+	# movements of their own: they do not stop the note being cancelled.
+	doc.ignore_linked_doctypes = (*(doc.get("ignore_linked_doctypes") or ()), "Stock Entry")
 
 
 def on_trash(doc, method=None):

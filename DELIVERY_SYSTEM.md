@@ -786,28 +786,60 @@ money* in the POS. A retried Save/New finds the submitted invoice and makes no s
 drafts of the earlier version (2026-10-27) are submitted by the patch `submit_unpaid_order_drafts`
 (posted on their own date).
 
-### Goods that came back, Send Again (2026-11-01)
+### Goods out with the driver: the Transit Store (2026-11-02)
 
-* A **Sales Return made on the Delivery Note** (desk, not a Customer Return; e.g. nobody home)
-  only brings the goods back: the order still has to deliver them (not in `returned_qty`).
-* A note On the way whose goods **all** came back gets Delivery Status **Returned** (red in the
-  list); cancelling the return makes it On the way again. Any return of a note On the way is
-  *Returned Before Delivery* (`flag_before_delivery`), so Installation Statistics leave it out.
-* **Send Again** (button, and the menu's **Duplicate**, on a note with such goods; managers):
-  `returns.service.make_resend` makes a **draft** copy of the note with only those goods (same
-  order lines, schedule and address; no serials, no driver), for the store to scan and submit.
-  Goods already on another draft note are not copied twice. The schedule is the old one: move it
-  with *Move Delivery Slot / Move Installation Day*.
-* The note shows what came back: a red **Returned items** box on the form, *Returned / Received*
-  per item on the driver's order page (where the customer signs), and its **AC Units** go down by
-  the AC units returned (`update_returned_note`).
-* **Change Driver** on a note On the way (managers): dialog with the drivers free at that time
-  (`api.drivers.get_driver_options` / `assign_driver`); refused once Delivered or Returned. Draft
-  notes are still assigned on the Driver Assignment page.
-* **Print** "Show Satellite Delivery Note" (default unless a custom format was chosen;
-  `printing.dm_delivery_note_print`): layout of the v14 *Delivery_Note_CC1*, plus the driver /
-  AC technician with mobile, *Returned / Received* columns with a RETURNED tag, the returned items
-  (serials, return note, customer return or came back), the customer's signature and the driver.
+Replaces "Send Again" and the desk Sales Return of goods that came back. The order's Delivery
+Note stays a **draft** until the goods are installed (`transit/service.py`):
+
+1. **POS order** as before: Sales Order, draft Delivery Note(s) from the **Main Store**, stock
+   reserved there.
+2. **Send out** (Stock Keeper page `/desk/stock-keeper`, roles Stock User / Stock Manager /
+   System Manager / Delivery Manager): the stock keeper opens a note that has a driver, scans
+   **every** serial (`api.stock_keeper.send_out` -> `transit.dispatch`). In one transaction:
+   the order's reservation in the Main Store is released, a **Material Transfer** Main Store ->
+   **Transit Store** (Delivery Settings, `transit_warehouse`; Stock Entry field *Delivery Note
+   (Transit)*) moves the goods (bundle components included), the note takes the Transit Store
+   and the scanned serials and goes **On the way** (still a draft, locked: `check_locked`), and
+   a **Delivery Transit** (one per note) records what left, when, by whom, with which driver /
+   AC Tech, for which customer and address. Goods already given back (`check_not_returned`) are
+   refused.
+3. **At the customer** (Delivery Schedule page):
+   * **Items not installed / not delivered**: the driver enters the quantity that comes back
+     and ticks its serials (`take_off_note`). The note keeps only what stays (AC Units
+     recounted); the order line counts them cancelled (`dm_cancelled_qty`); a **Credit Note**
+     (no stock) is made against the invoice (`returns.service.cancel_not_installed`): it first
+     clears what the customer owes, the rest is the customer's credit, paid out at the POS
+     (*Customer money*). TV accounts of returned TVs are deleted. The driver can only take
+     off, never add.
+   * **Customer not found: bring all back** (`bring_back_all`): the note is **Returned** (still
+     a draft), nothing is credited; the order still has to deliver it.
+   * **Print**: the invoice and every Credit Note of the order (`print_sale_document`; drivers
+     have no rights on invoices).
+   * **Mark as delivered** (photo + signature, or the office's *Mark Delivered*) **submits** the
+     note: the goods leave the Transit Store to the customer, who signs only what stays.
+4. **Receive back** (Stock Keeper page, second tab): the stock keeper scans what came back
+   (quantities for items without serials; partial receipts allowed): a Material Transfer Transit
+   -> Main Store (`transit.receive`). When a **Returned** note is all back, it is ready to be
+   sent again (Main Store, no serials, status empty, same driver; move its slot if needed) and,
+   with **Reserve again** ticked, its goods are reserved for the order again
+   (`orders.reservation.reserve_again`).
+5. The **Delivery Transit** is removed once nothing of it is outside the store (all delivered or
+   back). **Goods in Transit** page (`/desk/goods-in-transit`) shows every one: driver / tech,
+   customer, mobile, address, day, left the store at / by, Stock Entries, and per item out /
+   delivered / back / still coming back with the serials.
+
+Other rules:
+* A note is submitted only while On the way with a Delivery Transit (`before_delivery`); the
+  Driver Assignment page lists only notes still in the store. Change Driver works while On the
+  way (the Delivery Transit follows); unassigning is refused once the goods are out.
+* The POS cannot cancel goods that are out with a driver (`out_qty`); they come back first.
+* **POS returns** come back only into the cashier's own branch store (the POS Profile's
+  warehouse; the store choice is gone from the screen and ignored by the server).
+* Notes submitted before this change (submitted On the way) still finish with *Mark Delivered*.
+* Cancelling a delivered note puts its goods back in the Transit Store (ERPNext reverses the
+  ledger); move them with a normal Material Transfer.
+* The print "Show Satellite Delivery Note" shows the driver / AC technician with mobile, what
+  the customer gave back after delivery and the signature.
 
 ### Customer money in the POS (2026-10-27)
 

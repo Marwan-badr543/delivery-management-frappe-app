@@ -2,11 +2,11 @@
 // The Order Type is set from the items; an order with AC and non-AC items has none
 // and must get one before it can be saved again or submitted. A draft note's driver is
 // assigned on the Driver Assignment page; a note On the way changes driver here ("Change
-// Driver"). "Move Delivery Slot" moves the order's booking with the Delivery Slots page
-// dialog (public/js/slot_move.bundle.js). "Mark Delivered" lets the office confirm an On the
-// way note without the driver's photo and signature.
-// Goods that came back show above the items. When some came back without a Customer Return,
-// "Send Again" (also the menu's Duplicate) makes a draft note with them to scan and send again.
+// Driver"). Its goods leave the store from the Stock Keeper page; while they are out the
+// note is locked (transit/service.py). "Move Delivery Slot" moves the order's booking with
+// the Delivery Slots page dialog (public/js/slot_move.bundle.js). "Mark Delivered" lets the
+// office deliver (submit) an On the way note without the driver's photo and signature.
+// Goods the customer gave back after delivery show above the items.
 
 const DM_MANAGERS = ["System Manager", "Delivery Manager"];
 
@@ -22,8 +22,18 @@ frappe.ui.form.on("Delivery Note", {
 			);
 		}
 		const manager = frappe.user.has_role(DM_MANAGERS);
-		const on_the_way = frm.doc.docstatus === 1 && frm.doc.dm_delivery_status === "On the way";
-		if (manager && frm.doc.docstatus === 0 && frm.doc.dm_delivery_type) {
+		const on_the_way = frm.doc.docstatus < 2 && frm.doc.dm_delivery_status === "On the way";
+		const in_store = frm.doc.docstatus === 0 && !frm.doc.dm_delivery_status;
+		if (!frm.is_new() && frm.doc.docstatus === 0 && frm.doc.dm_delivery_status) {
+			frm.disable_save();
+			frm.dashboard.add_comment(frm.doc.dm_delivery_status === "On the way"
+				? __("The goods are out with the driver. The driver delivers or returns them from the Delivery Schedule page.")
+				: __("The whole order is coming back. The stock keeper receives it on the Stock Keeper page."), "blue", true);
+		}
+		if (in_store && !frm.is_new() && frappe.user.has_role(["System Manager", "Delivery Manager", "Stock Manager", "Stock User"])) {
+			frm.add_custom_button(__("Send Out (Stock Keeper)"), () => frappe.set_route("stock-keeper"));
+		}
+		if (manager && in_store && frm.doc.dm_delivery_type) {
 			frm.add_custom_button(__("Assign Driver"), () => {
 				frappe.route_options = { tab: frm.doc.dm_delivery_type === "AC" ? "ac" : "tv", search: frm.doc.name };
 				frappe.set_route("driver-assignment");
@@ -49,13 +59,6 @@ frappe.ui.form.on("Delivery Note", {
 			});
 		}
 		dm_show_returned(frm);
-		if (manager && frm.doc.__onload && frm.doc.__onload.dm_resend) {
-			const resend = () => dm_resend(frm);
-			frm.add_custom_button(__("Send Again"), resend);
-			frm.copy_doc = resend; // the menu's Duplicate
-		} else {
-			delete frm.copy_doc; // back to Frappe's own Duplicate
-		}
 	},
 });
 
@@ -68,12 +71,6 @@ function dm_show_returned(frm) {
 	});
 	frm.dashboard.add_comment(`<b>${__("Returned items")}</b><ul style="margin:4px 0 0">${rows.join("")}</ul>`,
 		"red", true);
-}
-
-async function dm_resend(frm) {
-	const name = await frappe.xcall("delivery_management.api.drivers.make_resend", { delivery_note: frm.doc.name });
-	frappe.show_alert({ message: __("{0} is ready: scan the serials and submit to send again.", [name]), indicator: "green" });
-	frappe.set_route("Form", "Delivery Note", name);
 }
 
 async function dm_change_driver(frm) {

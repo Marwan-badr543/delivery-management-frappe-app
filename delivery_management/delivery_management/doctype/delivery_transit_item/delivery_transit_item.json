@@ -1,0 +1,125 @@
+{
+ "actions": [],
+ "creation": "2026-11-02 10:00:00",
+ "doctype": "DocType",
+ "editable_grid": 0,
+ "engine": "InnoDB",
+ "field_order": [
+  "item_code",
+  "item_name",
+  "stock_uom",
+  "qty",
+  "delivered_qty",
+  "received_qty",
+  "column_break_s",
+  "serial_no",
+  "delivered_serials",
+  "received_serials",
+  "dn_detail",
+  "packed_item",
+  "bundle_item"
+ ],
+ "fields": [
+  {
+   "fieldname": "item_code",
+   "fieldtype": "Link",
+   "label": "Item",
+   "options": "Item",
+   "in_list_view": 1,
+   "columns": 2,
+   "read_only": 1
+  },
+  {
+   "fieldname": "item_name",
+   "fieldtype": "Data",
+   "label": "Item Name",
+   "in_list_view": 1,
+   "columns": 2,
+   "read_only": 1
+  },
+  {
+   "fieldname": "stock_uom",
+   "fieldtype": "Link",
+   "label": "UOM",
+   "options": "UOM",
+   "read_only": 1
+  },
+  {
+   "fieldname": "qty",
+   "fieldtype": "Float",
+   "label": "Out",
+   "in_list_view": 1,
+   "columns": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "delivered_qty",
+   "fieldtype": "Float",
+   "label": "Delivered",
+   "in_list_view": 1,
+   "columns": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "received_qty",
+   "fieldtype": "Float",
+   "label": "Back in Store",
+   "in_list_view": 1,
+   "columns": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_s",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "serial_no",
+   "fieldtype": "Small Text",
+   "label": "Serials Out",
+   "in_list_view": 1,
+   "columns": 2,
+   "read_only": 1
+  },
+  {
+   "fieldname": "delivered_serials",
+   "fieldtype": "Small Text",
+   "label": "Serials Delivered",
+   "read_only": 1
+  },
+  {
+   "fieldname": "received_serials",
+   "fieldtype": "Small Text",
+   "label": "Serials Back in Store",
+   "read_only": 1
+  },
+  {
+   "fieldname": "dn_detail",
+   "fieldtype": "Data",
+   "label": "Delivery Note Row",
+   "read_only": 1
+  },
+  {
+   "fieldname": "packed_item",
+   "fieldtype": "Data",
+   "label": "Packed Item Row",
+   "read_only": 1
+  },
+  {
+   "fieldname": "bundle_item",
+   "fieldtype": "Link",
+   "label": "Bundle",
+   "options": "Item",
+   "read_only": 1
+  }
+ ],
+ "istable": 1,
+ "modified": "2026-11-02 10:00:00",
+ "modified_by": "Administrator",
+ "module": "Delivery Management",
+ "name": "Delivery Transit Item",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

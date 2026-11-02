@@ -18,9 +18,9 @@ from delivery_management.orders import payments, service
 from delivery_management.orders.stock import get_sellable_qty
 from delivery_management.returns import service as returns
 from delivery_management.slots import get_reservations
-from delivery_management.tests.fixtures import PosWorld, receive, warehouse
+from delivery_management.tests.fixtures import PosWorld, deliver_note, receive, send_out, warehouse
 from delivery_management.tests.test_drivers import user
-from delivery_management.tests.test_orders import DATA, reserved_qty, scan, serial_status, tv_bundle
+from delivery_management.tests.test_orders import DATA, reserved_qty, serial_status, tv_bundle
 from delivery_management.tests.utils import DeliveryTestCase
 
 
@@ -80,28 +80,19 @@ class ReturnsTestCase(DeliveryTestCase):
 			pluck="parent", distinct=True)
 
 	def deliver(self, so, serials=None, qty=None):
-		"""The store submits the order's draft notes, scanning ``serials`` ({item: [..]})."""
+		"""The order's draft notes go out (``qty``: {item: qty} sent now, the rest later) with
+		``serials`` ({item: [..]}) scanned, and are delivered."""
 		for name in self.notes(so):
-			dn = frappe.get_doc("Delivery Note", name)
-			for code, sns in (serials or {}).items():
-				if any(r.item_code == code for r in list(dn.items) + list(dn.get("packed_items") or [])):
-					scan(dn, code, sns)
-			for code, q in (qty or {}).items():
+			if qty:
+				dn = frappe.get_doc("Delivery Note", name)
 				for r in dn.items:
-					if r.item_code == code:
-						r.qty = q
-			dn.save()
-			dn.submit()
-
-	def delivered(self, so):
-		"""The drivers confirm every note of the order that is On the way."""
-		for name in self.notes(so, docstatus=1):
-			if frappe.db.get_value("Delivery Note", name, "dm_delivery_status") == "On the way":
-				drivers.mark_delivered_by_office(name)
+					r.qty = qty.get(r.item_code, r.qty)
+				dn.save()
+			deliver_note(name, serials)
 
 	# ------------------------------------------------------------------ returns
 
-	def give_back(self, invoice, lines, refund="all", wh=None, **extra):
+	def give_back(self, invoice, lines, refund="all", **extra):
 		"""``lines``: {item_code: (returned, cancelled[, serials])}."""
 		sale = returns.get_sale(invoice)
 		req = []
@@ -110,7 +101,7 @@ class ReturnsTestCase(DeliveryTestCase):
 				spec = lines[line["item_code"]]
 				req.append({"si_detail": line["si_detail"], "returned_qty": spec[0], "cancelled_qty": spec[1],
 					"serial_nos": spec[2] if len(spec) > 2 else None})
-		data = {"sales_invoice": invoice, "pos_profile": self.w.pos_profile, "lines": req, "warehouse": wh, **extra}
+		data = {"sales_invoice": invoice, "pos_profile": self.w.pos_profile, "lines": req, **extra}
 		if refund == "all":
 			data["refund_all"] = 1
 		else:
@@ -173,10 +164,10 @@ class TestBranchReturn(ReturnsTestCase):
 		self.assertEqual((doc.warehouse, doc.items[0].serial_no, doc.pos_opening_shift),
 			(self.w.branch, sn[0], self.w.opening_shift))
 
-	def test_returned_at_another_store(self):
+	def test_returned_only_into_the_cashiers_branch(self):
 		si = self.branch_sale([(self.w.pipe, 3, 5)])
-		self.give_back(si, {self.w.pipe: (1, 0)}, wh=self.other)
-		self.assertEqual((stock(self.w.pipe, self.w.branch), stock(self.w.pipe, self.other)), (2, 1))
+		self.give_back(si, {self.w.pipe: (1, 0)}, warehouse=self.other)
+		self.assertEqual((stock(self.w.pipe, self.w.branch), stock(self.w.pipe, self.other)), (3, 0))
 		self.assertEqual(balance(self.customer), 0)
 
 	def test_partial_then_rest_never_more_than_sold(self):
@@ -245,7 +236,7 @@ class TestOrderReturn(ReturnsTestCase):
 		si, so = self.order([(self.w.tv, 1, 100), (self.w.pipe, 2, 5)])
 		self.deliver(so, {self.w.tv: ["_DMTV-M-1"]})
 		self.assertEqual(returns.get_sale(si)["lines"][0]["serial_nos"], ["_DMTV-M-1"])
-		result = self.give_back(si, {self.w.tv: (1, 0, ["_DMTV-M-1"]), self.w.pipe: (2, 0)}, wh=self.w.branch)
+		result = self.give_back(si, {self.w.tv: (1, 0, ["_DMTV-M-1"]), self.w.pipe: (2, 0)})
 
 		# Stock back into the branch through a Return Delivery Note, at the delivered cost.
 		self.assertEqual((stock(self.w.tv, self.w.branch), stock(self.w.pipe, self.w.branch)), (3, 7))
@@ -280,7 +271,7 @@ class TestOrderReturn(ReturnsTestCase):
 	def test_one_line_back_while_another_is_still_to_deliver(self):
 		si, so = self.order([(self.w.tv, 1, 100), (self.w.pipe, 4, 5)])
 		self.deliver(so, {self.w.tv: ["_DMTV-M-2"]}, qty={self.w.pipe: 1})  # 3 pipes not delivered yet
-		self.give_back(si, {self.w.tv: (1, 0, ["_DMTV-M-2"])}, wh=self.w.main)
+		self.give_back(si, {self.w.tv: (1, 0, ["_DMTV-M-2"])})
 
 		# The order stays open for the pipes and keeps its delivery slot.
 		self.assertNotEqual(frappe.db.get_value("Sales Order", so, "status"), "Closed")
@@ -290,15 +281,13 @@ class TestOrderReturn(ReturnsTestCase):
 		again = make_delivery_note(so)
 		self.assertEqual({r.item_code: r.qty for r in again.items}, {self.w.tv: 1, self.w.pipe: 3})
 		again.insert()
-		scan(again, self.w.tv, ["_DMTV-M-3"])
-		self.assertRaisesRegex(frappe.ValidationError, "only 0 left to deliver", again.submit)
+		self.assertRaisesRegex(frappe.ValidationError, "only 0 left to deliver", deliver_note, again.name,
+			{self.w.tv: ["_DMTV-M-3"]})
 		# The last pipes go out: the order closes by itself.
 		again = frappe.get_doc("Delivery Note", again.name)
 		again.set("items", [r for r in again.items if r.item_code == self.w.pipe])
 		again.save()
-		again.submit()
-		self.assertNotEqual(frappe.db.get_value("Sales Order", so, "status"), "Closed")  # still On the way
-		self.delivered(so)
+		deliver_note(again.name)
 		self.assertEqual(frappe.db.get_value("Sales Order", so, "status"), "Closed")
 		self.assertEqual(balance(self.customer), 0)
 
@@ -311,8 +300,6 @@ class TestOrderReturn(ReturnsTestCase):
 		self.assertNotEqual(frappe.db.get_value("Sales Order", so, "status"), "Closed")
 		self.assertEqual(len(get_reservations("Sales Order", so)), 1)  # still to deliver: slot kept
 		self.deliver(so, {self.w.tv: ["_DMTV-M-1"]})
-		self.assertNotEqual(frappe.db.get_value("Sales Order", so, "status"), "Closed")  # still On the way
-		self.delivered(so)
 		self.assertEqual(frappe.db.get_value("Sales Order", so, "status"), "Closed")
 		self.assertEqual(balance(self.customer), 0)
 
@@ -330,7 +317,6 @@ class TestOrderReturn(ReturnsTestCase):
 		self.assertEqual(serial_status("_DMTV-M-1"), ("Active", self.w.branch))
 		self.assert_balanced(si, result["credit_note"])
 		# Delivered but not paid: the order stays open. The driver collects the rest: closed.
-		self.delivered(so)
 		self.assertNotEqual(frappe.db.get_value("Sales Order", so, "status"), "Closed")
 		dn = self.notes(so, docstatus=1)[0]
 		self.assertEqual(drivers.payment_summary([dn])[dn]["outstanding"], 10)
@@ -373,10 +359,10 @@ class TestOrderReturn(ReturnsTestCase):
 		component = frappe.get_all("Product Bundle Item", filters={"parent": bundle}, fields=["item_code", "qty"])
 		serial_item = next(c.item_code for c in component if frappe.db.get_value("Item", c.item_code, "has_serial_no"))
 		self.deliver(so, {serial_item: ["_DMTV-M-1"]})
-		before = {c.item_code: stock(c.item_code, self.w.main) for c in component}
-		result = self.give_back(si, {bundle: (1, 0)}, wh=self.w.main)
+		before = {c.item_code: stock(c.item_code, self.w.branch) for c in component}
+		result = self.give_back(si, {bundle: (1, 0)})
 		for c in component:
-			self.assertEqual(stock(c.item_code, self.w.main), before[c.item_code] + c.qty)
+			self.assertEqual(stock(c.item_code, self.w.branch), before[c.item_code] + c.qty)
 		self.assertEqual((balance(self.customer), frappe.db.get_value("Sales Order", so, "status")), (0, "Closed"))
 		self.assert_balanced(result["credit_note"], *result["return_delivery_notes"])
 
@@ -390,23 +376,22 @@ class TestOrderReturn(ReturnsTestCase):
 		self.assertEqual([[r.item_code for r in n.items] for n in notes], [[self.w.tv]])
 		self.assertEqual((reserved_qty(so, self.w.ac), reserved_qty(so, self.w.tv)), (0, 1))
 		self.deliver(so, {self.w.tv: ["_DMTV-M-1"]})
-		self.delivered(so)
 		self.assertEqual(frappe.db.get_value("Sales Order", so, "status"), "Closed")
 
 	def test_returned_goods_are_sellable_again(self):
-		sellable = get_sellable_qty([self.w.tv], self.w.main)[self.w.tv]
+		sellable = get_sellable_qty([self.w.tv], self.w.branch)[self.w.tv]
 		si, so = self.order([(self.w.tv, 1, 100)])
 		self.deliver(so, {self.w.tv: ["_DMTV-M-1"]})
-		self.give_back(si, {self.w.tv: (1, 0)}, wh=self.w.main)
-		self.assertEqual(get_sellable_qty([self.w.tv], self.w.main)[self.w.tv], sellable)
+		self.give_back(si, {self.w.tv: (1, 0)})
+		self.assertEqual(get_sellable_qty([self.w.tv], self.w.branch)[self.w.tv], sellable + 1)
 
 	def test_two_returns_of_one_order(self):
 		si, so = self.order([(self.w.pipe, 4, 5)])
 		self.deliver(so)
-		self.give_back(si, {self.w.pipe: (1, 0)}, wh=self.w.main)
+		self.give_back(si, {self.w.pipe: (1, 0)})
 		self.assertEqual(returns.get_sale(si)["lines"][0]["max_return"], 3)
-		self.give_back(si, {self.w.pipe: (3, 0)}, wh=self.other)
-		self.assertEqual((stock(self.w.pipe, self.w.main), stock(self.w.pipe, self.other)), (47, 3))
+		self.give_back(si, {self.w.pipe: (3, 0)})
+		self.assertEqual((stock(self.w.pipe, self.w.main), stock(self.w.pipe, self.w.branch)), (46, 9))
 		self.assertEqual((balance(self.customer), frappe.db.get_value("Sales Order", so, "status")), (0, "Closed"))
 
 
@@ -424,116 +409,14 @@ class TestOrderReturn(ReturnsTestCase):
 
 		# Brought back the day after it was delivered: the work was done, it still counts.
 		si, note = sent([(self.w.tv, 1, 100), (self.w.pipe, 2, 5)], "_DMTV-M-1")
-		drivers.mark_delivered_by_office(note)
 		ret = self.give_back(si, {self.w.pipe: (2, 0)})["return_delivery_notes"][0]
 		self.assertFalse(frappe.db.get_value("Delivery Note", ret, "dm_returned_before_delivery"))
 		self.assertEqual(units(), (3, 1))
-		# Taken back while still on the way: never delivered, taken off; nothing left, no order.
-		si, note = sent([(self.w.tv, 1, 100)], "_DMTV-M-2")
-		ret = self.give_back(si, {self.w.tv: (1, 0, ["_DMTV-M-2"])})["return_delivery_notes"][0]
-		self.assertTrue(frappe.db.get_value("Delivery Note", ret, "dm_returned_before_delivery"))
-		self.assertEqual(frappe.db.get_value("Delivery Note", note, "dm_delivery_status"), "Returned")
+		# Brought back whole while on the way (customer not found): never delivered, not counted.
+		_si, so = self.order([(self.w.tv, 1, 100)])
+		send_out(self.notes(so)[0], {self.w.tv: ["_DMTV-M-2"]})
+		drivers.bring_back_all(self.notes(so)[0])
 		self.assertEqual(units(), (3, 1))
-
-
-class TestCameBack(ReturnsTestCase):
-	"""Goods that came back on a Sales Return made on the Delivery Note (not a Customer Return):
-	the order still has to deliver them, "Send Again" makes the note for it."""
-
-	def bounce(self, note, rows=None):
-		"""Sales Return of the note: all of it, or ``rows`` ({item: (qty, serials)})."""
-		from erpnext.stock.doctype.delivery_note.delivery_note import make_sales_return
-
-		ret = make_sales_return(note)
-		if rows:
-			ret.set("items", [r for r in ret.items if r.item_code in rows])
-			for r in ret.items:
-				qty, serials = rows[r.item_code]
-				r.qty, r.stock_qty = -qty, -qty
-				if serials:
-					r.update({"serial_no": "\n".join(serials), "use_serial_batch_fields": 1,
-						"serial_and_batch_bundle": None})
-			ret.set("packed_items", [])
-		ret.insert()
-		ret = frappe.get_doc("Delivery Note", ret.name)
-		ret.submit()
-		return ret
-
-	def test_whole_note_came_back_and_is_sent_again(self):
-		si, so = self.order([(self.w.tv, 1, 100), (self.w.pipe, 2, 5)])
-		self.deliver(so, {self.w.tv: ["_DMTV-M-1"]})
-		note = self.notes(so, docstatus=1)[0]
-		asg.assign(note, user("_dm.tv1@example.com", asg.ROLE_TV))
-		ret = self.bounce(note)
-		self.assertTrue(frappe.db.get_value("Delivery Note", ret.name, "dm_returned_before_delivery"))
-		self.assertEqual(frappe.db.get_value("Delivery Note", note, "dm_delivery_status"), "Returned")
-		# Not given back by the customer: nothing returned on the order, it still has to deliver.
-		self.assertEqual(sum(frappe.get_all("Sales Order Item", filters={"parent": so}, pluck="returned_qty")), 0)
-		self.assertNotEqual(frappe.db.get_value("Sales Order", so, "status"), "Closed")
-		self.assertEqual(store_reserved(self.w.tv, self.w.main), self.reserved_before + 1)
-		self.assertEqual(returns.get_sale(si)["lines"][0]["max_return"], 0)  # nothing is with the customer
-
-		again = frappe.get_doc("Delivery Note", returns.make_resend(note))
-		self.assertEqual((again.docstatus, again.dm_driver, again.dm_delivery_status or None), (0, None, None))
-		self.assertEqual({r.item_code: (r.qty, r.serial_no or None) for r in again.items},
-			{self.w.tv: (1, None), self.w.pipe: (2, None)})
-		self.assertEqual({r.so_detail for r in again.items},
-			set(frappe.get_all("Sales Order Item", filters={"parent": so}, pluck="name")))
-		self.assertRaisesRegex(frappe.ValidationError, "Nothing", returns.make_resend, note)  # already waiting
-
-		self.deliver(so, {self.w.tv: ["_DMTV-M-2"]})
-		self.assertEqual(frappe.db.get_value("Delivery Note", again.name, "dm_delivery_status"), "On the way")
-		self.delivered(so)
-		self.assertEqual(frappe.db.get_value("Sales Order", so, "status"), "Completed")
-		self.assertEqual(store_reserved(self.w.tv, self.w.main), self.reserved_before)
-		self.assertEqual(balance(self.customer), 0)
-
-	def test_part_came_back_ac_units_and_statistics(self):
-		si, so = self.order([(self.w.ac, 2, 300)])
-		self.deliver(so, {self.w.ac: ["_DMAC-M-OLD1", "_DMAC-M-OLD2"]})
-		note = self.notes(so, docstatus=1)[0]
-		frappe.db.set_value("Delivery Note", note, "dm_driver", "Administrator")
-		self.assertEqual(frappe.db.get_value("Delivery Note", note, "dm_ac_units"), 2)
-		ret = self.bounce(note, {self.w.ac: (1, ["_DMAC-M-OLD2"])})
-		self.assertEqual(frappe.db.get_value("Delivery Note", note, ["dm_ac_units", "dm_delivery_status"]),
-			(1, "On the way"))
-		self.assertEqual(drivers.get_order_detail(note)["items"][0]["returned_qty"], 1)
-		drivers.mark_delivered_by_office(note)
-		day = frappe.db.get_value("Delivery Note", note, "dm_ac_installation_date")
-		rows = stats.installation_stats(day, day, technician="Administrator")
-		self.assertEqual(rows[0]["ac_units"], 1)
-		# The return cancelled: both units on the note again.
-		ret.cancel()
-		self.assertEqual(frappe.db.get_value("Delivery Note", note, "dm_ac_units"), 2)
-
-	def test_customer_return_on_the_way_keeps_the_order_open(self):
-		"""The customer keeps one item and gives one back at the door: the order closes only once
-		the note is delivered and the invoice paid."""
-		si, so = self.order([(self.w.tv, 1, 100), (self.w.pipe, 2, 5)], unpaid=True)
-		self.deliver(so, {self.w.tv: ["_DMTV-M-1"]})
-		note = self.notes(so, docstatus=1)[0]
-		self.give_back(si, {self.w.pipe: (2, 0)}, wh=self.w.main)
-		self.assertEqual(frappe.db.get_value("Delivery Note", note, "dm_delivery_status"), "On the way")
-		self.assertNotEqual(frappe.db.get_value("Sales Order", so, "status"), "Closed")
-		self.assertEqual(returns.resend_rows(note), {})  # given back for good: never sent again
-		self.assertEqual(reserved_qty(so, self.w.pipe), 0)
-		self.delivered(so)
-		self.assertNotEqual(frappe.db.get_value("Sales Order", so, "status"), "Closed")  # not paid yet
-		payments.collect(si, 100, "Cash", note, "on delivery")
-		self.assertEqual(frappe.db.get_value("Sales Order", so, "status"), "Closed")
-
-	def test_driver_changes_while_on_the_way(self):
-		first, second = user("_dm.tv1@example.com", asg.ROLE_TV), user("_dm.tv2@example.com", asg.ROLE_TV)
-		si, so = self.order([(self.w.tv, 1, 100)])
-		asg.assign(self.notes(so)[0], first)
-		self.deliver(so, {self.w.tv: ["_DMTV-M-1"]})
-		note = self.notes(so, docstatus=1)[0]
-		drivers.assign_driver(note, second)
-		self.assertEqual(frappe.db.get_value("Delivery Note", note, "dm_driver"), second)
-		self.assertEqual(frappe.db.get_value("Driver Schedule", note, "driver"), second)
-		drivers.mark_delivered_by_office(note)
-		self.assertRaisesRegex(frappe.ValidationError, "only change while it is On the way",
-			drivers.assign_driver, note, first)
 
 
 class TestInvoiceAcTech(ReturnsTestCase):
@@ -595,7 +478,7 @@ class TestStoreReservation(ReturnsTestCase):
 		si, so = self.order([(self.w.tv, 2, 100)])
 		self.deliver(so, {self.w.tv: ["_DMTV-M-1"]}, qty={self.w.tv: 1})
 		self.assertEqual(store_reserved(self.w.tv, self.w.main), self.reserved_before + 1)
-		self.give_back(si, {self.w.tv: (1, 0, ["_DMTV-M-1"])}, wh=self.w.main)
+		self.give_back(si, {self.w.tv: (1, 0, ["_DMTV-M-1"])})
 		self.assertEqual(store_reserved(self.w.tv, self.w.main), self.reserved_before + 1)  # only the pending one
 		self.assertEqual(frappe.db.get_value("Sales Order Item", {"parent": so}, "returned_qty"), 1)
 
@@ -610,7 +493,7 @@ class TestStoreReservation(ReturnsTestCase):
 		si, so = self.order([(self.w.tv, 3, 100)])
 		self.give_back(si, {self.w.tv: (0, 1)})
 		self.deliver(so, {self.w.tv: ["_DMTV-M-1"]}, qty={self.w.tv: 1})
-		self.give_back(si, {self.w.tv: (1, 0, ["_DMTV-M-1"])}, wh=self.w.main)
+		self.give_back(si, {self.w.tv: (1, 0, ["_DMTV-M-1"])})
 		row = frappe.db.get_value("Sales Order Item", {"parent": so}, ["returned_qty", "dm_cancelled_qty"], as_dict=True)
 		self.assertEqual((row.returned_qty, row.dm_cancelled_qty), (2, 1))
 		self.assertEqual(store_reserved(self.w.tv, self.w.main), self.reserved_before + 1)

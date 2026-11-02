@@ -57,9 +57,7 @@ def get_sale(pos_profile, invoice):
 	sale = service.get_sale(invoice)
 	if sale["company"] != profile.company:
 		frappe.throw(_("Invoice {0} belongs to another company.").format(invoice))
-	sale["stores"] = frappe.get_all("Warehouse", filters={"company": profile.company, "is_group": 0, "disabled": 0},
-		pluck="name", order_by="name")
-	sale["default_store"] = profile.warehouse
+	sale["store"] = profile.warehouse  # goods come back into this branch only
 	return sale
 
 

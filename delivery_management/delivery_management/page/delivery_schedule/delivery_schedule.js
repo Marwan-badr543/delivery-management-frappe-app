@@ -1,8 +1,10 @@
 // Delivery Schedule: the orders assigned to a driver (TV / Non AC) or an AC Tech (AC).
 // A driver sees only his own orders; System Manager / Delivery Manager see everyone's.
 // Port of the old "Delivery Schedule" and "AC Delivery Schedule" pages. It lists the
-// Delivery Notes the stock keeper moved to "On the way"; the driver marks them Delivered
-// here after uploading a photo / video and the customer's signature.
+// Delivery Notes whose goods the stock keeper sent out ("On the way", still drafts). At the
+// customer the driver takes off the note what is not installed (credited on the sale), or
+// brings the whole order back (customer not found); the customer signs what is left and the
+// driver marks it Delivered (the note is submitted). He prints the invoice and Credit Notes.
 
 frappe.pages["delivery-schedule"].on_page_load = function (wrapper) {
 	const page = frappe.ui.make_app_page({ parent: wrapper, title: __("Delivery Schedule"), single_column: true });
@@ -95,6 +97,7 @@ class DeliverySchedulePage {
 						{ value: "", label: __("All statuses") },
 						{ value: "on_the_way", label: __("On the way") },
 						{ value: "delivered", label: ac ? __("Installed") : __("Delivered") },
+						{ value: "returned", label: __("Coming back") },
 					], f.status)}</select></div>
 				<div class="dd-field dd-search"><label>${__("Search")}</label>
 					<span class="dd-search-icon">${frappe.utils.icon("search", "sm")}</span>
@@ -222,6 +225,9 @@ class DeliverySchedulePage {
 		const hasMedia = files.some((f) => !f.file_name.startsWith("signature_")
 			&& /\.(jpe?g|png|gif|webp|heic|heif|mp4|mov|webm|3gp|mkv)$/i.test(f.file_name));
 		const pdfUrl = `/api/method/frappe.utils.print_format.download_pdf?doctype=Delivery%20Note&name=${encodeURIComponent(o.name)}&format=${encodeURIComponent(o.print_format)}&no_letterhead=0`;
+		const onTheWay = o.dm_delivery_status === "On the way";
+		const draft = o.docstatus === 0;
+		const saleUrl = (inv) => `/api/method/delivery_management.api.drivers.print_sale_document?delivery_note=${encodeURIComponent(o.name)}&invoice=${encodeURIComponent(inv)}`;
 
 		$b.html(`
 			<div class="dd-detail">
@@ -271,7 +277,13 @@ class DeliverySchedulePage {
 					<a class="btn btn-default" href="/desk/delivery-note/${encodeURIComponent(o.name)}">${frappe.utils.icon("file", "sm")} ${__("Open Delivery Note")}</a>
 					<a class="btn btn-default" href="${pdfUrl}" target="_blank" rel="noopener">${frappe.utils.icon("printer", "sm")} ${__("Download DN PDF")}</a>
 					<button class="btn btn-default" data-upload>${frappe.utils.icon("upload", "sm")} ${__("Upload photo / video")}</button>
+					${(o.documents || []).map((doc) => `<a class="btn btn-default" href="${saleUrl(doc.name)}" target="_blank" rel="noopener">
+						${frappe.utils.icon("printer", "sm")} ${doc.is_return ? __("Credit Note {0}", [D.esc(doc.name)]) : __("Invoice {0}", [D.esc(doc.name)])}</a>`).join("")}
 				</div>
+				${onTheWay && draft ? `<div class="dd-btn-row" style="margin-top:8px">
+					<button class="btn btn-warning" data-take-off>${frappe.utils.icon("undo", "sm")} ${ac ? __("Items not installed") : __("Items not delivered")}</button>
+					<button class="btn btn-danger" data-not-found>${frappe.utils.icon("close", "sm")} ${__("Customer not found: bring all back")}</button>
+				</div>` : ""}
 				<input type="file" accept="image/*,video/*,.pdf,.doc,.docx" data-file hidden>
 				<div class="dd-files small">${(o.attachments || []).length
 					? `<span class="dd-muted">${__("Attached to this delivery")}:</span>` + o.attachments.map((f) =>
@@ -293,6 +305,17 @@ class DeliverySchedulePage {
 					<button class="btn btn-success" data-deliver ${hasMedia && signed ? "" : "disabled"}>${frappe.utils.icon("check", "sm")} ${__("Mark as delivered")}</button>
 				</div>
 			</div>` : ""}`);
+
+		$b.find("[data-not-found]").on("click", () => {
+			frappe.confirm(__("Nothing of {0} is delivered: bring the whole order back to the store?", [o.name]), async () => {
+				await D.call("bring_back_all", { delivery_note: o.name }, { post: true, freeze: true });
+				frappe.show_alert({ message: __("{0} is coming back to the store", [o.name]), indicator: "orange" });
+				d.hide();
+				this.load();
+			});
+		});
+
+		$b.find("[data-take-off]").on("click", () => this.takeOff(o, () => { d.hide(); this.load(); this.openDetail(name); }));
 
 		$b.find("[data-deliver]").on("click", () => {
 			frappe.confirm(__("Mark {0} as delivered?", [o.name]), async () => {
@@ -349,5 +372,37 @@ class DeliverySchedulePage {
 			const safe = String(o.customer_name || "customer").replace(/[^\w\u0600-\u06FF-]+/g, "_");
 			upload(`signature_${safe}_${Date.now()}.png`, data);
 		});
+	}
+
+	/** The driver chooses what the customer does not get: a quantity per line, and for serialised
+	 * goods (a bundle's components too) which serials come back. It is credited on the sale. */
+	takeOff(o, done) {
+		const D = this.D;
+		const d = new frappe.ui.Dialog({
+			title: __("Not delivered: {0}", [o.name]), size: "large",
+			fields: [{ fieldname: "body", fieldtype: "HTML" }],
+			primary_action_label: __("Take off the note"),
+			primary_action: () => {
+				const lines = o.items.map((i) => ({
+					dn_detail: i.name,
+					qty: flt(d.$wrapper.find(`[data-back-qty="${i.name}"]`).val()),
+					serials: d.$wrapper.find(`[data-back-sn="${i.name}"]:checked`).map((_k, el) => el.value).get(),
+				})).filter((l) => l.qty > 0);
+				if (!lines.length) return frappe.msgprint(__("Enter what comes back."));
+				frappe.confirm(__("These goods come back to the store and are credited to the customer. Continue?"), async () => {
+					const r = await D.call("take_off_note", { delivery_note: o.name, lines: JSON.stringify(lines) }, { post: true, freeze: true });
+					frappe.show_alert({ message: __("Credit Note {0} made", [(r.credit_notes || []).join(", ")]), indicator: "green" });
+					d.hide();
+					done();
+				});
+			},
+		});
+		d.fields_dict.body.$wrapper.html(`<p class="text-muted small">${__("The customer signs only for what stays. Choose the quantity that comes back and tick its serial numbers.")}</p>
+			<div class="dd-items">${o.items.map((i) => `<div class="dd-item"><div><b>${D.esc(i.item_name || i.item_code)}</b> × ${i.qty}
+				${(i.serials || []).map((g) => `<small>${D.esc(g.item_code)}: ${g.serials.map((sn) => `<label style="margin-right:10px;font-weight:normal">
+					<input type="checkbox" data-back-sn="${D.esc(i.name)}" value="${D.esc(sn)}"> ${D.esc(sn)}</label>`).join("")}</small>`).join("")}</div>
+				<input type="number" class="form-control input-xs" style="width:90px" min="0" max="${i.qty}" step="1"
+					data-back-qty="${D.esc(i.name)}" value="0" placeholder="${__("Back")}"></div>`).join("")}</div>`);
+		d.show();
 	}
 }

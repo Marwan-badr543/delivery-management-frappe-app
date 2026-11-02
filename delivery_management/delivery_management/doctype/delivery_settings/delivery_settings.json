@@ -17,6 +17,7 @@
   "ac_rule_note",
   "stock_section",
   "main_warehouse",
+  "transit_warehouse",
   "drivers_section",
   "ac_tech_max_orders_per_day",
   "tv_driver_gap_hours",
@@ -130,6 +131,13 @@
    "label": "Main Store (Delivery Orders)",
    "options": "Warehouse",
    "reqd": 1
+  },
+  {
+   "fieldname": "transit_warehouse",
+   "fieldtype": "Link",
+   "label": "Transit Store (Goods with Drivers)",
+   "options": "Warehouse",
+   "description": "The Stock Keeper page moves an order's goods from the Main Store to this store when the driver / AC Tech takes them, and back when they return. The Delivery Note is submitted from here when the goods are installed."
   },
   {
    "fieldname": "drivers_section",
@@ -312,7 +320,7 @@
  "index_web_pages_for_search": 0,
  "issingle": 1,
  "links": [],
- "modified": "2026-10-24 12:00:00.000000",
+ "modified": "2026-11-02 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Delivery Management",
  "name": "Delivery Settings",

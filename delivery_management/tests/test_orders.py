@@ -12,8 +12,9 @@ from delivery_management.orders import service
 from delivery_management.orders.stock import get_sellable_qty
 from delivery_management.slots import SlotUnavailableError, get_reservations, profile_cart
 from delivery_management.slots import engine
-from delivery_management.tests.fixtures import PosWorld
+from delivery_management.tests.fixtures import PosWorld, deliver_note
 from delivery_management.tests.utils import DeliveryTestCase
+from delivery_management.transit import service as transit
 
 DATA = {"total_change": 0, "paid_change": 0, "credit_change": 0, "redeemed_customer_credit": 0,
 	"customer_credit_dict": [], "is_cashback": 1}
@@ -604,12 +605,6 @@ def tv_bundle(w):
 	return bundle
 
 
-def scan(dn, item_code, serials):
-	"""The stock keeper scans ``serials`` into the note's line (item or packed) of ``item_code``."""
-	row = next(r for r in list(dn.items) + list(dn.get("packed_items") or []) if r.item_code == item_code)
-	row.update({"serial_no": "\n".join(serials), "use_serial_batch_fields": 1, "serial_and_batch_bundle": None})
-
-
 class TestProductBundle(OrdersTestCase):
 	"""A bundle parent is a non-stock item: stock and the delivery are counted by its components."""
 
@@ -629,8 +624,7 @@ class TestProductBundle(OrdersTestCase):
 		dn = make_delivery_note(so)
 		dn.insert()
 		self.assertEqual(dn.dm_delivery_type, "Non AC")
-		scan(dn, self.w.tv, ["_DMTV-M-3"])
-		dn.submit()
+		deliver_note(dn.name, {self.w.tv: ["_DMTV-M-3"]})
 		self.assertEqual(frappe.db.get_value("Serial No", "_DMTV-M-3", "warehouse"), None)
 
 	def test_bundle_order_reserves_its_components(self):
@@ -650,18 +644,12 @@ class TestProductBundle(OrdersTestCase):
 		dn = make_delivery_note(so)
 		dn.insert()
 		reserved = frappe.db.get_value("Bin", {"item_code": self.w.tv, "warehouse": self.w.main}, "reserved_stock")
-		scan(dn, self.w.tv, ["_DMTV-M-2"])
-		dn.submit()
+		deliver_note(dn.name, {self.w.tv: ["_DMTV-M-2"]})
 		self.assertEqual(frappe.db.get_value("Serial No", "_DMTV-M-2", "warehouse"), None)
 		self.assertEqual(frappe.db.get_value("Bin", {"item_code": self.w.tv, "warehouse": self.w.main},
 			"reserved_stock"), reserved - 1)
-		self.assertEqual(set(frappe.get_all("Stock Reservation Entry", filters={"voucher_no": so, "docstatus": 1},
-			pluck="status")), {"Delivered"})
-
-		dn.cancel()
-		self.assertEqual(frappe.db.get_value("Serial No", "_DMTV-M-2", "warehouse"), self.w.main)
-		self.assertEqual(set(frappe.get_all("Stock Reservation Entry", filters={"voucher_no": so, "docstatus": 1},
-			pluck="status")), {"Reserved"})
+		# Released when the goods left the store with the driver.
+		self.assertFalse(frappe.get_all("Stock Reservation Entry", filters={"voucher_no": so, "docstatus": 1}))
 
 	def test_cancelled_bundle_order_frees_its_stock(self):
 		invoice = self.w.draft_invoice([(self.bundle, 1, 150)])
@@ -755,21 +743,22 @@ class TestScannedOnDelivery(OrdersTestCase):
 	def test_any_free_serial_scanned_is_delivered(self):
 		so = self.order([(self.w.tv, 1, 100)])
 		dn = self.note(so)
-		scan(dn, self.w.tv, ["_DMTV-M-3"])
-		dn.submit()
+		deliver_note(dn.name, {self.w.tv: ["_DMTV-M-3"]})
 		self.assertEqual((serial_status("_DMTV-M-3")[1], serial_status("_DMTV-M-1")[1]), (None, self.w.main))
 		self.assertEqual(reserved_qty(so, self.w.tv), 0)
 
 	def test_note_without_scanned_serials_is_refused(self):
 		dn = self.note(self.order([(self.w.tv, 2, 100)]))
-		self.assertRaisesRegex(frappe.ValidationError, "needs 2 serials, 0 scanned", dn.submit)
-		dn = frappe.get_doc("Delivery Note", dn.name)
-		scan(dn, self.w.tv, ["_DMTV-M-1"])
-		self.assertRaisesRegex(frappe.ValidationError, "needs 2 serials, 1 scanned", dn.submit)
+		line = transit.stock_lines(dn)[0].key
+		frappe.db.set_value("Delivery Note", dn.name, "dm_driver", "Administrator")
+		self.assertRaisesRegex(frappe.ValidationError, "scan 2 serial\\(s\\), 0 scanned", transit.dispatch, dn.name, {})
+		self.assertRaisesRegex(frappe.ValidationError, "scan 2 serial\\(s\\), 1 scanned", transit.dispatch, dn.name,
+			{line: ["_DMTV-M-1"]})
 
 	def test_bundle_component_must_be_scanned(self):
 		dn = self.note(self.order([(tv_bundle(self.w), 1, 150)]))
-		self.assertRaisesRegex(frappe.ValidationError, "needs 1 serials, 0 scanned", dn.submit)
+		frappe.db.set_value("Delivery Note", dn.name, "dm_driver", "Administrator")
+		self.assertRaisesRegex(frappe.ValidationError, "scan 1 serial\\(s\\), 0 scanned", transit.dispatch, dn.name, {})
 
 
 class TestDriverPayment(OrdersTestCase):

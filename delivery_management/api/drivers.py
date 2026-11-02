@@ -18,10 +18,11 @@ from frappe import _
 from frappe.utils import add_months, cint, flt, getdate, nowdate, strip_html
 
 from delivery_management.drivers import assignment as asg
-from delivery_management.drivers.delivery_note import DELIVERED, ON_THE_WAY, sales_order_of
+from delivery_management.drivers.delivery_note import DELIVERED, ON_THE_WAY, RETURNED, sales_order_of
 from delivery_management.drivers import stats
 from delivery_management.orders import payments
 from delivery_management.returns import service as returns
+from delivery_management.transit import service as transit
 
 DN = "Delivery Note"
 MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024
@@ -203,11 +204,12 @@ def get_drivers(order_type):
 @frappe.whitelist()
 def get_assignment_orders(order_type, search=None, assigned_status=None, driver=None, area=None,
 		delivery_date=None, limit=20, offset=0):
-	"""Delivery Notes waiting for delivery (draft) of one type, earliest first."""
+	"""Delivery Notes waiting in the store (draft, not sent out) of one type, earliest first."""
 	_require_manager()
 	order_type = _type(order_type)
 	date_col = _date_column(order_type)
-	conditions = ["dn.docstatus = 0", "dn.is_return = 0", "dn.dm_delivery_type = %(type)s"]
+	conditions = ["dn.docstatus = 0", "dn.is_return = 0", "dn.dm_delivery_type = %(type)s",
+		"ifnull(dn.dm_delivery_status, '') = ''"]
 	values = {"type": order_type}
 	if assigned_status == "assigned":
 		conditions.append("ifnull(dn.dm_driver, '') != ''")
@@ -258,13 +260,6 @@ def assign_driver(delivery_note, driver=None):
 	return asg.assign(delivery_note, driver)
 
 
-@frappe.whitelist(methods=["POST"])
-def make_resend(delivery_note):
-	"""Send Again: a draft Delivery Note with the goods of this one that came back."""
-	_require_manager()
-	return returns.make_resend(delivery_note)
-
-
 @frappe.whitelist()
 def get_ac_loads(work_date):
 	_require_manager()
@@ -286,16 +281,17 @@ def set_ac_limit(driver, work_date, max_orders=None):
 
 @frappe.whitelist()
 def get_schedule(order_type, start_date=None, end_date=None, status=None, search=None, driver=None, area=None):
-	"""Assigned Delivery Notes on the way or delivered in a date range. A driver gets only his own."""
+	"""Assigned Delivery Notes out of the store (On the way, Returned) or delivered in a date
+	range. A driver gets only his own."""
 	_require_staff()
 	order_type = _type(order_type)
 	date_col = _date_column(order_type)
 	start = getdate(start_date or nowdate())
 	end = getdate(end_date or add_months(start, 1))
-	conditions = ["dn.docstatus = 1", "dn.is_return = 0", "dn.dm_delivery_type = %(type)s",
+	conditions = ["dn.docstatus < 2", "dn.is_return = 0", "dn.dm_delivery_type = %(type)s",
 		"dn.dm_delivery_status in %(states)s", "ifnull(dn.dm_driver, '') != ''",
 		f"{date_col} between %(start)s and %(end)s"]
-	values = {"type": order_type, "start": start, "end": end, "states": (ON_THE_WAY, DELIVERED)}
+	values = {"type": order_type, "start": start, "end": end, "states": (ON_THE_WAY, RETURNED, DELIVERED)}
 	if not asg.can_manage():
 		conditions.append("dn.dm_driver = %(me)s")
 		values["me"] = frappe.session.user
@@ -308,6 +304,9 @@ def get_schedule(order_type, start_date=None, end_date=None, status=None, search
 	elif status == "delivered":
 		conditions.append("dn.dm_delivery_status = %(state)s")
 		values["state"] = DELIVERED
+	elif status == "returned":
+		conditions.append("dn.dm_delivery_status = %(state)s")
+		values["state"] = RETURNED
 	if area:
 		conditions.append("dn.dm_delivery_area = %(area)s")
 		values["area"] = area
@@ -330,10 +329,15 @@ def get_order_detail(delivery_note):
 	row = frappe.db.sql(f"select {_ROW_FIELDS} from `tabDelivery Note` dn where dn.name = %s", delivery_note,
 		as_dict=True)[0]
 	row = _finish_rows([row])[0]
-	row.items = [{"item_code": i.item_code, "item_name": i.item_name, "qty": i.qty, "uom": i.uom,
-		"serial_no": i.serial_no, "returned_qty": flt(i.qty) - returns.net_qty(i)} for i in dn.items]
+	serials = {line.key: line.serials for line in transit.stock_lines(dn)} if dn.docstatus == 0 else {}
+	row.items = [{"name": i.name, "item_code": i.item_code, "item_name": i.item_name, "qty": i.qty, "uom": i.uom,
+		"serial_no": i.serial_no, "returned_qty": flt(i.qty) - returns.net_qty(i),
+		# The serials of the units (a bundle's serialised components) the driver can bring back.
+		"serials": [{"item_code": code, "serials": sns} for k, sns in serials.items()
+			for name, code in [k.split("|", 1)] if name == i.name and sns]} for i in dn.items]
 	row.packed_items = [{"parent_item": p.parent_item, "item_code": p.item_code, "item_name": p.item_name,
 		"qty": p.qty} for p in (dn.get("packed_items") or [])]
+	row.documents = sale_documents(dn)
 	row.sales_order = sales_order_of(dn)
 	row.notes = frappe.db.get_value("Sales Order", row.sales_order, "posa_notes") if row.sales_order and \
 		frappe.db.has_column("Sales Order", "posa_notes") else None
@@ -343,6 +347,48 @@ def get_order_detail(delivery_note):
 	row.print_format = frappe.db.get_value("Property Setter", {"doc_type": DN, "property": "default_print_format"},
 		"value") or "Standard"
 	return row
+
+
+def sale_documents(dn) -> list[dict]:
+	"""The order's invoices and their Credit Notes, for the driver to print."""
+	invoices = (payment_summary([dn.name]).get(dn.name) or {}).get("invoices") or []
+	if not invoices:
+		return []
+	return frappe.get_all("Sales Invoice", filters={"docstatus": 1, "name": ["in", invoices]},
+		fields=["name", "is_return", "grand_total", "posting_date"], order_by="posting_date, creation") + \
+		frappe.get_all("Sales Invoice", filters={"docstatus": 1, "is_return": 1, "return_against": ["in", invoices]},
+			fields=["name", "is_return", "grand_total", "posting_date"], order_by="posting_date, creation")
+
+
+@frappe.whitelist()
+def print_sale_document(delivery_note, invoice):
+	"""PDF of an invoice or Credit Note of the order (drivers have no rights on invoices)."""
+	_require_order_access(delivery_note)
+	if invoice not in {d.name for d in sale_documents(frappe.get_doc(DN, delivery_note))}:
+		frappe.throw(_("{0} is not an invoice of this order.").format(invoice), frappe.PermissionError)
+	with _with_full_rights():
+		pdf = frappe.get_print("Sales Invoice", invoice, as_pdf=True)
+	frappe.local.response.filename = f"{invoice}.pdf"
+	frappe.local.response.filecontent = pdf
+	frappe.local.response.type = "pdf"
+
+
+@frappe.whitelist(methods=["POST"])
+def take_off_note(delivery_note, lines):
+	"""At the customer: goods not installed come off the note (and are credited)."""
+	_require_order_access(delivery_note)
+	lines = frappe.parse_json(lines) if isinstance(lines, str) else lines
+	with _with_full_rights():
+		notes = transit.take_off_note(delivery_note, lines)
+	return {"credit_notes": notes}
+
+
+@frappe.whitelist(methods=["POST"])
+def bring_back_all(delivery_note):
+	"""Customer not found: the whole order comes back to the store."""
+	_require_order_access(delivery_note)
+	transit.bring_back_all(delivery_note)
+	return {"dm_delivery_status": RETURNED}
 
 
 def modes_of_payment(company) -> list[str]:
@@ -429,8 +475,17 @@ def _require_on_the_way(delivery_note):
 
 
 def _set_delivered(delivery_note):
-	frappe.db.set_value(DN, delivery_note, "dm_delivery_status", DELIVERED)
-	returns.settle_orders_of(delivery_note)
+	"""Submit the note: the goods leave the transit store to the customer. A note submitted
+	before the transit store (already out of stock) is only marked Delivered."""
+	dn = frappe.get_doc(DN, delivery_note)
+	if dn.docstatus == 1:
+		dn.db_set("dm_delivery_status", DELIVERED)
+		returns.settle_orders_of(delivery_note)
+	else:
+		with _with_full_rights():
+			dn.flags.dm_transit = True
+			dn.flags.ignore_permissions = True
+			dn.submit()
 	return {"dm_delivery_status": DELIVERED}
 
 

@@ -15,6 +15,7 @@ class SlotSettings:
 	ac_excluded_item_groups: tuple[str, ...]
 	ac_excluded_items: tuple[str, ...]
 	main_warehouse: str | None
+	transit_warehouse: str | None = None
 	ac_tech_max_orders_per_day: int = 0
 	delivery_charge_item: str | None = None
 	tv_driver_gap_hours: float = 1.0
@@ -38,6 +39,7 @@ def get_settings() -> SlotSettings:
 		ac_excluded_item_groups=tuple(row.item_group for row in (doc.ac_excluded_item_groups or [])),
 		ac_excluded_items=tuple(row.item_code for row in (doc.ac_excluded_items or [])),
 		main_warehouse=doc.main_warehouse or None,
+		transit_warehouse=doc.get("transit_warehouse") or None,
 		ac_tech_max_orders_per_day=max(cint(doc.get("ac_tech_max_orders_per_day")), 0),
 		delivery_charge_item=doc.get("delivery_charge_item") or None,
 		tv_driver_gap_hours=_non_negative(doc.get("tv_driver_gap_hours"), 1.0),

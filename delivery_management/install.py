@@ -63,8 +63,9 @@ def _delivery_note_fields() -> list[dict]:
 		{"fieldname": "dm_delivery_status", "fieldtype": "Select", "label": "Delivery Status",
 			"options": "\nOn the way\nDelivered\nReturned", "insert_after": "dm_driver", "read_only": 1,
 			"allow_on_submit": 1, "no_copy": 1, "in_standard_filter": 1, "search_index": 1,
-			"description": "On the way when the note is submitted (the goods left the store), Delivered when the "
-				"driver confirms on the Delivery Schedule page, Returned when all its goods came back while On the way."},
+			"description": "On the way when the stock keeper sends its goods out (Stock Keeper page; the note stays a "
+				"draft), Delivered when the driver submits it at the customer, Returned when the whole order comes "
+				"back (customer not found) until the stock keeper receives it."},
 		{"fieldname": "dm_returned_before_delivery", "fieldtype": "Check", "label": "Returned Before Delivery",
 			"insert_after": "dm_delivery_status", "read_only": 1, "no_copy": 1, "depends_on": "eval:doc.is_return",
 			"description": "The note it returns was still On the way: never delivered or installed, so its "
@@ -72,7 +73,7 @@ def _delivery_note_fields() -> list[dict]:
 		{"fieldname": "dm_customer_return", "fieldtype": "Check", "label": "Customer Return",
 			"insert_after": "dm_returned_before_delivery", "read_only": 1, "no_copy": 1, "depends_on": "eval:doc.is_return",
 			"description": "Made by a Customer Return (POS): the customer gave these goods back for good. Without it "
-				"the goods only came back, and the order still has to deliver them (Send Again)."},
+				"the goods only came back, and the order still has to deliver them."},
 	] + fields[1:]
 
 
@@ -137,6 +138,12 @@ def get_custom_fields() -> dict:
 					"once per order."},
 		],
 		"Delivery Note": _delivery_note_fields(),
+		"Stock Entry": [
+			{"fieldname": "dm_delivery_note", "fieldtype": "Link", "label": "Delivery Note (Transit)",
+				"options": "Delivery Note", "insert_after": "stock_entry_type", "read_only": 1, "no_copy": 1,
+				"search_index": 1, "depends_on": "dm_delivery_note",
+				"description": "The order's goods sent out with its driver, or back (Stock Keeper page)."},
+		],
 		# Level 1: only a System Manager sees or sets it, not the user on their own profile.
 		"User": [
 			{"fieldname": "dm_ac_unit_cost", "fieldtype": "Currency", "label": "AC Unit Installation Cost",

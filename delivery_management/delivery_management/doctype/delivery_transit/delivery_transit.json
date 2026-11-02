@@ -1,0 +1,210 @@
+{
+ "actions": [],
+ "autoname": "field:delivery_note",
+ "creation": "2026-11-02 10:00:00",
+ "description": "Goods of a Delivery Note out of the main store, in the transit store: with the driver or AC Tech, or coming back. Made and removed by the Stock Keeper page.",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "delivery_note",
+  "sales_order",
+  "status",
+  "delivery_type",
+  "column_break_c",
+  "customer",
+  "customer_name",
+  "mobile_no",
+  "address",
+  "driver_section",
+  "driver",
+  "driver_name",
+  "work_date",
+  "column_break_d",
+  "out_at",
+  "out_by",
+  "out_entry",
+  "back_entries",
+  "items_section",
+  "items"
+ ],
+ "fields": [
+  {
+   "fieldname": "delivery_note",
+   "fieldtype": "Link",
+   "label": "Delivery Note",
+   "options": "Delivery Note",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "sales_order",
+   "fieldtype": "Link",
+   "label": "Sales Order",
+   "options": "Sales Order",
+   "in_standard_filter": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "On the way\nComing back",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "delivery_type",
+   "fieldtype": "Data",
+   "label": "Order Type",
+   "in_standard_filter": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_c",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "customer",
+   "fieldtype": "Link",
+   "label": "Customer",
+   "options": "Customer",
+   "in_standard_filter": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "customer_name",
+   "fieldtype": "Data",
+   "label": "Customer Name",
+   "in_list_view": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "mobile_no",
+   "fieldtype": "Data",
+   "label": "Mobile",
+   "read_only": 1
+  },
+  {
+   "fieldname": "address",
+   "fieldtype": "Small Text",
+   "label": "Address",
+   "read_only": 1
+  },
+  {
+   "fieldname": "driver_section",
+   "fieldtype": "Section Break",
+   "label": "Driver"
+  },
+  {
+   "fieldname": "driver",
+   "fieldtype": "Link",
+   "label": "Driver / AC Tech",
+   "options": "User",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "search_index": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "driver_name",
+   "fieldtype": "Data",
+   "label": "Driver Name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "work_date",
+   "fieldtype": "Date",
+   "label": "Delivery / Installation Day",
+   "in_standard_filter": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_d",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "out_at",
+   "fieldtype": "Datetime",
+   "label": "Left the Store",
+   "read_only": 1
+  },
+  {
+   "fieldname": "out_by",
+   "fieldtype": "Link",
+   "label": "Sent by",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "out_entry",
+   "fieldtype": "Link",
+   "label": "Stock Entry (out)",
+   "options": "Stock Entry",
+   "read_only": 1
+  },
+  {
+   "fieldname": "back_entries",
+   "fieldtype": "Small Text",
+   "label": "Stock Entries (back)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "items_section",
+   "fieldtype": "Section Break",
+   "label": "Items"
+  },
+  {
+   "fieldname": "items",
+   "fieldtype": "Table",
+   "label": "Items",
+   "options": "Delivery Transit Item",
+   "read_only": 1
+  }
+ ],
+ "in_create": 1,
+ "modified": "2026-11-02 10:00:00",
+ "modified_by": "Administrator",
+ "module": "Delivery Management",
+ "name": "Delivery Transit",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "report": 1,
+   "print": 1,
+   "export": 1
+  },
+  {
+   "role": "Delivery Manager",
+   "read": 1,
+   "report": 1,
+   "print": 1,
+   "export": 1
+  },
+  {
+   "role": "Stock Manager",
+   "read": 1,
+   "report": 1,
+   "print": 1,
+   "export": 1
+  },
+  {
+   "role": "Stock User",
+   "read": 1,
+   "report": 1,
+   "print": 1,
+   "export": 1
+  }
+ ],
+ "search_fields": "customer_name,driver",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "customer_name",
+ "track_changes": 1
+}

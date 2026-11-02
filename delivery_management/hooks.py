@@ -156,16 +156,19 @@ doc_events = {
 			"delivery_management.orders.serial_choice.clear_order_serials",
 		],
 		"validate": [
+			"delivery_management.transit.service.check_locked",
 			"delivery_management.drivers.delivery_note.validate",
 			"delivery_management.orders.serial_choice.restore_scanned",
 		],
 		"before_submit": [
 			"delivery_management.drivers.delivery_note.before_submit",
+			"delivery_management.transit.service.before_delivery",
 			"delivery_management.returns.service.check_not_returned",
 			"delivery_management.returns.service.flag_before_delivery",
 			"delivery_management.orders.reservation.deliver",
 		],
 		"on_submit": [
+			"delivery_management.transit.service.after_delivery",
 			"delivery_management.returns.service.settle_after_delivery",
 			"delivery_management.returns.service.after_return",
 		],
@@ -176,7 +179,6 @@ doc_events = {
 			"delivery_management.returns.service.after_return",
 		],
 		"on_trash": "delivery_management.drivers.delivery_note.on_trash",
-		"onload": "delivery_management.drivers.delivery_note.onload",
 	},
 	"Payment Entry": {
 		"on_submit": "delivery_management.returns.service.settle_after_payment",

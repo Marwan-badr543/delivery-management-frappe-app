@@ -275,16 +275,21 @@ def assign(delivery_note: str, driver: str, user: str | None = None) -> dict:
 	if dn.docstatus == 2:
 		frappe.throw(_("Delivery Note {0} is cancelled.").format(dn.name))
 	if dn.docstatus == 1 and dn.get("dm_delivery_status") != "On the way":
-		frappe.throw(_("The driver of {0} can only change while it is On the way.").format(dn.name))
+		frappe.throw(_("{0} is delivered: its driver cannot change.").format(dn.name))
 	_lock_driver(driver)
 	check_assignable(dn, driver, user)
 	frappe.db.set_value(DN, dn.name, "dm_driver", driver)
 	dn.dm_driver = driver
 	sync_assignment(dn)
+	from delivery_management.transit.service import set_driver
+
+	set_driver(dn.name, driver)
 	return {"delivery_note": dn.name, "driver": driver}
 
 
 def unassign(delivery_note: str) -> dict:
+	if frappe.db.get_value(DN, delivery_note, "dm_delivery_status"):
+		frappe.throw(_("The goods of {0} are out with its driver: change the driver instead.").format(delivery_note))
 	frappe.db.set_value(DN, delivery_note, "dm_driver", None)
 	remove_assignment(delivery_note)
 	return {"delivery_note": delivery_note, "driver": None}

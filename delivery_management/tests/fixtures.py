@@ -177,3 +177,43 @@ class PosWorld:
 		for p in invoice["payments"]:
 			p["amount"] = invoice["rounded_total"] or invoice["grand_total"]
 		return invoice
+
+
+def send_out(delivery_note, serials=None):
+	"""The stock keeper hands the note's goods to its driver (one is assigned when it has
+	none). ``serials``: ``{item: [..]}`` to scan; otherwise the serials already on the note,
+	or the oldest free ones in the store."""
+	from delivery_management.drivers import assignment as asg
+	from delivery_management.orders.serial_choice import free_serials
+	from delivery_management.transit import service as transit
+
+	dn = frappe.get_doc("Delivery Note", delivery_note)
+	if not dn.dm_driver:
+		role = asg.ROLE_AC if dn.dm_delivery_type == asg.TYPE_AC else asg.ROLE_TV
+		email = f"_dm.transit.{role.split()[0].lower()}@example.com"
+		if not frappe.db.exists("User", email):
+			frappe.get_doc({"doctype": "User", "email": email, "first_name": f"Transit {role}",
+				"send_welcome_email": 0, "user_type": "System User"}).insert(ignore_permissions=True)
+		frappe.get_doc("User", email).add_roles(role)
+		frappe.db.set_value("Delivery Note", dn.name, "dm_driver", email)
+		dn.reload()
+	pool = {code: list(sns) for code, sns in (serials or {}).items()}
+	scans, taken = {}, set()
+	for line in transit.stock_lines(dn):
+		if not line.has_serial_no:
+			continue
+		need = int(line.qty)
+		mine = pool.get(line.item_code) or line.serials or free_serials(line.item_code, line.warehouse, taken)
+		scans[line.key] = mine[:need]
+		taken.update(mine[:need])
+		if line.item_code in pool:
+			pool[line.item_code] = pool[line.item_code][need:]
+	return transit.dispatch(dn.name, scans)
+
+
+def deliver_note(delivery_note, serials=None):
+	"""Sent out, then delivered by the office: the note is submitted."""
+	from delivery_management.api.drivers import mark_delivered_by_office
+
+	send_out(delivery_note, serials)
+	mark_delivered_by_office(delivery_note)

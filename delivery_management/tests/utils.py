@@ -5,6 +5,8 @@ import datetime
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
+from delivery_management.tests.fixtures import warehouse
+
 # A Monday far in the future, so real "now" never interferes.
 DAY = datetime.date(2031, 3, 3)
 NOW = datetime.datetime(2031, 3, 3, 15, 0, 0)  # Monday 15:00
@@ -16,7 +18,8 @@ class DeliveryTestCase(FrappeTestCase):
 		frappe.db.rollback()
 		self._refs = {}
 		frappe.set_user("Administrator")
-		self.settings(global_ac_daily_capacity=20, slot_lead_time_hours=2, booking_window_days=30)
+		self.settings(global_ac_daily_capacity=20, slot_lead_time_hours=2, booking_window_days=30,
+			main_warehouse=warehouse("_DM Main"), transit_warehouse=warehouse("_DM Transit"))
 		# Orders reserve their stock (the tests check it), whatever the site's Stock Settings.
 		frappe.db.set_single_value("Stock Settings", {"enable_stock_reservation": 1, "auto_reserve_stock": 1})
 		frappe.clear_document_cache("Stock Settings", "Stock Settings")
