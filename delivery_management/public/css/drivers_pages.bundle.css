@@ -200,3 +200,27 @@
 .dm-sup-foot { display: flex; flex-wrap: wrap; justify-content: flex-end; margin-top: 14px; }
 .dm-sup-foot .btn { width: auto; padding: 0 16px; }
 .dm-sup-techs .dd-pick-body small.dd-muted { font-weight: 400; }
+
+/* Phones: order cards, dialogs and the Stock Keeper / Goods in Transit pages */
+.dd-item > div { min-width: 0; overflow-wrap: anywhere; }
+.dd-item .dd-pill { display: inline-flex; margin: 2px 2px 0 0; }
+.dd-item .dd-pill a { margin-left: 6px; cursor: pointer; font-weight: 700; }
+.dd-item input[type="number"] { flex: 0 0 auto; }
+.dd-btn-row .btn { white-space: normal; height: auto; min-height: 38px; }
+@media (max-width: 767px) {
+	.dd-panel { padding: 12px; }
+	.dd-filters { grid-template-columns: 1fr; }
+	.dd-table.dd-cards td { flex-wrap: wrap; overflow-wrap: anywhere; }
+	.dd-table.dd-cards td > * { min-width: 0; }
+	/* Long cells (items, address, coming back) read better under their label. */
+	.dd-table.dd-cards td.dd-addr, .dd-table.dd-cards td.dd-long { display: block; text-align: left; }
+	.dd-table.dd-cards td.dd-addr::before, .dd-table.dd-cards td.dd-long::before { display: block; margin-bottom: 2px; }
+	.dd-table.dd-cards td .dd-sub { text-align: inherit; }
+	.dd-item { flex-wrap: wrap; align-items: center; }
+	.dd-btn-row { grid-template-columns: 1fr; }
+	.dd-btn-row .btn { min-height: 44px; }
+	.dd-pay-row > * { flex: 1 1 100%; }
+	.dd-kv { grid-template-columns: 1fr 1fr; }
+	.dd-item label { display: inline-flex; align-items: center; gap: 4px; padding: 6px 0; }
+	.dd-item input[type="checkbox"] { width: 20px; height: 20px; }
+}

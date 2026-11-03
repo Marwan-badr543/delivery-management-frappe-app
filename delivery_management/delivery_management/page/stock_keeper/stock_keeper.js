@@ -105,7 +105,7 @@ class StockKeeperPage {
 				<td data-label="${__("Customer")}"><b>${D.esc(r.customer_name)}</b><span class="dd-sub">${D.phoneLink(r.mobile_no)}</span></td>
 				<td data-label="${__("Driver / AC Tech")}">${D.esc(r.driver_name || r.driver)}</td>
 				<td data-label="${__("Left the store")}">${frappe.datetime.str_to_user(r.out_at)}</td>
-				<td data-label="${__("Coming back")}">${r.items.filter((i) => i.coming_back > 0)
+				<td data-label="${__("Coming back")}" class="dd-long">${r.items.filter((i) => i.coming_back > 0)
 					.map((i) => `${D.esc(i.item_name || i.item_code)} × ${i.coming_back}`).join("<br>")}</td>
 			</tr>`).join(""));
 		this.rows = rows;
@@ -157,10 +157,10 @@ class StockKeeperPage {
 			scanned[k] = scanned[k].filter((s) => s !== String($(e.currentTarget).data("sn")));
 			render();
 		});
+		// A scanner types the serial fast; a paste puts it at once: either is added a moment after
+		// the input stops changing, no Enter needed (Enter still adds it at once).
 		const $scan = d.fields_dict.scan.$input;
-		$scan.on("keydown", async (e) => {
-			if (e.key !== "Enter") return;
-			e.preventDefault();
+		const add = async () => {
 			const sn = ($scan.val() || "").trim();
 			$scan.val("");
 			if (!sn) return;
@@ -173,6 +173,13 @@ class StockKeeperPage {
 			if (!line) return frappe.show_alert({ message: __("{0} ({1}) is not expected here.", [r.serial_no, r.item_code]), indicator: "red" }, 6);
 			scanned[line.key].push(r.serial_no);
 			render();
+		};
+		const addSoon = frappe.utils.debounce(add, 400);
+		$scan.on("input", addSoon);
+		$scan.on("keydown", (e) => {
+			if (e.key !== "Enter") return;
+			e.preventDefault();
+			add();
 		});
 		d.show();
 		setTimeout(() => $scan.focus(), 300);

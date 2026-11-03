@@ -80,13 +80,13 @@ class GoodsInTransitPage {
 				${D.typePill(r.delivery_type)}
 				<span class="dd-sub"><a href="/desk/stock-entry/${encodeURIComponent(r.out_entry)}">${D.esc(r.out_entry)}</a>
 				${(r.back_entries || "").split("\n").filter(Boolean).map((e) => `<a href="/desk/stock-entry/${encodeURIComponent(e)}">${D.esc(e)}</a>`).join(" ")}</span></td>
-			<td data-label="${__("Customer")}"><b>${D.esc(r.customer_name)}</b><span class="dd-sub">${D.phoneLink(r.mobile_no)}</span>
+			<td data-label="${__("Customer")}" class="dd-long"><b>${D.esc(r.customer_name)}</b><span class="dd-sub">${D.phoneLink(r.mobile_no)}</span>
 				<span class="dd-sub">${D.esc(r.address)}</span></td>
 			<td data-label="${__("Driver / AC Tech")}">${D.esc(r.driver_name || r.driver)}
 				${r.work_date ? `<span class="dd-sub">${D.relativeDay(r.work_date)} · ${D.date(r.work_date)}</span>` : ""}</td>
 			<td data-label="${__("Left the store")}">${frappe.datetime.str_to_user(r.out_at)}<span class="dd-sub">${__("by")} ${D.esc(r.out_by)}</span></td>
 			<td data-label="${__("Status")}">${pill(r)}</td>
-			<td data-label="${__("Items")}">${items(r)}</td>
+			<td data-label="${__("Items")}" class="dd-long">${items(r)}</td>
 		</tr>`).join(""));
 	}
 }

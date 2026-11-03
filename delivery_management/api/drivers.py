@@ -27,6 +27,7 @@ from delivery_management.transit import service as transit
 DN = "Delivery Note"
 MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024
 SIGNATURE_PREFIX = "signature_"
+SALE_PRINT_FORMAT = "Show Satellite Tax Invoice"  # invoices and Credit Notes printed for the customer
 MEDIA_EXTENSIONS = ("jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "mp4", "mov", "webm", "3gp", "mkv")
 
 
@@ -367,7 +368,7 @@ def print_sale_document(delivery_note, invoice):
 	if invoice not in {d.name for d in sale_documents(frappe.get_doc(DN, delivery_note))}:
 		frappe.throw(_("{0} is not an invoice of this order.").format(invoice), frappe.PermissionError)
 	with _with_full_rights():
-		pdf = frappe.get_print("Sales Invoice", invoice, as_pdf=True)
+		pdf = frappe.get_print("Sales Invoice", invoice, SALE_PRINT_FORMAT, as_pdf=True)
 	frappe.local.response.filename = f"{invoice}.pdf"
 	frappe.local.response.filecontent = pdf
 	frappe.local.response.type = "pdf"

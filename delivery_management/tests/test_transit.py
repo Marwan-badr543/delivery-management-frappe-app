@@ -228,3 +228,21 @@ class TestDriverAndUnits(TransitTestCase):
 		frappe.db.set_value("Delivery Note", name, "dm_driver", "Administrator")
 		day = frappe.db.get_value("Delivery Note", name, "dm_ac_installation_date")
 		self.assertEqual(stats.installation_stats(day, day, technician="Administrator")[0]["ac_units"], 1)
+
+
+class TestDriverPrints(TransitTestCase):
+	def test_invoice_and_credit_note_in_the_show_satellite_format(self):
+		from unittest.mock import patch
+
+		si, so = self.order([(self.w.pipe, 3, 5)], unpaid=True)
+		name = self.note(so)
+		send_out(name)
+		cn = self.take_off(name, self.w.pipe, 1)["credit_notes"][0]
+		printed = []
+		with patch("frappe.get_print", lambda dt, dn, fmt, as_pdf: printed.append((dt, dn, fmt)) or b"%PDF"):
+			for doc in (si, cn):
+				api.print_sale_document(name, doc)
+				self.assertEqual((frappe.local.response.type, frappe.local.response.filename), ("pdf", f"{doc}.pdf"))
+		self.assertEqual(printed, [("Sales Invoice", si, "Show Satellite Tax Invoice"),
+			("Sales Invoice", cn, "Show Satellite Tax Invoice")])
+		self.assertRaises(frappe.PermissionError, api.print_sale_document, name, "SINV-NOT-OURS")

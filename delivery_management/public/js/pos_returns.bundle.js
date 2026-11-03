@@ -261,6 +261,11 @@
 		const focus = document.activeElement?.id;
 		root.innerHTML = { find: findView, return: returnView, done: doneView, money: moneyView,
 			moneyDone: moneyDoneView }[state.step]();
+		if (state.busy) {
+			// The documents take a few seconds: show it, and keep a second tap from sending it twice.
+			root.querySelector(".dmr-modal")?.insertAdjacentHTML("beforeend",
+				`<div class="dmr-busy"><span class="dmr-spin"></span><b>${__("Saving, please wait…")}</b></div>`);
+		}
 		const el = focus && root.querySelector("#" + focus);
 		if (el) {
 			el.focus();
@@ -305,12 +310,16 @@
 	}
 
 	async function moneyAction(method, data) {
+		if (state.busy) return;
+		state.busy = true;
+		render();
 		try {
 			state.result = await call(method, { data: JSON.stringify({ pos_profile: profile(), request_id: state.requestId, ...data }) }, true);
 			state.step = "moneyDone";
 		} catch (e) {
 			state.error = __("Not saved. Check the message and try again.");
 		}
+		state.busy = false;
 		render();
 	}
 
@@ -324,6 +333,7 @@
 	}
 
 	async function submit() {
+		if (state.busy) return;
 		const t = totals();
 		const lines = state.sale.lines.map((line) => {
 			const { returned, cancelled } = picked(line);
@@ -334,12 +344,15 @@
 			reason: state.reason, notes: state.notes, request_id: state.requestId };
 		if (state.payMode === "all") data.refund_all = 1;
 		else data.refund_amount = state.payMode === "credit" ? 0 : t.refund;
+		state.busy = true;
+		render();
 		try {
 			state.result = await call("submit_return", { data: JSON.stringify(data) }, true);
 			state.step = "done";
 		} catch (e) {
 			state.error = __("The return was not saved. Check the message and try again.");
 		}
+		state.busy = false;
 		render();
 	}
 
