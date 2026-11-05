@@ -25,6 +25,7 @@ import frappe
 from frappe import _
 from frappe.utils import cint, get_time, getdate
 
+from delivery_management.control import log
 from delivery_management.slots.cart import profile_cart
 from delivery_management.slots.settings import get_settings
 
@@ -278,20 +279,27 @@ def assign(delivery_note: str, driver: str, user: str | None = None) -> dict:
 		frappe.throw(_("{0} is delivered: its driver cannot change.").format(dn.name))
 	_lock_driver(driver)
 	check_assignable(dn, driver, user)
+	before = dn.get("dm_driver")
 	frappe.db.set_value(DN, dn.name, "dm_driver", driver)
 	dn.dm_driver = driver
 	sync_assignment(dn)
 	from delivery_management.transit.service import set_driver
 
 	set_driver(dn.name, driver)
+	if before != driver:
+		log.add("Driver changed" if before else "Driver assigned", delivery_note=dn.name, driver=driver,
+			note=_("Was {0}").format(frappe.utils.get_fullname(before)) if before else None)
 	return {"delivery_note": dn.name, "driver": driver}
 
 
 def unassign(delivery_note: str) -> dict:
 	if frappe.db.get_value(DN, delivery_note, "dm_delivery_status"):
 		frappe.throw(_("The goods of {0} are out with its driver: change the driver instead.").format(delivery_note))
+	before = frappe.db.get_value(DN, delivery_note, "dm_driver")
 	frappe.db.set_value(DN, delivery_note, "dm_driver", None)
 	remove_assignment(delivery_note)
+	if before:
+		log.add("Driver removed", delivery_note=delivery_note, driver=before)
 	return {"delivery_note": delivery_note, "driver": None}
 
 

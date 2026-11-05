@@ -144,8 +144,12 @@ doc_events = {
 		"on_submit": [
 			"delivery_management.orders.reservation.reserve",
 			"delivery_management.orders.delivery_note.create_from_sales_order",
+			"delivery_management.control.log.on_sales_order_submit",
 		],
-		"on_cancel": "delivery_management.orders.events.on_sales_order_cancel",
+		"on_cancel": [
+			"delivery_management.orders.events.on_sales_order_cancel",
+			"delivery_management.control.log.on_sales_order_cancel",
+		],
 		"on_trash": "delivery_management.orders.events.on_sales_order_trash",
 	},
 	"Delivery Note": {
@@ -171,6 +175,7 @@ doc_events = {
 			"delivery_management.transit.service.after_delivery",
 			"delivery_management.returns.service.settle_after_delivery",
 			"delivery_management.returns.service.after_return",
+			"delivery_management.control.log.on_delivery",
 		],
 		"before_cancel": "delivery_management.orders.reservation.undeliver",
 		"on_update": "delivery_management.drivers.delivery_note.on_update",
@@ -181,10 +186,16 @@ doc_events = {
 		"on_trash": "delivery_management.drivers.delivery_note.on_trash",
 	},
 	"Payment Entry": {
-		"on_submit": "delivery_management.returns.service.settle_after_payment",
+		"on_submit": [
+			"delivery_management.returns.service.settle_after_payment",
+			"delivery_management.control.log.on_payment_submit",
+		],
+		"on_cancel": "delivery_management.control.log.on_payment_cancel",
 	},
 	"Sales Invoice": {
 		"validate": "delivery_management.orders.serial_choice.apply_to_packed_items",
+		"on_submit": "delivery_management.control.log.on_invoice_submit",
+		"on_cancel": "delivery_management.control.log.on_invoice_cancel",
 	},
 	"Issue": {
 		# A pickup slot booked for a support ticket is freed with it.

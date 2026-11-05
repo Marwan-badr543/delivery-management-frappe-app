@@ -224,3 +224,61 @@
 	.dd-item label { display: inline-flex; align-items: center; gap: 4px; padding: 6px 0; }
 	.dd-item input[type="checkbox"] { width: 20px; height: 20px; }
 }
+
+.dd-later ul { list-style: none; padding: 0; margin: 12px 0; display: flex; flex-direction: column; gap: 8px; }
+.dd-later li { display: flex; gap: 8px; align-items: flex-start; }
+.dd-later li .icon { flex-shrink: 0; margin-top: 2px; stroke: var(--green-600, #1d7a45); }
+
+/* Order Control: orders on the left, the chosen order on the right (one at a time on phones). */
+.oc-split { display: grid; grid-template-columns: minmax(260px, 340px) 1fr; gap: 16px; align-items: start; }
+.oc-list { display: flex; flex-direction: column; gap: 6px; max-height: calc(100vh - 260px); overflow-y: auto; }
+.oc-row { text-align: start; border: 1px solid var(--border-color); border-radius: 10px; padding: 10px 12px;
+	background: var(--fg-color); color: inherit; display: flex; flex-direction: column; gap: 3px; cursor: pointer; }
+.oc-row:hover, .oc-row:focus-visible { border-color: var(--primary); }
+.oc-row.on { border-color: var(--primary); box-shadow: inset 3px 0 0 var(--primary); }
+.oc-row-top { display: flex; justify-content: space-between; gap: 8px; }
+.oc-ago, .oc-row-name { color: var(--text-muted); font-size: 12px; }
+.oc-row-last { font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 4px; }
+.oc-periods { display: flex; gap: 6px; flex-wrap: wrap; }
+.oc-chip { border: 1px solid var(--border-color); border-radius: 16px; padding: 4px 12px; background: var(--fg-color);
+	color: inherit; font-size: 12px; cursor: pointer; }
+.oc-chip.on { background: var(--primary); border-color: var(--primary); color: #fff; }
+.oc-empty, .oc-loading { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 40px 16px;
+	text-align: center; color: var(--text-muted); }
+.oc-empty b { color: var(--text-color); }
+.oc-back { display: none; margin-bottom: 12px; }
+.oc-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.oc-head h4 { margin: 0 0 2px; }
+.oc-customer { margin: 12px 0; overflow-wrap: anywhere; }
+.oc-tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.oc-tile { border: 1px solid var(--border-color); border-radius: 10px; padding: 8px 10px; display: flex; flex-direction: column; }
+.oc-tile span { font-size: 12px; color: var(--text-muted); }
+.oc-tile b { font-size: 15px; }
+.oc-h { margin: 18px 0 8px; font-weight: 600; }
+.oc-notes { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+.oc-note { border: 1px solid var(--border-color); border-radius: 10px; padding: 8px 10px; display: flex; flex-direction: column; gap: 2px; }
+.oc-where { font-weight: 600; }
+.oc-timeline { list-style: none; margin: 0; padding: 0; }
+.oc-day { font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin: 12px 0 6px; }
+.oc-step { display: flex; gap: 12px; position: relative; padding-bottom: 14px; }
+.oc-step::before { content: ""; position: absolute; inset-inline-start: 15px; top: 32px; bottom: 0; width: 2px;
+	background: var(--border-color); }
+.oc-step:last-child::before { display: none; }
+.oc-dot { flex: 0 0 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: var(--gray-100); }
+.oc-step-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; overflow-wrap: anywhere; }
+.oc-step-top { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.oc-items { font-size: 12px; background: var(--subtle-fg, var(--gray-50)); border-radius: 6px; padding: 4px 8px; margin-top: 2px; }
+.oc-gray { color: var(--gray-700); } .oc-blue { color: var(--blue-600); } .oc-green { color: var(--green-600); }
+.oc-orange { color: var(--orange-600); } .oc-red { color: var(--red-600); }
+.oc-dot.oc-blue { background: var(--blue-50); } .oc-dot.oc-green { background: var(--green-50); }
+.oc-dot.oc-orange { background: var(--orange-50); } .oc-dot.oc-red { background: var(--red-50); }
+.oc-dot .icon { stroke: currentColor; }
+@media (max-width: 900px) {
+	.oc-split { grid-template-columns: 1fr; }
+	.oc-list { max-height: none; }
+	.oc-page .oc-detail { display: none; }
+	.oc-page.oc-show-detail .oc-detail { display: block; }
+	.oc-page.oc-show-detail .oc-list, .oc-page.oc-show-detail .dd-filter-panel { display: none; }
+	.oc-back { display: inline-flex; }
+	.oc-tiles { grid-template-columns: 1fr 1fr; }
+}

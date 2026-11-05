@@ -109,6 +109,45 @@
 			<span class="dmr-muted">${__("of {0}", [max])}</span></div>`;
 	}
 
+	// What happened to the sale so far: each delivery note (where its goods are, who took them,
+	// when) and the credit notes already made, so the cashier knows before taking goods back.
+	function historyView(h) {
+		const date = (d, t) => d ? esc(frappe.datetime.str_to_user(d) + (t ? " " + t : "")) : "";
+		const state_of = (n) => n.is_return ? ["dmr-blue", __("Return note")]
+			: n.docstatus === 1 ? ["dmr-green", __("Delivered")]
+			: n.status === "On the way" ? ["dmr-blue", __("On the way with the driver")]
+			: n.status === "Returned" ? ["dmr-red", __("Coming back to the store")]
+			: ["", __("In the store, not sent yet")];
+		const note = (n) => {
+			const [cls, label] = state_of(n);
+			const facts = [
+				n.order_type && [__("Type"), esc(n.order_type)],
+				[__("Driver / AC Tech"), esc(n.driver_name || __("Not assigned"))],
+				n.work_date && [__("Planned"), date(n.work_date, n.slot)],
+				n.out_at && [__("Left the store"), `${esc(frappe.datetime.str_to_user(n.out_at))} · ${esc(n.out_by)}`],
+				n.docstatus === 1 && [n.is_return ? __("Returned on") : __("Delivered on"), date(n.posting_date, n.posting_time)],
+				[__("Store"), esc(n.warehouse || "")],
+				[__("Made by"), esc(n.created_by)],
+			].filter(Boolean);
+			return `<div class="dmr-hist-note">
+				<div class="dmr-line-top"><b>${esc(n.name)}</b><span class="dmr-pill ${cls}">${label}</span></div>
+				<dl class="dmr-facts">${facts.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("")}</dl>
+				<div class="dmr-muted">${n.items.map((i) => `${esc(i.item_name)} × ${i.qty}${i.serial_no
+					? ` (${esc(i.serial_no.split("\n").join(", "))})` : ""}`).join(" · ")}</div></div>`;
+		};
+		const credit = (c) => `<div class="dmr-hist-note"><div class="dmr-line-top"><b>${esc(c.name)}</b>
+			<b>${money(c.grand_total)}</b></div><div class="dmr-muted">${date(c.posting_date)} · ${esc(c.made_by)}
+			${c.remarks ? " · " + esc(c.remarks) : ""}</div></div>`;
+		const parts = [
+			...h.notes.map(note),
+			h.credit_notes.length ? `<div class="dmr-label">${__("Credit notes already made")}</div>` : "",
+			...h.credit_notes.map(credit),
+		].join("");
+		return `<details class="dmr-history" open><summary>${__("Order details")}
+			<span class="dmr-muted">${__("{0} delivery notes · {1} credit notes", [h.notes.length, h.credit_notes.length])}</span></summary>
+			${parts || `<div class="dmr-muted">${__("Branch sale: nothing delivered by a driver.")}</div>`}</details>`;
+	}
+
 	function lineView(line) {
 		const p = state.picked[line.si_detail];
 		const parts = [];
@@ -140,6 +179,7 @@
 			<div class="dmr-sale-head"><div><b>${esc(s.customer_name)}</b><div class="dmr-muted">${esc(s.name)}
 				${s.sales_order ? " · " + __("Delivery order") + " " + esc(s.sales_order) : " · " + __("Branch sale")}</div></div>
 				<button type="button" class="dmr-link" data-act="back">${__("Change sale")}</button></div>
+			${historyView(s.history)}
 			<div class="dmr-lines">${s.lines.map(lineView).join("")}</div>
 			<div class="dmr-grid">
 				<div><span class="dmr-label">${__("Received into store")}</span>

@@ -104,3 +104,13 @@ select.dmr-input { appearance: none; padding-inline-end: 36px; background-repeat
 .dmr-due > span { flex: 1; }
 .dmr-due.on { border-color: #0f6b5a; }
 .dmr-wide { width: 100%; }
+
+.dmr-history { border: 1px solid var(--border-color, #e3e7e4); border-radius: 12px; padding: 10px 12px;
+	display: flex; flex-direction: column; gap: 8px; background: var(--subtle-fg, #f8faf9); }
+.dmr-history summary { cursor: pointer; font-weight: 600; display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.dmr-history[open] summary { margin-bottom: 8px; }
+.dmr-hist-note { border-top: 1px dashed var(--border-color, #e3e7e4); padding-top: 8px; margin-top: 8px;
+	display: flex; flex-direction: column; gap: 6px; overflow-wrap: anywhere; }
+.dmr-facts { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; margin: 0; font-size: 13px; }
+.dmr-facts dt { color: var(--text-muted, #6b7770); font-weight: 500; }
+.dmr-facts dd { margin: 0; }

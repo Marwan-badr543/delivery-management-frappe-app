@@ -281,8 +281,8 @@ class DeliverySchedulePage {
 						${frappe.utils.icon("printer", "sm")} ${doc.is_return ? __("Credit Note {0}", [D.esc(doc.name)]) : __("Invoice {0}", [D.esc(doc.name)])}</a>`).join("")}
 				</div>
 				${onTheWay && draft ? `<div class="dd-btn-row" style="margin-top:8px">
-					<button class="btn btn-warning" data-take-off>${frappe.utils.icon("undo", "sm")} ${ac ? __("Items not installed") : __("Items not delivered")}</button>
-					<button class="btn btn-danger" data-not-found>${frappe.utils.icon("close", "sm")} ${__("Customer not found: bring all back")}</button>
+					<button class="btn btn-danger" data-take-off>${frappe.utils.icon("undo", "sm")} ${ac ? __("Items not installed") : __("Items not delivered")}</button>
+					<button class="btn btn-warning" data-not-found>${frappe.utils.icon("calendar", "sm")} ${__("Customer not available: deliver later")}</button>
 				</div>` : ""}
 				<input type="file" accept="image/*,video/*,.pdf,.doc,.docx" data-file hidden>
 				<div class="dd-files small">${(o.attachments || []).length
@@ -307,12 +307,30 @@ class DeliverySchedulePage {
 			</div>` : ""}`);
 
 		$b.find("[data-not-found]").on("click", () => {
-			frappe.confirm(__("Nothing of {0} is delivered: bring the whole order back to the store?", [o.name]), async () => {
-				await D.call("bring_back_all", { delivery_note: o.name }, { post: true, freeze: true });
-				frappe.show_alert({ message: __("{0} is coming back to the store", [o.name]), indicator: "orange" });
-				d.hide();
-				this.load();
+			// Not a cancellation: the order is kept and sent again, so say it plainly.
+			const ask = new frappe.ui.Dialog({
+				title: __("Deliver {0} on another day?", [o.name]),
+				primary_action_label: __("Yes, bring it back for later"),
+				primary_action: async () => {
+					await D.call("bring_back_all", { delivery_note: o.name }, { post: true, freeze: true });
+					ask.hide();
+					frappe.show_alert({ message: __("{0} is coming back to the store and will be sent again", [o.name]),
+						indicator: "orange" });
+					d.hide();
+					this.load();
+				},
+				secondary_action_label: __("Go back"),
 			});
+			ask.$body.html(`<div class="dd-later">
+				<p>${__("Use this when you could not hand over the order: the customer is not at home, does not answer or asks for another day.")}</p>
+				<ul>
+					<li>${frappe.utils.icon("check", "sm")} ${__("The order is <b>not cancelled</b> and nothing is refunded.")}</li>
+					<li>${frappe.utils.icon("check", "sm")} ${__("Bring all its goods back to the store; they stay <b>reserved for this order</b>.")}</li>
+					<li>${frappe.utils.icon("check", "sm")} ${__("The office plans a new day and the order is sent out again.")}</li>
+				</ul>
+				<p class="dd-muted">${__("If the customer refuses some items, go back and use <b>{0}</b> instead.", [ac ? __("Items not installed") : __("Items not delivered")])}</p>
+			</div>`);
+			ask.show();
 		});
 
 		$b.find("[data-take-off]").on("click", () => this.takeOff(o, () => { d.hide(); this.load(); this.openDetail(name); }));
@@ -397,12 +415,21 @@ class DeliverySchedulePage {
 				});
 			},
 		});
-		d.fields_dict.body.$wrapper.html(`<p class="text-muted small">${__("The customer signs only for what stays. Choose the quantity that comes back and tick its serial numbers.")}</p>
+		// A line with serials comes back by the serials ticked; only a line without serials takes a quantity.
+		const hasSn = (i) => (i.serials || []).some((g) => g.serials.length);
+		const $body = d.fields_dict.body.$wrapper.html(`<p class="text-muted small">${__("The customer signs only for what stays. Tick the serials that come back; enter a quantity only for items without serials.")}</p>
 			<div class="dd-items">${o.items.map((i) => `<div class="dd-item"><div><b>${D.esc(i.item_name || i.item_code)}</b> × ${i.qty}
 				${(i.serials || []).map((g) => `<small>${D.esc(g.item_code)}: ${g.serials.map((sn) => `<label style="margin-right:10px;font-weight:normal">
 					<input type="checkbox" data-back-sn="${D.esc(i.name)}" value="${D.esc(sn)}"> ${D.esc(sn)}</label>`).join("")}</small>`).join("")}</div>
 				<input type="number" class="form-control input-xs" style="width:90px" min="0" max="${i.qty}" step="1"
-					data-back-qty="${D.esc(i.name)}" value="0" placeholder="${__("Back")}"></div>`).join("")}</div>`);
+					data-back-qty="${D.esc(i.name)}" value="0" ${hasSn(i) ? `readonly tabindex="-1" title="${__("Set by the serials ticked")}"` : ""}></div>`).join("")}</div>`);
+		$body.on("change", "[data-back-sn]", (e) => {
+			const row = o.items.find((i) => i.name === e.currentTarget.dataset.backSn);
+			// A bundle has one serial per component per unit: the units back are the most ticked in one component.
+			const qty = Math.max(0, ...row.serials.map((g) => g.serials.filter((sn) =>
+				$body.find(`[data-back-sn="${row.name}"][value="${sn}"]`).prop("checked")).length));
+			$body.find(`[data-back-qty="${row.name}"]`).val(Math.min(qty, row.qty));
+		});
 		d.show();
 	}
 }

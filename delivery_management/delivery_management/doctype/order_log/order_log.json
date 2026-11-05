@@ -1,0 +1,185 @@
+{
+ "actions": [],
+ "autoname": "hash",
+ "creation": "2026-11-05 10:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "description": "Logistic and money steps of each order, for the Order Control page. Written by the Delivery Management app; never edited.",
+ "field_order": [
+  "event",
+  "at",
+  "user",
+  "driver",
+  "column_break_a",
+  "sales_order",
+  "sales_invoice",
+  "delivery_note",
+  "customer",
+  "customer_name",
+  "section_b",
+  "amount",
+  "mode_of_payment",
+  "reference_doctype",
+  "reference_name",
+  "column_break_c",
+  "items",
+  "note"
+ ],
+ "fields": [
+  {
+   "fieldname": "event",
+   "fieldtype": "Select",
+   "label": "Event",
+   "read_only": 1,
+   "options": "Order created\nOrder cancelled\nStore sale\nInvoice cancelled\nDriver assigned\nDriver changed\nDriver removed\nSent out\nDelivered\nNot delivered items\nCustomer not available\nReceived back\nPOS return\nPayment\nRefund\nCredit note\nPayment cancelled",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "at",
+   "fieldtype": "Datetime",
+   "label": "At",
+   "read_only": 1,
+   "in_list_view": 1,
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "user",
+   "fieldtype": "Link",
+   "label": "By",
+   "read_only": 1,
+   "options": "User",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "driver",
+   "fieldtype": "Link",
+   "label": "Driver / AC Tech",
+   "read_only": 1,
+   "options": "User",
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "column_break_a",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "sales_order",
+   "fieldtype": "Link",
+   "label": "Sales Order",
+   "read_only": 1,
+   "options": "Sales Order",
+   "in_standard_filter": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "sales_invoice",
+   "fieldtype": "Link",
+   "label": "Sales Invoice",
+   "read_only": 1,
+   "options": "Sales Invoice",
+   "in_standard_filter": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "delivery_note",
+   "fieldtype": "Link",
+   "label": "Delivery Note",
+   "read_only": 1,
+   "options": "Delivery Note"
+  },
+  {
+   "fieldname": "customer",
+   "fieldtype": "Link",
+   "label": "Customer",
+   "read_only": 1,
+   "options": "Customer",
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "customer_name",
+   "fieldtype": "Data",
+   "label": "Customer Name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_b",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "amount",
+   "fieldtype": "Currency",
+   "label": "Amount",
+   "read_only": 1
+  },
+  {
+   "fieldname": "mode_of_payment",
+   "fieldtype": "Link",
+   "label": "Mode of Payment",
+   "read_only": 1,
+   "options": "Mode of Payment"
+  },
+  {
+   "fieldname": "reference_doctype",
+   "fieldtype": "Link",
+   "label": "Reference Type",
+   "read_only": 1,
+   "options": "DocType"
+  },
+  {
+   "fieldname": "reference_name",
+   "fieldtype": "Dynamic Link",
+   "label": "Reference",
+   "read_only": 1,
+   "options": "reference_doctype"
+  },
+  {
+   "fieldname": "column_break_c",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "items",
+   "fieldtype": "Small Text",
+   "label": "Items",
+   "read_only": 1
+  },
+  {
+   "fieldname": "note",
+   "fieldtype": "Small Text",
+   "label": "Note",
+   "read_only": 1
+  }
+ ],
+ "in_create": 1,
+ "modified": "2026-11-05 10:00:00",
+ "modified_by": "Administrator",
+ "module": "Delivery Management",
+ "name": "Order Log",
+ "owner": "Administrator",
+ "read_only": 1,
+ "sort_field": "at",
+ "sort_order": "DESC",
+ "title_field": "event",
+ "track_changes": 0,
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "print": 1
+  },
+  {
+   "role": "Delivery Manager",
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "print": 1
+  }
+ ],
+ "states": []
+}

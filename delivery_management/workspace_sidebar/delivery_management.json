@@ -72,6 +72,19 @@
   {
    "child": 1,
    "collapsible": 1,
+   "icon": "list",
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Order Control",
+   "link_to": "order-control",
+   "link_type": "Page",
+   "show_arrow": 0,
+   "type": "Link",
+   "idx": 6
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
    "icon": "users",
    "indent": 0,
    "keep_closed": 0,
@@ -80,7 +93,7 @@
    "link_type": "Page",
    "show_arrow": 0,
    "type": "Link",
-   "idx": 6
+   "idx": 7
   },
   {
    "child": 1,
@@ -93,7 +106,7 @@
    "link_type": "Page",
    "show_arrow": 0,
    "type": "Link",
-   "idx": 7
+   "idx": 8
   },
   {
    "child": 1,
@@ -106,7 +119,7 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "idx": 8
+   "idx": 9
   },
   {
    "child": 0,
@@ -117,7 +130,7 @@
    "label": "Customer Service",
    "show_arrow": 0,
    "type": "Section Break",
-   "idx": 9
+   "idx": 10
   },
   {
    "child": 1,
@@ -130,7 +143,7 @@
    "link_type": "Page",
    "show_arrow": 0,
    "type": "Link",
-   "idx": 10
+   "idx": 11
   },
   {
    "child": 1,
@@ -143,7 +156,7 @@
    "link_type": "Page",
    "show_arrow": 0,
    "type": "Link",
-   "idx": 11
+   "idx": 12
   },
   {
    "child": 1,
@@ -156,7 +169,7 @@
    "link_type": "Page",
    "show_arrow": 0,
    "type": "Link",
-   "idx": 12
+   "idx": 13
   },
   {
    "child": 1,
@@ -169,7 +182,7 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "idx": 13
+   "idx": 14
   },
   {
    "child": 0,
@@ -180,7 +193,7 @@
    "label": "Reports",
    "show_arrow": 0,
    "type": "Section Break",
-   "idx": 14
+   "idx": 15
   },
   {
    "child": 1,
@@ -193,7 +206,7 @@
    "link_type": "Page",
    "show_arrow": 0,
    "type": "Link",
-   "idx": 15
+   "idx": 16
   },
   {
    "child": 1,
@@ -206,7 +219,7 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "idx": 16
+   "idx": 17
   },
   {
    "child": 1,
@@ -219,7 +232,7 @@
    "link_type": "Page",
    "show_arrow": 0,
    "type": "Link",
-   "idx": 17
+   "idx": 18
   },
   {
    "child": 1,
@@ -232,7 +245,7 @@
    "link_type": "Page",
    "show_arrow": 0,
    "type": "Link",
-   "idx": 18
+   "idx": 19
   },
   {
    "child": 0,
@@ -243,7 +256,7 @@
    "label": "Setup",
    "show_arrow": 0,
    "type": "Section Break",
-   "idx": 19
+   "idx": 20
   },
   {
    "child": 1,
@@ -256,7 +269,7 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "idx": 20
+   "idx": 21
   },
   {
    "child": 1,
@@ -269,10 +282,10 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "idx": 21
+   "idx": 22
   }
  ],
- "modified": "2026-11-02 10:00:00.000000",
+ "modified": "2026-11-05 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Delivery Management",
  "name": "Delivery Management",

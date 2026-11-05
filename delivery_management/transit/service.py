@@ -28,6 +28,7 @@ from frappe.utils import cint, flt, get_fullname, now_datetime
 
 from erpnext.stock.doctype.serial_no.serial_no import get_serial_nos
 
+from delivery_management.control import log
 from delivery_management.drivers import assignment as asg
 from delivery_management.drivers.delivery_note import DELIVERED, ON_THE_WAY, RETURNED, sales_order_of
 from delivery_management.orders import reservation
@@ -190,6 +191,8 @@ def dispatch(delivery_note: str, scans: dict) -> str:
 			"bundle_item": line.bundle_item} for line in lines],
 	})
 	doc.insert(ignore_permissions=True)
+	log.add("Sent out", delivery_note=dn.name, driver=dn.dm_driver, reference=("Stock Entry", entry),
+		items=[{"item_name": line.item_name, "qty": line.qty, "serials": line.serials} for line in lines])
 	return doc.name
 
 
@@ -272,7 +275,7 @@ def take_off_note(delivery_note: str, lines: list) -> list[str]:
 	rows = {r.name: r for r in dn.items}
 	by_line = {line.key: line for line in stock_lines(dn)}
 	serials: dict[str, list[str]] = {k: list(line.serials) for k, line in by_line.items()}
-	taken = []
+	taken, logged = [], []
 	for req in lines or []:
 		req = frappe._dict(req)
 		row = rows.get(req.dn_detail)
@@ -291,6 +294,7 @@ def take_off_note(delivery_note: str, lines: list) -> list[str]:
 					row.item_code, need, line.item_code, len(mine)), title=_("Serial numbers"))
 			serials[line.key] = [sn for sn in line.serials if sn not in back]
 		row.qty = flt(row.qty) - qty
+		logged.append({"item_name": row.item_name, "qty": qty, "serials": sorted(back)})
 		taken.append(frappe._dict(so_detail=row.get("so_detail"), item_code=row.item_code, qty=qty,
 			conversion_factor=flt(row.conversion_factor) or 1))
 	if not taken:
@@ -306,7 +310,10 @@ def take_off_note(delivery_note: str, lines: list) -> list[str]:
 		dn.dm_ac_units = profile_cart([{"item_code": r.item_code, "qty": r.qty} for r in dn.items]).ac_units
 	_set_serials(dn, serials)
 	_save(dn)
-	return cancel_not_installed(dn, [t for t in taken if t.so_detail])
+	credit_notes = cancel_not_installed(dn, [t for t in taken if t.so_detail])
+	log.add("Not delivered items", delivery_note=dn.name, driver=dn.dm_driver, items=logged,
+		reference=("Sales Invoice", credit_notes[0]) if credit_notes else None)
+	return credit_notes
 
 
 def _set_serials(dn, serials: dict[str, list[str]]) -> None:
@@ -326,6 +333,8 @@ def bring_back_all(delivery_note: str) -> None:
 		frappe.throw(_("Only an order On the way can come back."))
 	dn.db_set("dm_delivery_status", RETURNED)
 	frappe.db.set_value(TRANSIT, dn.name, "status", COMING_BACK)
+	log.add("Customer not available", delivery_note=dn.name, driver=dn.dm_driver,
+		note=_("Whole order coming back to the store, to be sent again"))
 
 
 def before_delivery(dn, method=None):
@@ -435,8 +444,12 @@ def receive(transit: str, scans: dict, reserve_again: bool = False) -> str:
 		line.row.received_qty = flt(line.row.received_qty) + line.qty
 		line.row.received_serials = "\n".join(get_serial_nos(line.row.received_serials or "") + line.serials) or None
 	doc.back_entries = "\n".join(filter(None, [doc.back_entries, entry]))
-	if dn.docstatus == 0 and dn.get("dm_delivery_status") == RETURNED and not pending(doc, dn):
+	whole = dn.docstatus == 0 and dn.get("dm_delivery_status") == RETURNED and not pending(doc, dn)
+	if whole:
 		_back_in_store(dn, main, reserve_again)
+	log.add("Received back", delivery_note=dn.name, driver=doc.driver, reference=("Stock Entry", entry),
+		items=[{"item_name": line.row.item_name, "qty": line.qty, "serials": line.serials} for line in lines],
+		note=(_("Reserved again for the order") if reserve_again else _("Not reserved")) if whole else None)
 	_keep_or_remove(doc, dn)
 	return entry
 

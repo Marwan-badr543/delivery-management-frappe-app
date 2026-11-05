@@ -58,7 +58,41 @@ def get_sale(pos_profile, invoice):
 	if sale["company"] != profile.company:
 		frappe.throw(_("Invoice {0} belongs to another company.").format(invoice))
 	sale["store"] = profile.warehouse  # goods come back into this branch only
+	sale["history"] = _history(sale)
 	return sale
+
+
+def _history(sale) -> dict:
+	"""What happened to the sale so far, for the cashier: its delivery notes (with whom, when,
+	where they are now), the goods out with a driver and the credit notes already made."""
+	notes = frappe.db.sql(
+		"""select distinct dn.name, dn.docstatus, dn.is_return, dn.dm_delivery_status as status,
+			dn.dm_delivery_type as order_type, dn.dm_driver as driver, dn.posting_date, dn.posting_time,
+			coalesce(dn.dm_ac_installation_date, dn.dm_delivery_date) as work_date, dn.dm_delivery_time as slot,
+			dn.set_warehouse as warehouse, dn.owner, dn.creation
+		from `tabDelivery Note` dn join `tabDelivery Note Item` dni on dni.parent = dn.name
+		where dni.against_sales_order = %s and dn.docstatus < 2
+		order by dn.creation""",
+		sale["sales_order"],
+		as_dict=True,
+	) if sale["sales_order"] else []
+	for n in notes:
+		n.driver_name = frappe.utils.get_fullname(n.driver) if n.driver else None
+		n.created_by = frappe.utils.get_fullname(n.owner)
+		n.slot = n.slot and str(n.slot)[:5]
+		n.posting_time = n.posting_time and str(n.posting_time)[:5]
+		n.items = frappe.get_all("Delivery Note Item", filters={"parent": n.name},
+			fields=["item_name", "qty", "serial_no"], order_by="idx")
+		transit = frappe.db.get_value("Delivery Transit", n.name, ["out_at", "out_by"], as_dict=True)
+		if transit:
+			n.out_at, n.out_by = transit.out_at, frappe.utils.get_fullname(transit.out_by)
+		for f in ("owner", "creation", "driver"):
+			n.pop(f)
+	credits = frappe.get_all("Sales Invoice", filters={"return_against": sale["name"], "docstatus": 1},
+		fields=["name", "posting_date", "grand_total", "remarks", "owner"], order_by="creation")
+	for c in credits:
+		c.made_by = frappe.utils.get_fullname(c.pop("owner"))
+	return {"notes": notes, "credit_notes": credits}
 
 
 @frappe.whitelist(methods=["POST"])

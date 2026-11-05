@@ -38,6 +38,7 @@ import frappe
 from frappe import _
 from frappe.utils import cint, flt, nowdate
 
+from delivery_management.control import log
 from delivery_management.drivers import assignment as asg
 from delivery_management.drivers.delivery_note import ON_THE_WAY, sales_order_of
 from delivery_management.orders import reservation, tv_accounts
@@ -242,6 +243,9 @@ def make_return(data: dict) -> dict:
 			for p in plan],
 	})
 	doc.insert(ignore_permissions=True)
+	log.add("POS return", sales_order=sale["sales_order"], sales_invoice=si.name, amount=value,
+		items=[{"item_name": p.item_name, "qty": p.returned_qty + p.cancelled_qty, "serials": p.serial_nos} for p in plan],
+		reference=(CR, doc.name), note=" · ".join(filter(None, [data.reason, data.notes, profile.warehouse])))
 	return summary(doc.name)
 
 
