@@ -174,12 +174,14 @@ def create_ticket(data: dict, user: str | None = None) -> str:
 		frappe.throw(_("A customer service report is required to create an issue ticket."))
 	if email and ("@" not in email or "." not in email):
 		frappe.throw(_("Invalid email format. Must contain '@' and a domain."))
+	# A customer calls from any phone: the ticket keeps that phone, linked to a customer only
+	# when one is known by it.
 	customer = data.get("customer") or find_customer(phone)
-	if not customer or not frappe.db.exists("Customer", customer):
-		frappe.throw(_("Customer with phone '{0}' not found. Please create the customer first.").format(phone))
+	if customer and not frappe.db.exists("Customer", customer):
+		customer = None
 
 	sales_invoice = data.get("sales_invoice") or None
-	if sales_invoice and frappe.db.get_value("Sales Invoice", sales_invoice, "customer") != customer:
+	if sales_invoice and customer and frappe.db.get_value("Sales Invoice", sales_invoice, "customer") != customer:
 		frappe.throw(_("Sales Invoice {0} is not an invoice of this customer.").format(sales_invoice))
 	item_code = data.get("item_code") or None
 	if item_code and not frappe.db.exists("Item", item_code):
@@ -502,8 +504,11 @@ def service_person_of(technician: str) -> str:
 	return person
 
 
-def make_maintenance_visit(ticket, completion_status: str, report: str, technician: str) -> str:
-	"""A draft Maintenance Visit, as the old system made (the office submits it)."""
+def make_maintenance_visit(ticket, completion_status: str, report: str, technician: str) -> str | None:
+	"""A draft Maintenance Visit, as the old system made (the office submits it). A ticket of
+	an unknown customer has none: the report stays on the ticket."""
+	if not ticket.customer:
+		return None
 	now = now_datetime()
 	visit = frappe.get_doc({
 		"doctype": "Maintenance Visit",

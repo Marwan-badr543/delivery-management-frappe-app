@@ -237,7 +237,7 @@
 					state.customer = res.customer;
 					$b.find(".dm-sup-customer").html(res.customer
 						? `${frappe.utils.icon("users", "xs")} <b>${esc(res.customer_name)}</b> (${esc(res.customer)})`
-						: `<span class="text-danger">${__("No customer with this phone. Create the customer first.")}</span>`);
+						: `<span class="text-muted">${__("New phone number: the ticket is made with this phone only.")}</span>`);
 					this.renderOrders($b.find(".dm-sup-orders"), res.orders || [], (order, item, serial) => {
 						$b.find("[data-k=item_code]").val(item.item_code);
 						$b.find("[data-k=serial_no]").val(serial || "");
