@@ -372,11 +372,22 @@ def check_locked(dn, method=None):
 		"and Stock Keeper pages.").format(dn.name, _(dn.dm_delivery_status)), title=_("Goods out"))
 
 
-def set_driver(delivery_note: str, driver: str | None) -> None:
-	"""The note changed driver while its goods are out."""
-	if frappe.db.exists(TRANSIT, delivery_note):
-		frappe.db.set_value(TRANSIT, delivery_note, {"driver": driver,
-			"driver_name": get_fullname(driver) if driver else None})
+def set_driver(delivery_note: str, driver: str | None) -> bool:
+	"""The note changed driver while its goods are out (the drivers swap them outside the
+	store). A whole order coming back goes to the new driver instead: On the way again.
+	Returns whether it was coming back."""
+	if not frappe.db.exists(TRANSIT, delivery_note):
+		return False
+	values = {"driver": driver, "driver_name": get_fullname(driver) if driver else None}
+	coming_back = frappe.db.get_value(DN, delivery_note, ["docstatus", "dm_delivery_status"]) == (0, RETURNED)
+	if coming_back:
+		if any(flt(r.received_qty) for r in frappe.get_doc(TRANSIT, delivery_note).items):
+			frappe.throw(_("Part of {0} is already back in the store: receive the rest on the Stock Keeper page, "
+				"then send it out with the new driver.").format(delivery_note), title=_("Partly back in the store"))
+		frappe.db.set_value(DN, delivery_note, "dm_delivery_status", ON_THE_WAY)
+		values["status"] = ON_THE_WAY
+	frappe.db.set_value(TRANSIT, delivery_note, values)
+	return coming_back
 
 
 # ---------------------------------------------------------------------------

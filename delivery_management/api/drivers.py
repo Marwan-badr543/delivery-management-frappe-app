@@ -205,12 +205,12 @@ def get_drivers(order_type):
 @frappe.whitelist()
 def get_assignment_orders(order_type, search=None, assigned_status=None, driver=None, area=None,
 		delivery_date=None, limit=20, offset=0):
-	"""Delivery Notes waiting in the store (draft, not sent out) of one type, earliest first."""
+	"""Delivery Notes not delivered yet (draft: in the store, out with the driver or coming
+	back) of one type, earliest first: the driver can change at any of these times."""
 	_require_manager()
 	order_type = _type(order_type)
 	date_col = _date_column(order_type)
-	conditions = ["dn.docstatus = 0", "dn.is_return = 0", "dn.dm_delivery_type = %(type)s",
-		"ifnull(dn.dm_delivery_status, '') = ''"]
+	conditions = ["dn.docstatus = 0", "dn.is_return = 0", "dn.dm_delivery_type = %(type)s"]
 	values = {"type": order_type}
 	if assigned_status == "assigned":
 		conditions.append("ifnull(dn.dm_driver, '') != ''")

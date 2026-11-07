@@ -246,3 +246,36 @@ class TestDriverPrints(TransitTestCase):
 		self.assertEqual(printed, [("Sales Invoice", si, "Show Satellite Tax Invoice"),
 			("Sales Invoice", cn, "Show Satellite Tax Invoice")])
 		self.assertRaises(frappe.PermissionError, api.print_sale_document, name, "SINV-NOT-OURS")
+
+
+class TestDriverChange(TransitTestCase):
+	def new_driver(self):
+		from delivery_management.drivers import assignment as asg
+		from delivery_management.tests.test_drivers import user
+
+		return asg, user("_dm.tv.swap@example.com", asg.ROLE_TV)
+
+	def test_coming_back_goes_out_again_with_the_new_driver(self):
+		_si, so = self.order([(self.w.tv, 1, 100)])
+		name = self.note(so)
+		send_out(name, {self.w.tv: ["_DMTV-M-2"]})
+		api.bring_back_all(name)
+		asg, driver = self.new_driver()
+		asg.assign(name, driver)
+
+		self.assertEqual(frappe.db.get_value("Delivery Note", name, ["dm_driver", "dm_delivery_status"]),
+			(driver, "On the way"))
+		self.assertEqual(frappe.db.get_value(TRANSIT, name, ["driver", "status"]), (driver, "On the way"))
+		step = frappe.get_all("Order Log", filters={"delivery_note": name, "event": "Driver changed"}, fields=["note"])
+		self.assertIn("on the way again", step[0].note)
+		api.mark_delivered_by_office(name)
+		self.assertEqual(frappe.db.get_value("Delivery Note", name, "docstatus"), 1)
+
+	def test_partly_received_is_received_first(self):
+		_si, so = self.order([(self.w.tv, 1, 100), (self.w.pipe, 2, 5)])
+		name = self.note(so)
+		send_out(name, {self.w.tv: ["_DMTV-M-2"]})
+		api.bring_back_all(name)
+		self.receive(name, {self.w.pipe: 2})
+		asg, driver = self.new_driver()
+		self.assertRaisesRegex(frappe.ValidationError, "already back in the store", asg.assign, name, driver)

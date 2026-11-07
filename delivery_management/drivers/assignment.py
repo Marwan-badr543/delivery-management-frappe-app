@@ -285,10 +285,12 @@ def assign(delivery_note: str, driver: str, user: str | None = None) -> dict:
 	sync_assignment(dn)
 	from delivery_management.transit.service import set_driver
 
-	set_driver(dn.name, driver)
+	back_on_the_way = before != driver and set_driver(dn.name, driver)
 	if before != driver:
+		note = [_("Was {0}").format(frappe.utils.get_fullname(before)) if before else None,
+			_("Coming back stopped: on the way again with the new driver") if back_on_the_way else None]
 		log.add("Driver changed" if before else "Driver assigned", delivery_note=dn.name, driver=driver,
-			note=_("Was {0}").format(frappe.utils.get_fullname(before)) if before else None)
+			note=" · ".join(filter(None, note)) or None)
 	return {"delivery_note": dn.name, "driver": driver}
 
 

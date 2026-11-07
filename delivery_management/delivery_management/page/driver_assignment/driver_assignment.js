@@ -244,7 +244,7 @@ class DriverAssignmentPage {
 		const $tbody = this.$root.find(".dd-table tbody");
 		if (!this.rows.length) {
 			$tbody.html(D.emptyRow(7, __("No orders found"),
-				__("Nothing waiting for delivery matches these filters.")));
+				__("Nothing to deliver matches these filters.")));
 			return;
 		}
 		$tbody.html(this.rows.map((r) => `
@@ -256,7 +256,8 @@ class DriverAssignmentPage {
 				<td data-label="${__("Address")}" class="dd-addr">${D.esc(r.address) || `<span class="dd-muted">—</span>`}</td>
 				<td data-label="${ac ? __("AC installation") : __("Delivery")}">${D.whenCell(r)}
 					${ac && r.ac_units ? `<span class="dd-sub">${__("{0} AC unit(s)", [r.ac_units])}</span>` : ""}</td>
-				<td data-label="${__("Type")}">${D.typePill(r.order_type)}</td>
+				<td data-label="${__("Type")}">${D.typePill(r.order_type)}
+					${r.dm_delivery_status ? `<span class="dd-sub">${D.statusPill(r)}</span>` : ""}</td>
 				<td data-label="${__("Payment")}">${D.paymentPill(r.payment)}</td>
 				<td data-label="${ac ? __("AC Tech") : __("Driver")}">
 					<button class="dd-driver-btn ${r.driver ? "assigned" : "unassigned"}" data-assign="${D.esc(r.name)}">
