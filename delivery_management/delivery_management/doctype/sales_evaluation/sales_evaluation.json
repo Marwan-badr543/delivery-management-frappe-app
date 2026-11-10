@@ -1,0 +1,225 @@
+{
+ "actions": [],
+ "autoname": "format:SEV-{YYYY}-{#####}",
+ "creation": "2026-11-09 11:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "description": "A sales manager's rating of a salesman for a period. The latest one that overlaps the Sales Statistics period sets 25% of the commission.",
+ "field_order": [
+  "salesman",
+  "salesman_name",
+  "column_break_period",
+  "from_date",
+  "to_date",
+  "ratings_section",
+  "teamwork",
+  "customer_service",
+  "product_knowledge",
+  "section_tidiness",
+  "work_pressure",
+  "column_break_ratings",
+  "response_speed",
+  "skill_development",
+  "customer_follow_up",
+  "supervisor_instructions",
+  "result_section",
+  "total_points",
+  "column_break_result",
+  "score",
+  "notes_section",
+  "notes"
+ ],
+ "fields": [
+  {
+   "fieldname": "salesman",
+   "fieldtype": "Link",
+   "label": "Salesman",
+   "options": "User",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "salesman_name",
+   "fieldtype": "Data",
+   "label": "Salesman Name",
+   "fetch_from": "salesman.full_name",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "column_break_period",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "from_date",
+   "fieldtype": "Date",
+   "label": "From Date",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "to_date",
+   "fieldtype": "Date",
+   "label": "To Date",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "ratings_section",
+   "fieldtype": "Section Break",
+   "label": "Ratings",
+   "description": "Rate each point from 0 (poor) to 10 (excellent)."
+  },
+  {
+   "fieldname": "teamwork",
+   "fieldtype": "Int",
+   "label": "Teamwork and Cooperation",
+   "reqd": 1,
+   "non_negative": 1,
+   "default": "0"
+  },
+  {
+   "fieldname": "customer_service",
+   "fieldtype": "Int",
+   "label": "Customer Service and Courtesy",
+   "reqd": 1,
+   "non_negative": 1,
+   "default": "0"
+  },
+  {
+   "fieldname": "product_knowledge",
+   "fieldtype": "Int",
+   "label": "Product Knowledge and Features",
+   "reqd": 1,
+   "non_negative": 1,
+   "default": "0"
+  },
+  {
+   "fieldname": "section_tidiness",
+   "fieldtype": "Int",
+   "label": "Keeping the Section Clean and Tidy",
+   "reqd": 1,
+   "non_negative": 1,
+   "default": "0"
+  },
+  {
+   "fieldname": "work_pressure",
+   "fieldtype": "Int",
+   "label": "Handling Work Pressure",
+   "reqd": 1,
+   "non_negative": 1,
+   "default": "0"
+  },
+  {
+   "fieldname": "column_break_ratings",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "response_speed",
+   "fieldtype": "Int",
+   "label": "Speed of Response to Customers",
+   "reqd": 1,
+   "non_negative": 1,
+   "default": "0"
+  },
+  {
+   "fieldname": "skill_development",
+   "fieldtype": "Int",
+   "label": "Skill Development",
+   "reqd": 1,
+   "non_negative": 1,
+   "default": "0"
+  },
+  {
+   "fieldname": "customer_follow_up",
+   "fieldtype": "Int",
+   "label": "Commitment to Customer Follow-up",
+   "reqd": 1,
+   "non_negative": 1,
+   "default": "0"
+  },
+  {
+   "fieldname": "supervisor_instructions",
+   "fieldtype": "Int",
+   "label": "Following the Supervisor's Instructions",
+   "reqd": 1,
+   "non_negative": 1,
+   "default": "0"
+  },
+  {
+   "fieldname": "result_section",
+   "fieldtype": "Section Break",
+   "label": "Result"
+  },
+  {
+   "fieldname": "total_points",
+   "fieldtype": "Int",
+   "label": "Total Points",
+   "read_only": 1,
+   "description": "Out of 90."
+  },
+  {
+   "fieldname": "column_break_result",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "score",
+   "fieldtype": "Percent",
+   "label": "Score",
+   "read_only": 1,
+   "in_list_view": 1,
+   "description": "Total Points ÷ 90. Sets the 25% evaluation part of the commission."
+  },
+  {
+   "fieldname": "notes_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Small Text",
+   "label": "Notes"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-11-09 11:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Delivery Management",
+ "name": "Sales Evaluation",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "report": 1,
+   "export": 1,
+   "print": 1,
+   "email": 1,
+   "share": 1
+  },
+  {
+   "role": "Sales Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "report": 1,
+   "export": 1,
+   "print": 1,
+   "email": 1,
+   "share": 1
+  }
+ ],
+ "sort_field": "to_date",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "salesman_name",
+ "show_title_field_in_link": 0,
+ "track_changes": 1
+}

@@ -47,7 +47,12 @@
   "tv_account_password",
   "tv_account_member_id",
   "tv_account_valid_days",
-  "tv_account_note"
+  "tv_account_note",
+  "commission_section",
+  "commission_min_percent",
+  "column_break_7",
+  "commission_max_percent",
+  "commission_rule_note"
  ],
  "fields": [
   {
@@ -315,12 +320,45 @@
    "fieldtype": "HTML",
    "label": "TV Account Note",
    "options": "<p class='text-muted small'>The accounts database (table <code>lines</code>). Leave the host empty to create no accounts.</p>"
+  },
+  {
+   "fieldname": "commission_section",
+   "fieldtype": "Section Break",
+   "label": "Sales Commission",
+   "collapsible": 1,
+   "description": "Used by the Sales Statistics page. Each salesman's targets are set on their User."
+  },
+  {
+   "fieldname": "commission_min_percent",
+   "fieldtype": "Percent",
+   "label": "Min Commission %",
+   "default": "0",
+   "non_negative": 1,
+   "description": "Paid when the salesman sold no Small Items."
+  },
+  {
+   "fieldname": "column_break_7",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "commission_max_percent",
+   "fieldtype": "Percent",
+   "label": "Max Commission %",
+   "default": "0",
+   "non_negative": 1,
+   "description": "Paid when the salesman reached their Small Items Target (never more)."
+  },
+  {
+   "fieldname": "commission_rule_note",
+   "fieldtype": "HTML",
+   "label": "Commission Rule",
+   "options": "<div class='text-muted small'><p><b>Commission %</b> = Min + (Small items sold ÷ Small Items Target) × (Max − Min), at most Max. With no target, it is Max.</p><p><b>Commission</b> = Sales × Commission % × (75% + 25% × the salesman's latest Sales Evaluation score in the period). With no evaluation, the 25% part is 0.</p></div>"
   }
  ],
  "index_web_pages_for_search": 0,
  "issingle": 1,
  "links": [],
- "modified": "2026-11-02 10:00:00.000000",
+ "modified": "2026-11-09 11:00:00.000000",
  "modified_by": "Administrator",
  "module": "Delivery Management",
  "name": "Delivery Settings",

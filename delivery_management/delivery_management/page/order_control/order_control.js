@@ -32,13 +32,14 @@ const OC_EVENTS = {
 	"Payment cancelled": ["close", "red"],
 	"Invoice cancelled": ["close", "red"],
 	"Order cancelled": ["close", "red"],
+	"Cash handed over": ["money-coins-1", "green"],
 };
 
 class OrderControlPage {
 	constructor(page) {
 		this.D = window.dm_drivers;
 		this.page = page;
-		this.f = { search: "", event: "", user: "", period: "7" };
+		this.f = { search: "", kind: "", event: "", user: "", period: "7" };
 		this.current = null;
 		this.$root = $(`<div class="dd-page oc-page">
 			<div class="dd-panel dd-filter-panel"></div>
@@ -68,6 +69,9 @@ class OrderControlPage {
 				<div class="dd-field dd-search"><label for="oc-q">${__("Find an order")}</label>
 					<span class="dd-search-icon">${frappe.utils.icon("search", "sm")}</span>
 					<input id="oc-q" class="form-control" data-f="search" placeholder="${__("Order, invoice, delivery note, customer or phone")}"></div>
+				<div class="dd-field"><label>${__("Type")}</label>
+					<select class="form-control" data-f="kind">${D.select([{ value: "", label: __("Orders and store sales") },
+						{ value: "order", label: __("Delivery orders") }, { value: "sale", label: __("Store sales") }], "")}</select></div>
 				<div class="dd-field"><label>${__("Step")}</label>
 					<select class="form-control" data-f="event">${D.select(
 						[{ value: "", label: __("All steps") }, ...Object.keys(OC_EVENTS).map((e) => ({ value: e, label: __(e) }))], "")}</select></div>

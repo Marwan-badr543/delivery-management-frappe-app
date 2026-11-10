@@ -22,6 +22,7 @@ from delivery_management.drivers.delivery_note import DELIVERED, ON_THE_WAY, RET
 from delivery_management.drivers import stats
 from delivery_management.orders import payments
 from delivery_management.returns import service as returns
+from delivery_management.transit import cash
 from delivery_management.transit import service as transit
 
 DN = "Delivery Note"
@@ -412,11 +413,18 @@ def record_payment(delivery_note, amount, mode_of_payment):
 	# ERPNext / HRMS check desk permissions on the invoice while building and validating
 	# the Payment Entry; a driver has none on invoices. His access to this order was
 	# checked above, so the entry is made with full rights and then credited to him.
+	# Cash stays with the driver (Cash With Drivers) until the office receives it.
+	driver = frappe.db.get_value(DN, delivery_note, "dm_driver")
+	held = bool(driver) and cash.is_cash(mode_of_payment)
 	with _with_full_rights() as user:
+		company = frappe.db.get_value("Sales Invoice", si, "company")
 		pe = payments.collect(si, amount, mode_of_payment, delivery_note,
-			_("Collected on delivery of {0} by {1}").format(delivery_note, user))
+			_("Collected on delivery of {0} by {1}").format(delivery_note, user),
+			paid_to=cash.drivers_account(company) if held else None)
 		frappe.db.set_value("Payment Entry", pe.name, {"owner": user, "modified_by": user}, update_modified=False)
-	return {"payment_entry": pe.name, "payment": payment_summary([delivery_note])[delivery_note]}
+		if held:
+			cash.hold(pe, delivery_note, driver)
+	return {"payment_entry": pe.name, "payment": payment_summary([delivery_note])[delivery_note], "held_by_driver": held}
 
 
 @frappe.whitelist(methods=["POST"])

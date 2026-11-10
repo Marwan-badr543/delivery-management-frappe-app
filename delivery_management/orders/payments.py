@@ -21,8 +21,9 @@ SI = "Sales Invoice"
 EPSILON = 0.0005
 
 
-def collect(invoice: str, amount, mode_of_payment: str, reference_no: str, remarks: str):
-	"""Payment Entry of ``amount`` for the invoice, at most what it still owes."""
+def collect(invoice: str, amount, mode_of_payment: str, reference_no: str, remarks: str, paid_to: str | None = None):
+	"""Payment Entry of ``amount`` for the invoice, at most what it still owes, into the
+	mode's account (or ``paid_to``: cash a driver keeps, ``transit.cash``)."""
 	from erpnext.accounts.doctype.payment_entry.payment_entry import get_payment_entry
 	from erpnext.accounts.doctype.sales_invoice.sales_invoice import get_bank_cash_account
 
@@ -39,7 +40,7 @@ def collect(invoice: str, amount, mode_of_payment: str, reference_no: str, remar
 			amount, outstanding))
 	pe = get_payment_entry(SI, invoice, party_amount=amount)
 	pe.mode_of_payment = mode_of_payment
-	pe.paid_to = get_bank_cash_account(mode_of_payment, pe.company)["account"]
+	pe.paid_to = paid_to or get_bank_cash_account(mode_of_payment, pe.company)["account"]
 	pe.paid_to_account_currency = frappe.get_cached_value("Account", pe.paid_to, "account_currency")
 	pe.paid_amount = pe.received_amount = amount
 	for ref in pe.references:

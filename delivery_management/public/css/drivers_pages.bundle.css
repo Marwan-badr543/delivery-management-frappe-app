@@ -282,3 +282,30 @@
 	.oc-back { display: inline-flex; }
 	.oc-tiles { grid-template-columns: 1fr 1fr; }
 }
+
+/* Goods in Transit: cash with the drivers */
+.git-tabs:empty { display: none; }
+.git-cash { display: flex; flex-direction: column; gap: 12px; }
+.git-cash.hidden, .git-goods.hidden { display: none; }
+.git-driver { padding: 0; overflow: hidden; }
+.git-driver.git-late { border-left: 4px solid var(--orange-500, var(--orange)); }
+.git-driver-head { display: flex; align-items: center; gap: 16px; padding: 14px 16px; flex-wrap: wrap;
+	border-bottom: 1px solid var(--border-color); }
+.git-who { display: flex; align-items: center; gap: 12px; flex: 1 1 240px; min-width: 0; }
+.git-who b { font-size: var(--text-lg, 16px); }
+.git-hold { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.2; }
+.git-hold span { font-size: 11px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.git-hold b { font-size: 22px; font-weight: 800; color: var(--green-700, var(--green)); font-variant-numeric: tabular-nums; }
+.git-driver .dd-scroll { padding: 0 16px 6px; }
+.git-amount { font-variant-numeric: tabular-nums; }
+.git-confirm-total { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px;
+	border-radius: var(--border-radius-md, 8px); background: var(--green-50, var(--bg-green)); margin-bottom: 12px; }
+.git-confirm-total span { font-weight: 600; color: var(--text-muted); }
+.git-confirm-total b { font-size: 24px; color: var(--green-700, var(--green)); font-variant-numeric: tabular-nums; }
+.git-confirm ul { list-style: none; margin: 0 0 10px; padding: 0; max-height: 240px; overflow: auto; }
+.git-confirm li { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--border-color);
+	font-size: var(--text-sm, 13px); }
+@media (max-width: 576px) {
+	.git-hold { align-items: flex-start; }
+	.git-driver-head .btn { width: 100%; }
+}

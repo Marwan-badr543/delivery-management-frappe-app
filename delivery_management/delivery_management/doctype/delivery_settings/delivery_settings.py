@@ -19,6 +19,14 @@ class DeliverySettings(Document):
 		self.validate_main_warehouse()
 		self.validate_delivery_charge_item()
 		self.validate_day_limits()
+		self.validate_commission()
+
+	def validate_commission(self):
+		low, high = flt(self.commission_min_percent), flt(self.commission_max_percent)
+		if low < 0 or high > 100:
+			frappe.throw(_("Commission % must be between 0 and 100."))
+		if low > high:
+			frappe.throw(_("Min Commission % cannot be more than Max Commission %."))
 
 	def validate_excluded_groups(self):
 		groups = [row.item_group for row in self.ac_item_groups if row.item_group]

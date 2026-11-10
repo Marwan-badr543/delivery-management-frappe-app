@@ -1,12 +1,12 @@
-// Sales Statistics: per salesman (the cashier who made the sale) for a period:
-// invoices, delivery orders, returns, totals, AC / non-AC units and commission.
-// The numbers are computed by a background job (delivery_management.api.sales_stats);
-// this page only shows them. The commission is the only figure computed here:
-// amount (Total or Net Total) x the salesman's commission % / 100.
+// Sales Statistics: per salesman (the cashier who made the sale) for a period: sales and
+// small items against their monthly targets, invoices, units and commission.
+// Everything, the commission included, is computed by a background job
+// (delivery_management.api.sales_stats); this page only shows it. The only choice made here
+// is the commission basis (Total or Net Total), and both are in the result.
+// The invoices behind the numbers are loaded a page at a time.
 
 const SS_API = "delivery_management.api.sales_stats.";
 const SS_STORE = "dm_sales_stats_prefs";
-const SS_PER_PAGE = 100;
 
 frappe.pages["sales-statistics"].on_page_load = function (wrapper) {
 	const page = frappe.ui.make_app_page({
@@ -27,6 +27,7 @@ class SalesStatisticsPage {
 		this.invoice_user = null;
 		this.invoice_page = 0;
 		this.invoice_search = "";
+		this.inv = null;
 
 		this.$body = $(`
 			<div class="ss-page">
@@ -43,11 +44,12 @@ class SalesStatisticsPage {
 					<header class="ss-panel-head">
 						<div>
 							<h4>${__("Sales by salesman")}</h4>
-							<p>${__("Click a salesman to see their invoices. Type a commission % in a row to give that salesman their own rate.")}</p>
+							<p class="ss-range"></p>
 						</div>
 					</header>
 					<div class="ss-table"></div>
 				</section>
+				<section class="ss-panel ss-breakdown-panel hidden"></section>
 				<section class="ss-panel ss-invoice-panel hidden"></section>
 			</div>`).appendTo(page.main);
 
@@ -91,14 +93,6 @@ class SalesStatisticsPage {
 		}
 		this.company = make({ fieldtype: "Link", options: "Company", label: __("Company"), fieldname: "company",
 			default: this.setup.company });
-		this.commission = make({ fieldtype: "Float", label: __("Commission %"), fieldname: "commission",
-			default: this.prefs.commission || 0,
-			description: __("For every salesman"),
-			change: () => {
-				this.prefs.commission = flt(this.commission.get_value());
-				this.save_prefs();
-				this.render();
-			} }, "ss-filter-sm");
 		this.basis_labels = { total: __("Total (incl. VAT)"), net_total: __("Net Total (excl. VAT)") };
 		this.basis = make({ fieldtype: "Select", label: __("Commission on"), fieldname: "basis",
 			options: Object.values(this.basis_labels).join("\n"),
@@ -174,6 +168,7 @@ class SalesStatisticsPage {
 			this.invoice_search = "";
 			this.set_state("done");
 			this.render();
+			this.load_invoices();
 		} else if (state.status === "failed" || state.status === "expired") {
 			this.stop_poll();
 			this.set_state("error", state.error || __("The result expired. Click Show again."));
@@ -226,6 +221,8 @@ class SalesStatisticsPage {
 						<li>${__("The salesman is the cashier who made the sale.")}</li>
 						<li>${__("Returns against paid invoices are subtracted. Drafts and cancelled invoices never count.")}</li>
 						<li>${__("Total = what the customer pays (rounded, with VAT). Net Total = before VAT.")}</li>
+						<li>${__("Targets are monthly and set on each User. Small items are items marked Small Item.")}</li>
+						<li>${__("Commission % = Min + (small items sold ÷ target) × (Max − Min), never above Max. 75% of the commission is paid on it; the other 25% follows the latest Sales Evaluation in the period.")}</li>
 					</ul>
 				</details>
 			</div>`);
@@ -243,25 +240,49 @@ class SalesStatisticsPage {
 		return this.prefs.basis === "net_total" ? "net_total" : "total";
 	}
 
-	commission_pct(user) {
-		const own = (this.prefs.per_user || {})[user];
-		return own === undefined || own === null || own === "" ? flt(this.prefs.commission) : flt(own);
-	}
-
-	commission_of(row) {
-		return (flt(row[this.basis_key()]) * this.commission_pct(row.user)) / 100;
-	}
-
 	money(value) {
 		return format_currency(value, this.result.currency);
+	}
+
+	pct(value) {
+		return `${flt(value, 2)}%`;
+	}
+
+	// Progress toward a target: a bar and a "Reached" badge or the % reached so far.
+	progress(value, target, format) {
+		if (!flt(target)) return `<div class="ss-target ss-muted">${__("No target")}</div>`;
+		const ratio = flt(value) / flt(target);
+		const reached = ratio >= 1;
+		return `<div class="ss-target">
+			<div class="ss-target-line"><span>${__("of {0}", [format(target)])}</span>
+				<span class="ss-badge ${reached ? "ss-badge-ok" : "ss-badge-no"}">${reached
+					? `${frappe.utils.icon("check", "xs")} ${__("Reached")}` : this.pct(ratio * 100)}</span></div>
+			<div class="ss-bar ${reached ? "ss-bar-ok" : ""}"><i style="width:${Math.min(Math.max(ratio, 0), 1) * 100}%"></i></div>
+		</div>`;
+	}
+
+	evaluation_cell(row) {
+		const ev = row.evaluation;
+		if (ev) {
+			return `<a class="ss-eval" href="${frappe.utils.get_form_link("Sales Evaluation", ev.name)}" target="_blank"
+				title="${__("{0} to {1}", [frappe.datetime.str_to_user(ev.from_date), frappe.datetime.str_to_user(ev.to_date)])}">${this.pct(ev.score)}</a>`;
+		}
+		return this.setup.can_evaluate
+			? `<button type="button" class="btn btn-xs btn-default ss-evaluate">${__("Evaluate")}</button>`
+			: `<span class="ss-muted">${__("Not evaluated")}</span>`;
+	}
+
+	evaluate(row) {
+		const f = this.result.filters;
+		frappe.new_doc("Sales Evaluation", { salesman: row.user, from_date: f.from_date, to_date: f.to_date });
 	}
 
 	render() {
 		if (!this.result) return;
 		const rows = this.result.rows;
 		const t = this.result.totals;
-		const total_commission = rows.reduce((sum, r) => sum + this.commission_of(r), 0);
-		const basis_label = this.basis_labels[this.basis_key()];
+		const basis = this.basis_key();
+		const range = this.result.commission_range;
 
 		const card = (label, value, icon, cls = "", hint = "") =>
 			`<div class="ss-card ${cls}">
@@ -269,20 +290,30 @@ class SalesStatisticsPage {
 				<span class="ss-card-icon">${frappe.utils.icon(icon, "sm")}</span></div>
 				<b>${value}</b>${hint ? `<small>${hint}</small>` : ""}
 			</div>`;
+		const of_target = (value, target, format) => flt(target)
+			? __("{0}% of the {1} target", [flt((flt(value) * 100) / flt(target), 1), format(target)]) : __("No targets set");
 		this.$body.find(".ss-cards").html(
 			card(__("Total sales"), this.money(t.total), "income", "ss-card-hero",
-				__("Net {0}", [this.money(t.net_total)])) +
-				card(__("Commission"), this.money(total_commission), "star", "ss-card-green", __("on {0}", [basis_label])) +
+				`${__("Net {0}", [this.money(t.net_total)])} · ${of_target(t[basis], t.sales_target, (v) => this.money(v))}`) +
+				card(__("Commission"), this.money(t.commission[basis].amount), "star", "ss-card-green",
+					__("on {0}", [this.basis_labels[basis]])) +
+				card(__("Small items"), t.small_units, "tag", "ss-card-orange",
+					of_target(t.small_units, t.small_items_target, (v) => v)) +
 				card(__("Invoices"), t.invoices, "file", "", t.returns ? __("{0} returns", [t.returns]) : "") +
 				card(__("Delivery orders"), t.orders, "assets") +
 				card(__("AC units"), t.ac_units, "snowflake", "ss-card-blue") +
-				card(__("Other units"), t.non_ac_units, "package", "ss-card-purple") +
-				card(__("All units"), flt(t.ac_units) + flt(t.non_ac_units), "list")
+				card(__("Other units"), t.non_ac_units, "package", "ss-card-purple")
 		);
 
-		this.render_invoices();
+		this.$body.find(".ss-range").html(flt(range.max)
+			? __("Commission from {0} to {1} by small items sold against the target. Click a salesman to see how it was calculated and their invoices.",
+				[`<b>${this.pct(range.min)}</b>`, `<b>${this.pct(range.max)}</b>`])
+			: `<span class="ss-warn">${frappe.utils.icon("es-line-alert-circle", "xs")} ${__("No commission range yet: set Min and Max Commission % in {0}.",
+				[`<a href="/desk/delivery-settings" target="_blank">${__("Delivery Settings")}</a>`])}</span>`);
+
 		this.$body.find(".ss-table-panel").removeClass("hidden");
 		const $t = this.$body.find(".ss-table").empty();
+		this.render_breakdown();
 		if (!rows.length) {
 			$t.html(`<div class="ss-empty">
 				${frappe.utils.icon("search", "lg")}
@@ -292,91 +323,142 @@ class SalesStatisticsPage {
 			return;
 		}
 		const esc = frappe.utils.escape_html;
-		const max_total = Math.max(...rows.map((r) => Math.abs(flt(r.total))), 1);
 		const head = [
-			[__("Salesman"), ""], [__("Invoices"), "r"], [__("Delivery orders"), "r"], [__("Returns"), "r"],
-			[__("Total"), "r"], [__("Net total"), "r"], [__("AC units"), "r"], [__("Other units"), "r"],
-			[__("Commission %"), "r"], [__("Commission"), "r"],
+			[__("Salesman"), ""], [__("Sales"), ""], [__("Small items"), ""], [__("Invoices"), "r"],
+			[__("AC units"), "r"], [__("Other units"), "r"], [__("Commission %"), "r"], [__("Evaluation"), "r"],
+			[__("Commission"), "r"],
 		];
 		const $table = $(`<div class="ss-scroll"><table class="ss-grid">
 			<thead><tr>${head.map(([h, a]) => `<th class="${a ? "text-right" : ""}">${h}</th>`).join("")}</tr></thead>
 			<tbody></tbody><tfoot></tfoot></table></div>`).appendTo($t);
 
 		rows.forEach((r) => {
-			const own = (this.prefs.per_user || {})[r.user];
-			const share = Math.round((Math.abs(flt(r.total)) / max_total) * 100);
-			const selected = this.invoice_user === r.user ? "ss-row-active" : "";
-			$(`<tr class="${selected}">
+			const c = r.commission[basis];
+			const extra = [r.orders ? __("{0} orders", [r.orders]) : "", r.returns ? __("{0} returns", [r.returns]) : ""]
+				.filter(Boolean).join(" · ");
+			$(`<tr class="${this.invoice_user === r.user ? "ss-row-active" : ""}">
 				<td>
-					<button class="ss-user" type="button" title="${__("Show this salesman's invoices")}">
+					<button class="ss-user" type="button" title="${__("Show how the commission was calculated and the invoices")}">
 						${frappe.avatar(r.user, "avatar-small")}
 						<span><b>${esc(r.full_name)}</b><small>${esc(r.user)}</small></span>
 					</button>
 				</td>
-				<td class="text-right">${r.invoices}</td>
-				<td class="text-right">${r.orders}</td>
-				<td class="text-right">${r.returns || `<span class="text-muted">0</span>`}</td>
-				<td class="text-right">
-					<div class="ss-amount">${this.money(r.total)}</div>
-					<div class="ss-bar"><i style="width:${share}%"></i></div>
-				</td>
-				<td class="text-right text-muted">${this.money(r.net_total)}</td>
+				<td><div class="ss-amount">${this.money(r[basis])}</div>${this.progress(r[basis], r.sales_target, (v) => this.money(v))}</td>
+				<td><div class="ss-amount">${r.small_units}</div>${this.progress(r.small_units, r.small_items_target, (v) => v)}</td>
+				<td class="text-right">${r.invoices}${extra ? `<small class="ss-sub">${extra}</small>` : ""}</td>
 				<td class="text-right">${r.ac_units}</td>
 				<td class="text-right">${r.non_ac_units}</td>
-				<td class="text-right"><input type="number" min="0" step="0.01" class="form-control ss-pct"
-					aria-label="${__("Commission % for {0}", [esc(r.full_name)])}"
-					placeholder="${flt(this.prefs.commission)}" value="${own === undefined || own === null ? "" : own}"></td>
-				<td class="text-right ss-commission">${this.money(this.commission_of(r))}</td>
+				<td class="text-right"><b>${this.pct(r.commission_percent)}</b></td>
+				<td class="text-right">${this.evaluation_cell(r)}</td>
+				<td class="text-right"><div class="ss-commission">${this.money(c.amount)}</div>
+					<small class="ss-sub" title="${__("Sales part (75%) + evaluation part (25%)")}">${this.money(c.items)} + ${this.money(c.evaluation)}</small></td>
 			</tr>`)
 				.appendTo($table.find("tbody"))
 				.on("click", ".ss-user", () => {
 					this.invoice_user = r.user;
 					this.invoice_page = 0;
 					this.render();
-					this.$body.find(".ss-invoice-panel")[0].scrollIntoView({ behavior: "smooth", block: "start" });
+					this.load_invoices();
+					this.$body.find(".ss-breakdown-panel")[0].scrollIntoView({ behavior: "smooth", block: "start" });
 				})
-				.on("change", ".ss-pct", (e) => {
-					this.prefs.per_user = this.prefs.per_user || {};
-					const v = $(e.target).val();
-					if (v === "") delete this.prefs.per_user[r.user];
-					else this.prefs.per_user[r.user] = flt(v);
-					this.save_prefs();
-					this.render();
-				});
+				.on("click", ".ss-evaluate", () => this.evaluate(r));
 		});
 		$table.find("tfoot").html(`<tr>
 			<th>${__("Total")}</th>
+			<th>${this.money(t[basis])}</th>
+			<th>${t.small_units}</th>
 			<th class="text-right">${t.invoices}</th>
-			<th class="text-right">${t.orders}</th>
-			<th class="text-right">${t.returns}</th>
-			<th class="text-right">${this.money(t.total)}</th>
-			<th class="text-right">${this.money(t.net_total)}</th>
 			<th class="text-right">${t.ac_units}</th>
 			<th class="text-right">${t.non_ac_units}</th>
-			<th></th>
-			<th class="text-right">${this.money(total_commission)}</th>
+			<th></th><th></th>
+			<th class="text-right">${this.money(t.commission[basis].amount)}</th>
 		</tr>`);
 	}
 
-	render_invoices() {
-		const $w = this.$body.find(".ss-invoice-panel").empty().removeClass("hidden");
+	// How the clicked salesman's commission was calculated, step by step with their own numbers.
+	render_breakdown() {
+		const $b = this.$body.find(".ss-breakdown-panel");
+		const r = this.invoice_user && this.result.rows.find((row) => row.user === this.invoice_user);
+		if (!r) {
+			$b.addClass("hidden").empty();
+			return;
+		}
+		const esc = frappe.utils.escape_html;
+		const basis = this.basis_key();
+		const range = this.result.commission_range;
+		const f = this.result.filters;
+		const c = r.commission[basis];
+		const sales = this.money(r[basis]);
+		const reached = r.small_items_target ? Math.min(Math.max(flt(r.small_units), 0) / r.small_items_target, 1) : 1;
+		const ev = r.evaluation;
+		const step = (n, title, formula, result, cls = "") => `<li class="ss-step ${cls}">
+			<span class="ss-step-n">${n}</span>
+			<div class="ss-step-text"><b>${title}</b><span class="ss-formula">${formula}</span></div>
+			<span class="ss-step-result">${result}</span></li>`;
+		$b.removeClass("hidden").html(`
+			<header class="ss-panel-head">
+				<div><h4>${__("Commission of {0}", [esc(r.full_name)])}</h4>
+					<p>${__("On {0}, from {1} to {2}.", [this.basis_labels[basis], frappe.datetime.str_to_user(f.from_date),
+						frappe.datetime.str_to_user(f.to_date)])}</p></div>
+				<button class="btn btn-default btn-sm ss-close">${frappe.utils.icon("close", "xs")} ${__("Close")}</button>
+			</header>
+			<ol class="ss-steps">
+				${step(1, __("Small items target reached"), r.small_items_target
+					? __("{0} sold of a target of {1}", [r.small_units, r.small_items_target]) + (reached >= 1 ? ` · ${__("at most 100%")}` : "")
+					: __("No Small Items Target on the user, so the Max % applies"), this.pct(reached * 100))}
+				${step(2, __("Commission %"), __("{0} + {1} × ({2} − {0})", [this.pct(range.min), this.pct(reached * 100), this.pct(range.max)]),
+					this.pct(r.commission_percent))}
+				${step(3, __("Sales part (75%)"), __("{0} × {1} × 75%", [sales, this.pct(r.commission_percent)]), this.money(c.items))}
+				${step(4, __("Evaluation part (25%)"), ev
+					? __("{0} × {1} × 25% × score {2}", [sales, this.pct(r.commission_percent), this.pct(ev.score)]) +
+						` · <a href="${frappe.utils.get_form_link("Sales Evaluation", ev.name)}" target="_blank">${esc(ev.name)}</a>`
+					: __("No Sales Evaluation overlaps this period, so this part is 0."), this.money(c.evaluation), ev ? "" : "ss-step-missing")}
+				${step("=", __("Commission"), __("Sales part + evaluation part"), this.money(c.amount), "ss-step-total")}
+			</ol>`);
+		$b.find(".ss-close").on("click", () => {
+			this.invoice_user = null;
+			this.invoice_page = 0;
+			this.render();
+			this.load_invoices();
+		});
+		if (!ev && this.setup.can_evaluate) {
+			$(`<button type="button" class="btn btn-primary btn-xs ss-evaluate">${__("Evaluate {0}", [esc(r.full_name)])}</button>`)
+				.appendTo($b.find(".ss-step-missing .ss-step-text")).on("click", () => this.evaluate(r));
+		}
+	}
+
+	// The counted invoices of the shown run's filters (one salesman when a row is clicked).
+	invoice_args(extra = {}) {
+		const f = this.result.filters;
+		return { from_date: f.from_date, to_date: f.to_date, company: f.company,
+			user: this.invoice_user || f.user, search: this.invoice_search, ...extra };
+	}
+
+	load_invoices() {
 		if (!this.result) return;
+		const ask = (this.ask = (this.ask || 0) + 1);
+		this.$body.find(".ss-invoice-panel").addClass("ss-is-loading");
+		frappe.xcall(SS_API + "get_invoices", this.invoice_args({ page: this.invoice_page })).then((r) => {
+			if (ask !== this.ask) return; // an older answer
+			this.inv = r;
+			this.render_invoices();
+		});
+	}
+
+	render_invoices() {
+		const $w = this.$body.find(".ss-invoice-panel").empty().removeClass("hidden ss-is-loading");
+		if (!this.result || !this.inv) return;
 		const esc = frappe.utils.escape_html;
 		const names = Object.fromEntries(this.result.rows.map((r) => [r.user, r.full_name]));
-		const all = this.result.invoices || [];
-		const q = (this.invoice_search || "").trim().toLowerCase();
-		const list = all.filter((i) =>
-			(!this.invoice_user || i.user === this.invoice_user) &&
-			(!q || [i.name, i.customer_name, i.customer, i.return_against].some((v) => (v || "").toLowerCase().includes(q)))
-		);
-		const pages = Math.max(1, Math.ceil(list.length / SS_PER_PAGE));
-		this.invoice_page = Math.min(this.invoice_page || 0, pages - 1);
-		const shown = list.slice(this.invoice_page * SS_PER_PAGE, (this.invoice_page + 1) * SS_PER_PAGE);
+		const shown = this.inv.invoices;
+		const per_page = this.inv.page_len;
+		const pages = Math.max(1, Math.ceil(this.inv.count / per_page));
+		const q = (this.invoice_search || "").trim();
 		const who = this.invoice_user ? names[this.invoice_user] || this.invoice_user : null;
 
 		const $head = $(`<header class="ss-panel-head">
 			<div>
-				<h4>${__("Invoices counted")} <span class="ss-count">${list.length}</span></h4>
+				<h4>${__("Invoices counted")} <span class="ss-count">${this.inv.count}</span></h4>
 				<p>${who ? __("Showing {0} only.", [`<b>${esc(who)}</b>`]) : __("Every invoice behind the numbers above.")}</p>
 			</div>
 			<div class="ss-inv-tools">
@@ -388,17 +470,23 @@ class SalesStatisticsPage {
 			this.invoice_user = null;
 			this.invoice_page = 0;
 			this.render();
+			this.load_invoices();
 		});
 		$head.on("input", ".ss-inv-search", frappe.utils.debounce((e) => {
 			this.invoice_search = e.target.value;
 			this.invoice_page = 0;
-			this.render_invoices();
-			const $input = this.$body.find(".ss-inv-search");
-			const len = $input.val().length;
-			$input.focus()[0].setSelectionRange(len, len);
-		}, 250));
+			this.refocus = true;
+			this.load_invoices();
+		}, 300));
+		if (this.refocus) {
+			// The panel was redrawn while typing: keep the cursor in the search box.
+			this.refocus = false;
+			const input = $head.find(".ss-inv-search")[0];
+			input.focus();
+			input.setSelectionRange(input.value.length, input.value.length);
+		}
 
-		if (!list.length) {
+		if (!shown.length) {
 			$w.append(`<div class="ss-empty ss-empty-sm"><span>${q ? __("No invoice matches your search.") : __("No invoices.")}</span></div>`);
 			return;
 		}
@@ -407,7 +495,7 @@ class SalesStatisticsPage {
 			<th>${__("Invoice No.")}</th><th>${__("Created")}</th><th>${__("Posting date")}</th><th>${__("Salesman")}</th>
 			<th>${__("Customer")}</th><th>${__("Type")}</th><th>${__("Status")}</th>
 			<th class="text-right">${__("Total")}</th><th class="text-right">${__("Net total")}</th>
-			<th class="text-right">${__("AC")}</th><th class="text-right">${__("Other")}</th>
+			<th class="text-right">${__("AC")}</th><th class="text-right">${__("Other")}</th><th class="text-right">${__("Small")}</th>
 		</tr></thead><tbody></tbody></table></div>`).appendTo($w);
 		shown.forEach((inv) => {
 			const against = inv.return_against ? `<small class="text-muted">${__("against")} ${esc(inv.return_against)}</small>` : "";
@@ -423,38 +511,46 @@ class SalesStatisticsPage {
 				<td class="text-right ss-amount">${this.money(inv.total)}</td>
 				<td class="text-right text-muted">${this.money(inv.net_total)}</td>
 				<td class="text-right">${inv.ac_units}</td>
-				<td class="text-right">${inv.non_ac_units}</td></tr>`);
+				<td class="text-right">${inv.non_ac_units}</td>
+				<td class="text-right">${inv.small_units}</td></tr>`);
 		});
 		if (pages > 1) {
 			const $nav = $(`<div class="ss-inv-nav">
-				<span class="text-muted">${__("{0}–{1} of {2}", [this.invoice_page * SS_PER_PAGE + 1, this.invoice_page * SS_PER_PAGE + shown.length, list.length])}</span>
+				<span class="text-muted">${__("{0}–{1} of {2}", [this.invoice_page * per_page + 1, this.invoice_page * per_page + shown.length, this.inv.count])}</span>
 				<div class="btn-group">
 					<button class="btn btn-default btn-sm ss-prev" ${this.invoice_page ? "" : "disabled"}>‹ ${__("Previous")}</button>
 					<button class="btn btn-default btn-sm ss-next" ${this.invoice_page < pages - 1 ? "" : "disabled"}>${__("Next")} ›</button>
 				</div>
 			</div>`).appendTo($w);
-			$nav.on("click", ".ss-prev", () => { this.invoice_page--; this.render_invoices(); });
-			$nav.on("click", ".ss-next", () => { this.invoice_page++; this.render_invoices(); });
+			$nav.on("click", ".ss-prev", () => { this.invoice_page--; this.load_invoices(); });
+			$nav.on("click", ".ss-next", () => { this.invoice_page++; this.load_invoices(); });
 		}
 	}
 
-	export_csv() {
+	async export_csv() {
 		if (!this.result) {
 			frappe.show_alert({ message: __("Click Show first."), indicator: "orange" });
 			return;
 		}
+		const all = await frappe.xcall(SS_API + "get_invoices",
+			this.invoice_args({ user: this.result.filters.user, search: "", all_pages: 1 }));
+		const basis = this.basis_key();
 		const rows = [[__("Salesman"), __("User"), __("Invoices"), __("Delivery Orders"), __("Returns"), __("Total"),
-			__("Net Total"), __("AC Units"), __("Non-AC Units"), __("Commission %"), __("Commission")]];
-		this.result.rows.forEach((r) =>
-			rows.push([r.full_name, r.user, r.invoices, r.orders, r.returns, r.total, r.net_total, r.ac_units,
-				r.non_ac_units, this.commission_pct(r.user), flt(this.commission_of(r), 3)])
-		);
+			__("Net Total"), __("Sales Target"), __("AC Units"), __("Non-AC Units"), __("Small Items"), __("Small Items Target"),
+			__("Commission %"), __("Evaluation"), __("Evaluation Score %"), __("Commission On"), __("Sales Part (75%)"),
+			__("Evaluation Part (25%)"), __("Commission")]];
+		this.result.rows.forEach((r) => {
+			const c = r.commission[basis];
+			rows.push([r.full_name, r.user, r.invoices, r.orders, r.returns, r.total, r.net_total, r.sales_target, r.ac_units,
+				r.non_ac_units, r.small_units, r.small_items_target, r.commission_percent, r.evaluation ? r.evaluation.name : "",
+				r.evaluation ? r.evaluation.score : "", this.basis_labels[basis], c.items, c.evaluation, c.amount]);
+		});
 		rows.push([]);
 		rows.push([__("Invoice No."), __("Created"), __("Posting Date"), __("User"), __("Customer"), __("Type"),
-			__("Status"), __("Total"), __("Net Total"), __("AC Units"), __("Non-AC Units")]);
-		(this.result.invoices || []).forEach((i) =>
+			__("Status"), __("Total"), __("Net Total"), __("AC Units"), __("Non-AC Units"), __("Small Items")]);
+		all.invoices.forEach((i) =>
 			rows.push([i.name, i.created, i.posting_date, i.user, i.customer_name, i.type, i.status, i.total, i.net_total,
-				i.ac_units, i.non_ac_units])
+				i.ac_units, i.non_ac_units, i.small_units])
 		);
 		const f = this.result.filters;
 		frappe.tools.downloadify(rows, null, `sales-statistics-${f.from_date}-to-${f.to_date}`);

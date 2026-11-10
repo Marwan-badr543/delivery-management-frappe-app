@@ -5,14 +5,15 @@ Every click on *Show* is a **fresh calculation** (nothing is reused between runs
 returns at once. The job stores its result in Redis under that run id only so
 the page can pick it up (realtime event ``dm_sales_stats``, with polling as a
 fallback); the stored copy is deleted after an hour and is never served for
-another run.
+another run. The run holds the per-salesman summary only; the invoices behind it
+are read a page at a time with ``get_invoices``.
 
 Only System Manager sees every salesman; anyone else with page access sees only their own sales.
 """
 
 import frappe
 from frappe import _
-from frappe.utils import getdate
+from frappe.utils import cint, getdate
 
 from delivery_management.stats import sales
 
@@ -62,6 +63,7 @@ def get_setup():
 	frappe.only_for(PAGE_ROLES)
 	return {
 		"is_manager": _is_manager(),
+		"can_evaluate": bool(frappe.has_permission("Sales Evaluation", "create")),
 		"user": frappe.session.user,
 		"company": frappe.defaults.get_user_default("Company") or frappe.defaults.get_global_default("company"),
 	}
@@ -83,6 +85,14 @@ def start(from_date, to_date, company=None, user=None):
 		requested_by=frappe.session.user,
 	)
 	return status(run_id)
+
+
+@frappe.whitelist()
+def get_invoices(from_date, to_date, company=None, user=None, search=None, page=0, all_pages=0):
+	"""One page of the invoices counted for these filters (``all_pages=1``: every one, for the CSV)."""
+	filters = _filters(from_date, to_date, company, user)
+	return sales.invoices(filters["from_date"], filters["to_date"], filters["company"], filters["user"],
+		search=search, page=page, page_len=None if cint(all_pages) else sales.INVOICES_PER_PAGE)
 
 
 @frappe.whitelist()

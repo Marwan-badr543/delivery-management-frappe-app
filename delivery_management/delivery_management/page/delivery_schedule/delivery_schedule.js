@@ -354,7 +354,9 @@ class DeliverySchedulePage {
 			if (!mop) return frappe.msgprint(__("No Mode of Payment has an account for this company."));
 			frappe.confirm(__("Record a payment of {0} ({1}) from {2}?", [D.money(amount, pay.currency), mop, D.esc(o.customer_name)]), async () => {
 				const r = await D.call("record_payment", { delivery_note: o.name, amount, mode_of_payment: mop }, { post: true, freeze: true });
-				frappe.show_alert({ message: __("Payment {0} recorded", [r.payment_entry]), indicator: "green" });
+				frappe.show_alert({ message: r.held_by_driver
+					? __("Payment {0} recorded. You hold {1} in cash: hand it to the office.", [r.payment_entry, D.money(amount, pay.currency)])
+					: __("Payment {0} recorded", [r.payment_entry]), indicator: "green" }, r.held_by_driver ? 8 : 5);
 				d.hide();
 				this.load();
 				this.openDetail(name);

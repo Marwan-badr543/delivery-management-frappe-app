@@ -136,8 +136,18 @@ def get_custom_fields() -> dict:
 				"insert_after": "is_sales_item",
 				"description": "In the POS, adding this item also adds the Delivery Charge Item (Delivery Settings), "
 					"once per order."},
+			{"fieldname": "dm_small_item", "fieldtype": "Check", "label": "Small Item",
+				"insert_after": "dm_has_delivery_charge",
+				"description": "Counts toward the salesman's Small Items Target (Sales Statistics commission)."},
 		],
 		"Delivery Note": _delivery_note_fields(),
+		# Frozen when the invoice is saved (stats/units.py); Sales Statistics sums them.
+		"Sales Invoice Item": [
+			{"fieldname": f, "fieldtype": "Float", "label": label, "insert_after": after, "read_only": 1, "no_copy": 1,
+				"description": "Set when the invoice is saved, with bundles counted by their contents."}
+			for f, label, after in (("dm_ac_units", "AC Units", "stock_qty"), ("dm_non_ac_units", "Non-AC Units", "dm_ac_units"),
+				("dm_small_units", "Small Item Units", "dm_non_ac_units"))
+		],
 		"Stock Entry": [
 			{"fieldname": "dm_delivery_note", "fieldtype": "Link", "label": "Delivery Note (Transit)",
 				"options": "Delivery Note", "insert_after": "stock_entry_type", "read_only": 1, "no_copy": 1,
@@ -149,6 +159,12 @@ def get_custom_fields() -> dict:
 			{"fieldname": "dm_ac_unit_cost", "fieldtype": "Currency", "label": "AC Unit Installation Cost",
 				"insert_after": "mobile_no", "permlevel": 1, "non_negative": 1,
 				"description": "Paid to this AC Tech for each AC unit installed (Installation Statistics)."},
+			{"fieldname": "dm_sales_target", "fieldtype": "Currency", "label": "Sales Target",
+				"insert_after": "dm_ac_unit_cost", "permlevel": 1, "non_negative": 1,
+				"description": "The amount this salesman should sell in a month (Sales Statistics)."},
+			{"fieldname": "dm_small_items_target", "fieldtype": "Int", "label": "Small Items Target",
+				"insert_after": "dm_sales_target", "permlevel": 1, "non_negative": 1,
+				"description": "How many Small Items this salesman should sell in a month. It sets their commission %."},
 		],
 		"Address": [
 			{"fieldname": "dm_delivery_area", "fieldtype": "Link", "label": "Delivery Area",
@@ -239,8 +255,11 @@ def after_install():
 
 
 def ensure_indexes():
-	"""Sales Statistics filters invoices by creation date; index it (no-op if present)."""
-	frappe.db.add_index("Sales Invoice", ["creation"], index_name="dm_creation_index")
+	"""Sales Statistics reads the submitted invoices of one company created in a period. Frappe
+	already indexes ``creation`` alone, so our old copy of that index is replaced."""
+	if frappe.db.has_index("tabSales Invoice", "dm_creation_index"):
+		frappe.db.sql_ddl("alter table `tabSales Invoice` drop index `dm_creation_index`")
+	frappe.db.add_index("Sales Invoice", ["company", "docstatus", "creation"], index_name="dm_sales_stats_index")
 
 
 DRIVER_ROLES = ("AC Tech", "TV Driver")
@@ -295,6 +314,12 @@ def ensure_ac_installation_account():
 			"company": company, "account_type": "Expense Account"}).insert(ignore_permissions=True)
 
 
+def ensure_drivers_cash_account():
+	from delivery_management.transit.cash import ensure_accounts
+
+	ensure_accounts()
+
+
 def after_migrate():
 	ensure_role()
 	ensure_driver_roles()
@@ -303,5 +328,6 @@ def after_migrate():
 	ensure_default_settings()
 	ensure_returns_not_reserved()
 	ensure_ac_installation_account()
+	ensure_drivers_cash_account()
 	ensure_delivery_note_print_format()
 	ensure_indexes()

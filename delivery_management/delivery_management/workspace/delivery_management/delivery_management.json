@@ -238,6 +238,16 @@
   {
    "hidden": 0,
    "is_query_report": 0,
+   "label": "Sales Evaluation",
+   "link_count": 0,
+   "link_to": "Sales Evaluation",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
    "label": "Delivery Settings",
    "link_count": 0,
    "link_to": "Delivery Settings",
@@ -256,7 +266,7 @@
    "type": "Link"
   }
  ],
- "modified": "2026-11-05 10:00:00.000000",
+ "modified": "2026-11-09 11:00:00.000000",
  "modified_by": "Administrator",
  "module": "Delivery Management",
  "name": "Delivery Management",

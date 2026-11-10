@@ -190,10 +190,16 @@ doc_events = {
 			"delivery_management.returns.service.settle_after_payment",
 			"delivery_management.control.log.on_payment_submit",
 		],
-		"on_cancel": "delivery_management.control.log.on_payment_cancel",
+		"on_cancel": [
+			"delivery_management.control.log.on_payment_cancel",
+			"delivery_management.transit.cash.on_payment_cancel",
+		],
 	},
 	"Sales Invoice": {
-		"validate": "delivery_management.orders.serial_choice.apply_to_packed_items",
+		"validate": [
+			"delivery_management.orders.serial_choice.apply_to_packed_items",
+			"delivery_management.stats.units.set_line_units",
+		],
 		"on_submit": "delivery_management.control.log.on_invoice_submit",
 		"on_cancel": "delivery_management.control.log.on_invoice_cancel",
 	},

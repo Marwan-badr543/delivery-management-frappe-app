@@ -18,10 +18,15 @@ def _require_office():
 
 
 @frappe.whitelist()
-def get_orders(search=None, event=None, user=None, from_date=None, to_date=None):
-	"""Orders with log rows in the filters, latest activity first."""
+def get_orders(search=None, event=None, user=None, from_date=None, to_date=None, kind=None):
+	"""Orders with log rows in the filters, latest activity first. ``kind``: ``order`` (a
+	delivery order, its Sales Order) or ``sale`` (a store sale, its Sales Invoice)."""
 	_require_office()
 	conditions, values = [], {}
+	if kind == "order":
+		conditions.append("l.sales_order is not null")
+	elif kind == "sale":
+		conditions.append("l.sales_order is null and l.sales_invoice is not null")
 	if event:
 		conditions.append("l.event = %(event)s")
 		values["event"] = event

@@ -13,10 +13,17 @@ from frappe.utils import flt, getdate
 from delivery_management.api.drivers import format_address
 from delivery_management.drivers import assignment as asg
 from delivery_management.drivers.delivery_note import RETURNED
+from delivery_management.transit import cash
 from delivery_management.transit import service as transit
 
 ROLES = ("System Manager", "Delivery Manager", "Stock Manager", "Stock User")
+CASH_ROLES = ("System Manager", "Delivery Manager", "Accounts Manager")
 DN = "Delivery Note"
+
+
+def _require_cash_office():
+	if frappe.session.user != "Administrator" and not set(CASH_ROLES) & set(frappe.get_roles()):
+		frappe.throw(_("Only the delivery office or the accounts can receive drivers' cash."), frappe.PermissionError)
 
 
 def _require_stock_keeper():
@@ -164,3 +171,50 @@ def receive(transit_name, scans, reserve_again=0):
 	_require_stock_keeper()
 	scans = frappe.parse_json(scans) if isinstance(scans, str) else scans
 	return {"stock_entry": transit.receive(transit_name, scans or {}, bool(frappe.utils.cint(reserve_again)))}
+
+
+# ---------------------------------------------------------------------------
+# Cash with the drivers (Goods in Transit page, Cash tab)
+# ---------------------------------------------------------------------------
+
+
+@frappe.whitelist()
+def can_receive_cash() -> bool:
+	_require_stock_keeper()
+	return frappe.session.user == "Administrator" or bool(set(CASH_ROLES) & set(frappe.get_roles()))
+
+
+@frappe.whitelist()
+def get_cash(search=None, driver=None):
+	"""Cash collected on delivery and not handed over yet, oldest first, with where the
+	order's goods are now."""
+	_require_cash_office()
+	conditions, values = ["1=1"], {}
+	if driver:
+		conditions.append("c.driver = %(driver)s")
+		values["driver"] = driver
+	if search:
+		conditions.append("""(c.delivery_note like %(q)s or c.customer_name like %(q)s or c.driver_name like %(q)s
+			or c.sales_order like %(q)s or c.sales_invoice like %(q)s)""")
+		values["q"] = f"%{search.strip()}%"
+	rows = frappe.db.sql(
+		f"""select c.name, c.driver, c.driver_name, c.amount, c.currency, c.collected_at, c.delivery_note, c.sales_order,
+			c.sales_invoice, c.customer_name, c.mode_of_payment, c.payment_entry, dn.docstatus as note_docstatus,
+			dn.dm_delivery_status as note_status, dn.dm_delivery_type as delivery_type
+		from `tab{cash.CASH}` c left join `tabDelivery Note` dn on dn.name = c.delivery_note
+		where {" and ".join(conditions)} order by c.collected_at asc""",
+		values,
+		as_dict=True,
+	)
+	for r in rows:
+		r.goods = ("Delivered" if r.note_docstatus == 1 else "With the driver" if r.note_status == "On the way"
+			else "Coming back" if r.note_status == RETURNED else "Back in the store")
+	return rows
+
+
+@frappe.whitelist(methods=["POST"])
+def receive_cash(names):
+	"""The office counted and received this cash from the driver."""
+	_require_cash_office()
+	names = frappe.parse_json(names) if isinstance(names, str) else names
+	return {"journal_entries": cash.receive(names)}

@@ -64,6 +64,7 @@
 .ss-card-green b { color: var(--green-600, var(--green)); }
 .ss-card-blue b { color: var(--blue-600, var(--blue)); }
 .ss-card-purple b { color: var(--purple-600, var(--purple)); }
+.ss-card-orange b { color: var(--orange-600, var(--orange)); }
 .ss-skeleton span, .ss-skeleton b { display: block; border-radius: 6px; background: var(--control-bg);
 	animation: ss-pulse 1.2s ease-in-out infinite; }
 .ss-skeleton span { width: 50%; height: 12px; }
@@ -89,7 +90,6 @@
 .ss-amount { font-weight: 600; }
 .ss-bar { height: 4px; background: var(--control-bg); border-radius: 2px; margin-top: 4px; min-width: 80px; }
 .ss-bar i { display: block; height: 100%; background: var(--primary); border-radius: 2px; opacity: .7; }
-.ss-pct { width: 84px; margin-left: auto; text-align: right; height: 30px; font-size: var(--text-sm, 13px); }
 .ss-commission { font-weight: 700; color: var(--green-600, var(--green)); }
 .ss-count { display: inline-block; min-width: 24px; padding: 1px 8px; margin-left: 6px; border-radius: 10px; background: var(--control-bg);
 	font-size: 12px; font-weight: 600; color: var(--text-muted); vertical-align: middle; }
@@ -102,4 +102,34 @@
 .ss-empty b { color: var(--text-color); }
 .ss-empty-sm { padding: 18px 12px; }
 .ss-is-loading .ss-table-panel, .ss-is-loading .ss-invoice-panel { opacity: .55; pointer-events: none; }
+.ss-invoice-panel.ss-is-loading { opacity: .55; }
 .ss-presets-label { font-size: var(--text-xs, 12px); color: var(--text-muted); font-weight: 500; }
+
+/* targets and commission */
+.ss-muted { color: var(--text-muted); font-size: 12px; }
+.ss-sub { display: block; color: var(--text-muted); font-size: 11px; font-weight: 400; }
+.ss-warn { color: var(--orange-600, var(--orange)); display: inline-flex; align-items: center; gap: 4px; }
+.ss-target { min-width: 150px; margin-top: 4px; }
+.ss-target-line { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 11px; color: var(--text-muted); }
+.ss-badge { display: inline-flex; align-items: center; gap: 3px; padding: 0 7px; border-radius: 9px; font-size: 11px; font-weight: 600; line-height: 18px; }
+.ss-badge-ok { background: var(--green-50, var(--bg-green)); color: var(--green-700, var(--green)); }
+.ss-badge-ok .icon { stroke: currentColor; }
+.ss-badge-no { background: var(--orange-50, var(--bg-orange)); color: var(--orange-700, var(--orange)); }
+.ss-bar-ok i { background: var(--green-500, var(--green)); opacity: 1; }
+.ss-eval { font-weight: 600; }
+.ss-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.ss-step { display: grid; grid-template-columns: 28px 1fr auto; align-items: center; gap: 12px; padding: 10px 12px;
+	border-radius: var(--border-radius-md, 8px); background: var(--subtle-fg, var(--control-bg)); }
+.ss-step-n { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700;
+	background: var(--card-bg, var(--fg-color)); color: var(--primary); border: 1px solid var(--border-color); }
+.ss-step-text { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; }
+.ss-step-text .btn { margin-top: 6px; }
+.ss-formula { color: var(--text-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.ss-step-result { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ss-step-missing .ss-step-result { color: var(--text-muted); }
+.ss-step-total { background: var(--green-50, var(--bg-green)); }
+.ss-step-total .ss-step-result { color: var(--green-700, var(--green)); font-size: 16px; }
+@media (max-width: 600px) {
+	.ss-step { grid-template-columns: 28px 1fr; }
+	.ss-step-result { grid-column: 2; }
+}

@@ -16,3 +16,4 @@ delivery_management.patches.sync_stock_settings_defaults
 delivery_management.patches.customer_return_notes
 delivery_management.patches.submit_unpaid_order_drafts
 delivery_management.patches.release_closed_order_reservations
+delivery_management.patches.sales_invoice_line_units

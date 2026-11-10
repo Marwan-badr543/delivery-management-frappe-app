@@ -248,6 +248,19 @@
    "idx": 19
   },
   {
+   "child": 1,
+   "collapsible": 1,
+   "icon": "star",
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Sales Evaluation",
+   "link_to": "Sales Evaluation",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link",
+   "idx": 20
+  },
+  {
    "child": 0,
    "collapsible": 1,
    "icon": "",
@@ -256,7 +269,7 @@
    "label": "Setup",
    "show_arrow": 0,
    "type": "Section Break",
-   "idx": 20
+   "idx": 21
   },
   {
    "child": 1,
@@ -269,7 +282,7 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "idx": 21
+   "idx": 22
   },
   {
    "child": 1,
@@ -282,10 +295,10 @@
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link",
-   "idx": 22
+   "idx": 23
   }
  ],
- "modified": "2026-11-05 10:00:00.000000",
+ "modified": "2026-11-09 11:00:00.000000",
  "modified_by": "Administrator",
  "module": "Delivery Management",
  "name": "Delivery Management",
