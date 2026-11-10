@@ -12,7 +12,8 @@ from delivery_management.stats.units import _per_unit_units
 
 
 def execute():
-	create_custom_fields({"Sales Invoice Item": get_custom_fields()["Sales Invoice Item"]}, ignore_validate=True, update=True)
+	# Patches run before after_migrate: the line fields and Item's Small Item must exist first.
+	create_custom_fields(get_custom_fields(), ignore_validate=True, update=True)
 	codes = set(frappe.db.sql_list("select distinct item_code from `tabSales Invoice Item` where ifnull(item_code, '') != ''"))
 	for code, (ac, non_ac, small) in _per_unit_units(codes).items():
 		frappe.db.sql(
