@@ -48,7 +48,7 @@ def sales_order_of(dn) -> str | None:
 
 def copy_schedule_from_sales_order(dn) -> None:
 	so = sales_order_of(dn)
-	if not so:
+	if not so or dn.get("dm_split_from"):  # a split part has its own day and address
 		return
 	fields = schedule_fields_for(dn.get("dm_delivery_type"))
 	values = frappe.db.get_value("Sales Order", so, list(fields), as_dict=True) or {}

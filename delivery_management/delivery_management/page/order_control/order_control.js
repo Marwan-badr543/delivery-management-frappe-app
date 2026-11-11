@@ -33,6 +33,8 @@ const OC_EVENTS = {
 	"Invoice cancelled": ["close", "red"],
 	"Order cancelled": ["close", "red"],
 	"Cash handed over": ["money-coins-1", "green"],
+	"Delivery split": ["calendar", "blue"],
+	"Delivery merged back": ["calendar", "gray"],
 };
 
 class OrderControlPage {

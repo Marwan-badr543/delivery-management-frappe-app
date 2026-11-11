@@ -4,7 +4,6 @@ import frappe
 from frappe import _
 from frappe.utils import cint
 
-from delivery_management.drivers.delivery_note import sales_order_of
 from delivery_management.orders.schedule import stamp_schedule
 from delivery_management.slots import engine, get_ac_item_codes
 from delivery_management.slots.timeutils import to_date, to_time_str
@@ -115,10 +114,12 @@ def move_reservation(reservation, area=None, date=None, time=None, ac_date=None,
 def get_delivery_note_booking(delivery_note):
 	"""The booking a Delivery Note's order holds for its type (AC day or delivery slot), for its Move button."""
 	_only_managers()
+	from delivery_management.orders.split import booking_owner
+
 	dn = frappe.get_doc("Delivery Note", delivery_note)
-	so = sales_order_of(dn)
+	owner = booking_owner(dn)  # a split part holds its own day, the first note its order's
 	slot_type = engine.SLOT_AC if dn.dm_delivery_type == "AC" else engine.SLOT_DELIVERY
-	row = next((r for r in engine.get_reservations("Sales Order", so) if r.slot_type == slot_type), None) if so else None
+	row = next((r for r in engine.get_reservations(*owner) if r.slot_type == slot_type), None) if owner else None
 	if not row:
 		frappe.throw(_("The order of this Delivery Note holds no {0} booking.").format(
 			_("AC installation") if slot_type == engine.SLOT_AC else _("delivery slot")))

@@ -2,7 +2,8 @@
 // small items against their monthly targets, invoices, units and commission.
 // Everything, the commission included, is computed by a background job
 // (delivery_management.api.sales_stats); this page only shows it. The only choice made here
-// is the commission basis (Total or Net Total), and both are in the result.
+// is the commission basis (Total or Net Total), and both are in the result. "Exclude services"
+// (on by default) leaves the Service Item Groups of Delivery Settings out of the sales.
 // The invoices behind the numbers are loaded a page at a time.
 
 const SS_API = "delivery_management.api.sales_stats.";
@@ -93,6 +94,9 @@ class SalesStatisticsPage {
 		}
 		this.company = make({ fieldtype: "Link", options: "Company", label: __("Company"), fieldname: "company",
 			default: this.setup.company });
+		this.exclude_services = make({ fieldtype: "Check", label: __("Exclude services"), fieldname: "exclude_services",
+			default: 1,
+			change: () => this.result && this.run() });
 		this.basis_labels = { total: __("Total (incl. VAT)"), net_total: __("Net Total (excl. VAT)") };
 		this.basis = make({ fieldtype: "Select", label: __("Commission on"), fieldname: "basis",
 			options: Object.values(this.basis_labels).join("\n"),
@@ -130,6 +134,7 @@ class SalesStatisticsPage {
 			to_date: this.to_date.get_value(),
 			company: this.company.get_value(),
 			user: this.user ? this.user.get_value() : null,
+			exclude_services: this.exclude_services.get_value() ? 1 : 0,
 		};
 	}
 
@@ -294,7 +299,9 @@ class SalesStatisticsPage {
 			? __("{0}% of the {1} target", [flt((flt(value) * 100) / flt(target), 1), format(target)]) : __("No targets set");
 		this.$body.find(".ss-cards").html(
 			card(__("Total sales"), this.money(t.total), "income", "ss-card-hero",
-				`${__("Net {0}", [this.money(t.net_total)])} · ${of_target(t[basis], t.sales_target, (v) => this.money(v))}`) +
+				`${__("Net {0}", [this.money(t.net_total)])} · ${of_target(t[basis], t.sales_target, (v) => this.money(v))}`
+				+ (flt(t.services) ? ` · ${this.result.filters.exclude_services
+					? __("{0} services left out", [this.money(t.services)]) : __("incl. {0} services", [this.money(t.services)])}` : "")) +
 				card(__("Commission"), this.money(t.commission[basis].amount), "star", "ss-card-green",
 					__("on {0}", [this.basis_labels[basis]])) +
 				card(__("Small items"), t.small_units, "tag", "ss-card-orange",
@@ -430,7 +437,7 @@ class SalesStatisticsPage {
 	// The counted invoices of the shown run's filters (one salesman when a row is clicked).
 	invoice_args(extra = {}) {
 		const f = this.result.filters;
-		return { from_date: f.from_date, to_date: f.to_date, company: f.company,
+		return { from_date: f.from_date, to_date: f.to_date, company: f.company, exclude_services: f.exclude_services,
 			user: this.invoice_user || f.user, search: this.invoice_search, ...extra };
 	}
 
@@ -495,6 +502,7 @@ class SalesStatisticsPage {
 			<th>${__("Invoice No.")}</th><th>${__("Created")}</th><th>${__("Posting date")}</th><th>${__("Salesman")}</th>
 			<th>${__("Customer")}</th><th>${__("Type")}</th><th>${__("Status")}</th>
 			<th class="text-right">${__("Total")}</th><th class="text-right">${__("Net total")}</th>
+			<th class="text-right" title="${this.result.filters.exclude_services ? __("Left out of the Total") : __("Included in the Total")}">${__("Services")}</th>
 			<th class="text-right">${__("AC")}</th><th class="text-right">${__("Other")}</th><th class="text-right">${__("Small")}</th>
 		</tr></thead><tbody></tbody></table></div>`).appendTo($w);
 		shown.forEach((inv) => {
@@ -510,6 +518,7 @@ class SalesStatisticsPage {
 				<td>${__(inv.status)}</td>
 				<td class="text-right ss-amount">${this.money(inv.total)}</td>
 				<td class="text-right text-muted">${this.money(inv.net_total)}</td>
+				<td class="text-right text-muted">${flt(inv.services) ? this.money(inv.services) : ""}</td>
 				<td class="text-right">${inv.ac_units}</td>
 				<td class="text-right">${inv.non_ac_units}</td>
 				<td class="text-right">${inv.small_units}</td></tr>`);
@@ -535,21 +544,22 @@ class SalesStatisticsPage {
 		const all = await frappe.xcall(SS_API + "get_invoices",
 			this.invoice_args({ user: this.result.filters.user, search: "", all_pages: 1 }));
 		const basis = this.basis_key();
+		const services = this.result.filters.exclude_services ? __("Services (left out)") : __("Services (included)");
 		const rows = [[__("Salesman"), __("User"), __("Invoices"), __("Delivery Orders"), __("Returns"), __("Total"),
-			__("Net Total"), __("Sales Target"), __("AC Units"), __("Non-AC Units"), __("Small Items"), __("Small Items Target"),
+			__("Net Total"), services, __("Sales Target"), __("AC Units"), __("Non-AC Units"), __("Small Items"), __("Small Items Target"),
 			__("Commission %"), __("Evaluation"), __("Evaluation Score %"), __("Commission On"), __("Sales Part (75%)"),
 			__("Evaluation Part (25%)"), __("Commission")]];
 		this.result.rows.forEach((r) => {
 			const c = r.commission[basis];
-			rows.push([r.full_name, r.user, r.invoices, r.orders, r.returns, r.total, r.net_total, r.sales_target, r.ac_units,
+			rows.push([r.full_name, r.user, r.invoices, r.orders, r.returns, r.total, r.net_total, r.services, r.sales_target, r.ac_units,
 				r.non_ac_units, r.small_units, r.small_items_target, r.commission_percent, r.evaluation ? r.evaluation.name : "",
 				r.evaluation ? r.evaluation.score : "", this.basis_labels[basis], c.items, c.evaluation, c.amount]);
 		});
 		rows.push([]);
 		rows.push([__("Invoice No."), __("Created"), __("Posting Date"), __("User"), __("Customer"), __("Type"),
-			__("Status"), __("Total"), __("Net Total"), __("AC Units"), __("Non-AC Units"), __("Small Items")]);
+			__("Status"), __("Total"), __("Net Total"), services, __("AC Units"), __("Non-AC Units"), __("Small Items")]);
 		all.invoices.forEach((i) =>
-			rows.push([i.name, i.created, i.posting_date, i.user, i.customer_name, i.type, i.status, i.total, i.net_total,
+			rows.push([i.name, i.created, i.posting_date, i.user, i.customer_name, i.type, i.status, i.total, i.net_total, i.services,
 				i.ac_units, i.non_ac_units, i.small_units])
 		);
 		const f = this.result.filters;

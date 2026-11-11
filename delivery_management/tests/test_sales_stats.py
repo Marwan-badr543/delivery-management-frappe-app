@@ -421,3 +421,48 @@ class TestLineUnits(SalesStatsCase):
 		# The credit note takes off what the sale counted, not today's rule.
 		self.credit_note(sold, self.w.pipe, owner=SECOND)
 		self.assertEqual(self.row(self.stats(), SECOND)["small_units"], 0)
+
+
+def item_group(name, parent="All Item Groups"):
+	if not frappe.db.exists("Item Group", name):
+		frappe.get_doc({"doctype": "Item Group", "item_group_name": name, "parent_item_group": parent,
+			"is_group": 1}).insert(ignore_permissions=True)
+	return name
+
+
+class TestServices(SalesStatsCase):
+	def setUp(self):
+		super().setUp()
+		# The fee sits in a group under the Service Item Group: its children count too.
+		root = item_group("_DM Services")
+		frappe.db.set_value("Item", self.w.service, "item_group", item_group("_DM Fees", root))
+		frappe.get_doc({"doctype": "Delivery Service Item Group", "parent": "Delivery Settings",
+			"parenttype": "Delivery Settings", "parentfield": "service_item_groups", "item_group": root}).db_insert()
+		frappe.db.set_single_value("Delivery Settings", {"commission_min_percent": 10, "commission_max_percent": 10})
+
+	def test_services_are_left_out_by_default(self):
+		self.assertIn("_DM Fees", sales.service_groups())
+		name = self.sell([(self.w.tv, 1, 100), (self.w.service, 1, 5)])
+		row = self.row(self.stats(), "Administrator")
+		self.assertEqual((row["total"], row["net_total"], row["services"]), (100.0, 100.0, 5.0))
+		self.assertEqual(row["commission"]["total"]["items"], 7.5)  # 100 × 10% × 75%
+		[inv] = [i for i in self.invoices(self.stats()) if i["name"] == name]
+		self.assertEqual((inv["total"], inv["services"]), (100.0, 5.0))
+
+	def test_services_can_be_counted_in(self):
+		self.sell([(self.w.tv, 1, 100), (self.w.service, 1, 5)])
+		result = sales.compute(self.today, self.today, self.company, exclude_services=False)
+		row = self.row(result, "Administrator")
+		self.assertEqual((row["total"], row["net_total"], row["services"]), (105.0, 105.0, 5.0))
+		self.assertEqual(result["filters"]["exclude_services"], 0)
+
+	def test_returned_service_is_left_out_too(self):
+		sale = self.sell([(self.w.tv, 1, 100), (self.w.service, 1, 5)])
+		self.credit_note(sale, self.w.service)
+		row = self.row(self.stats(), "Administrator")
+		self.assertEqual((row["total"], row["services"]), (100.0, 0.0))
+
+	def test_no_service_groups_counts_everything(self):
+		frappe.db.delete("Delivery Service Item Group", {"parent": "Delivery Settings"})
+		self.sell([(self.w.tv, 1, 100), (self.w.service, 1, 5)])
+		self.assertEqual(self.row(self.stats(), "Administrator")["total"], 105.0)

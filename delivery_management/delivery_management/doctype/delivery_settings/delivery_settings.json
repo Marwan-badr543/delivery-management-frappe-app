@@ -52,6 +52,7 @@
   "commission_min_percent",
   "column_break_7",
   "commission_max_percent",
+  "service_item_groups",
   "commission_rule_note"
  ],
  "fields": [
@@ -349,6 +350,13 @@
    "description": "Paid when the salesman reached their Small Items Target (never more)."
   },
   {
+   "fieldname": "service_item_groups",
+   "fieldtype": "Table MultiSelect",
+   "label": "Service Item Groups",
+   "options": "Delivery Service Item Group",
+   "description": "Items in these groups (or any group under them) are services. The Sales Statistics page can leave them out of the sales (it does by default)."
+  },
+  {
    "fieldname": "commission_rule_note",
    "fieldtype": "HTML",
    "label": "Commission Rule",
@@ -358,7 +366,7 @@
  "index_web_pages_for_search": 0,
  "issingle": 1,
  "links": [],
- "modified": "2026-11-09 11:00:00.000000",
+ "modified": "2026-11-11 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Delivery Management",
  "name": "Delivery Settings",

@@ -31,7 +31,7 @@
    "fieldtype": "Select",
    "label": "Event",
    "read_only": 1,
-   "options": "Order created\nOrder cancelled\nStore sale\nInvoice cancelled\nDriver assigned\nDriver changed\nDriver removed\nSent out\nDelivered\nNot delivered items\nCustomer not available\nReceived back\nPOS return\nPayment\nRefund\nCredit note\nPayment cancelled\nCash handed over",
+   "options": "Order created\nOrder cancelled\nStore sale\nInvoice cancelled\nDriver assigned\nDriver changed\nDriver removed\nSent out\nDelivered\nNot delivered items\nCustomer not available\nReceived back\nPOS return\nPayment\nRefund\nCredit note\nPayment cancelled\nCash handed over\nDelivery split\nDelivery merged back",
    "in_list_view": 1,
    "in_standard_filter": 1,
    "reqd": 1
@@ -155,7 +155,7 @@
   }
  ],
  "in_create": 1,
- "modified": "2026-11-09 14:00:00.000000",
+ "modified": "2026-11-10 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Delivery Management",
  "name": "Order Log",

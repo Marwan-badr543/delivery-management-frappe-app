@@ -66,6 +66,10 @@ def _delivery_note_fields() -> list[dict]:
 			"description": "On the way when the stock keeper sends its goods out (Stock Keeper page; the note stays a "
 				"draft), Delivered when the driver submits it at the customer, Returned when the whole order comes "
 				"back (customer not found) until the stock keeper receives it."},
+		{"fieldname": "dm_split_from", "fieldtype": "Link", "label": "Split From", "options": "Delivery Note",
+			"insert_after": "dm_delivery_status", "read_only": 1, "no_copy": 1, "depends_on": "dm_split_from",
+			"search_index": 1,
+			"description": "Part of the order moved from this note to another day (Split Delivery)."},
 		{"fieldname": "dm_returned_before_delivery", "fieldtype": "Check", "label": "Returned Before Delivery",
 			"insert_after": "dm_delivery_status", "read_only": 1, "no_copy": 1, "depends_on": "eval:doc.is_return",
 			"description": "The note it returns was still On the way: never delivered or installed, so its "

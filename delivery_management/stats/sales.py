@@ -18,6 +18,11 @@ Rules (each one is covered by ``tests/test_sales_stats.py``):
   does not earn commission.
 * **Total** = what the customer pays: the rounded total (the grand total when
   rounding is disabled), with VAT. **Net Total** = before VAT. Company currency.
+* **Services** = lines whose Item Group is one of the Service Item Groups of Delivery
+  Settings (or under one). By default they are left out of the sales (Total, Net Total)
+  and so of the commission; the page can count them in. A service line's share of the
+  Total is its net amount × the invoice's Total ÷ Net Total (its share of VAT and
+  rounding).
 * **Units** (AC, non-AC, small items) are frozen on each invoice line when it is
   saved, with Product Bundles counted by their contents: see ``stats/units.py``.
 * **Commission** (see ``commission``): the small items sold against the salesman's
@@ -47,12 +52,14 @@ PAID_CONDITION = """(
 		and orig.docstatus = 1 and orig.is_return = 0 and orig.outstanding_amount <= 0)))"""
 
 TOTAL_COLUMN = "if(si.disable_rounded_total = 1 or si.base_rounded_total = 0, si.base_grand_total, si.base_rounded_total)"
+SERVICE_NET = "coalesce(sum(if(sii.item_group in %(services)s, sii.base_net_amount, 0)), 0)"
+SERVICE_TOTAL = f"if(si.base_net_total = 0, 0, {SERVICE_NET} * {TOTAL_COLUMN} / si.base_net_total)"
 
 COUNT_KEYS = ("invoices", "orders", "returns")
 UNIT_KEYS = ("ac_units", "non_ac_units", "small_units")
-MONEY_KEYS = ("total", "net_total")
+MONEY_KEYS = ("total", "net_total", "services")
 SUM_KEYS = COUNT_KEYS + MONEY_KEYS + UNIT_KEYS
-BASES = MONEY_KEYS  # the commission is on the Total (with VAT) or the Net Total; the page chooses
+BASES = ("total", "net_total")  # the commission is on the Total (with VAT) or the Net Total; the page chooses
 INVOICES_PER_PAGE = 100
 ITEMS_SHARE = 0.75  # paid on the small-items commission %; the rest is paid on the evaluation score
 EVALUATION = "Sales Evaluation"
@@ -64,9 +71,21 @@ def _salesman() -> str:
 	return "si.owner"
 
 
-def _params(from_date, to_date, company, user=None, search=None) -> dict:
+def service_groups() -> tuple[str, ...]:
+	"""The Service Item Groups of Delivery Settings and every group under them."""
+	roots = frappe.get_all("Delivery Service Item Group", filters={"parent": "Delivery Settings"}, pluck="item_group")
+	if not roots:
+		return ()
+	ranges = frappe.get_all("Item Group", filters={"name": ["in", roots]}, fields=["lft", "rgt"])
+	return tuple(frappe.get_all("Item Group", or_filters=[["lft", "between", [r.lft, r.rgt]] for r in ranges],
+		pluck="name"))
+
+
+def _params(from_date, to_date, company, user=None, search=None, exclude_services=True) -> dict:
 	from_date, to_date = getdate(from_date), getdate(to_date)
 	return {
+		"exclude": 1 if exclude_services else 0,
+		"services": service_groups() or ("",),
 		"company": company,
 		"user": user,
 		# Whole days: from 00:00 of From Date up to (not including) 00:00 after To Date.
@@ -79,12 +98,14 @@ def _params(from_date, to_date, company, user=None, search=None) -> dict:
 
 
 def _invoice_query(params: dict) -> str:
-	"""One row per counted invoice with its units, summed from the units frozen on its lines."""
+	"""One row per counted invoice with its units, summed from the units frozen on its lines.
+	``services`` is its services' share of the Total; with ``exclude`` it is taken off the sales."""
 	search = """and (si.name like %(q)s or si.customer like %(q)s or si.customer_name like %(q)s
 		or si.return_against like %(q)s)""" if params["q"] else ""
 	return f"""select si.name, {_salesman()} as user, si.creation, si.posting_date, si.customer, si.customer_name,
 			si.is_return, si.return_against, ifnull(si.dm_order_type, '') as order_type, si.status,
-			{TOTAL_COLUMN} as total, si.base_net_total as net_total,
+			{TOTAL_COLUMN} - %(exclude)s * {SERVICE_TOTAL} as total,
+			si.base_net_total - %(exclude)s * {SERVICE_NET} as net_total, {SERVICE_TOTAL} as services,
 			coalesce(sum(sii.dm_ac_units), 0) as ac_units, coalesce(sum(sii.dm_non_ac_units), 0) as non_ac_units,
 			coalesce(sum(sii.dm_small_units), 0) as small_units
 		from `tabSales Invoice` si
@@ -142,13 +163,13 @@ def _targeted_users(user: str | None) -> list[str]:
 # ---------------------------------------------------------------- results
 
 
-def compute(from_date, to_date, company: str, user: str | None = None) -> dict:
+def compute(from_date, to_date, company: str, user: str | None = None, exclude_services: bool = True) -> dict:
 	"""Per-salesman totals, targets and commission for the period (one row per salesman)."""
-	params = _params(from_date, to_date, company, user)
+	params = _params(from_date, to_date, company, user, exclude_services=exclude_services)
 	sold = frappe.db.sql(
 		f"""select inv.user, count(*) - sum(inv.is_return) as invoices,
 			sum(inv.is_return = 0 and inv.order_type = 'Order') as orders, sum(inv.is_return) as returns,
-			sum(inv.total) as total, sum(inv.net_total) as net_total, sum(inv.ac_units) as ac_units,
+			sum(inv.total) as total, sum(inv.net_total) as net_total, sum(inv.services) as services, sum(inv.ac_units) as ac_units,
 			sum(inv.non_ac_units) as non_ac_units, sum(inv.small_units) as small_units
 		from ({_invoice_query(params)}) inv
 		group by inv.user""",
@@ -192,15 +213,16 @@ def compute(from_date, to_date, company: str, user: str | None = None) -> dict:
 		"totals": totals,
 		"commission_range": {"min": low, "max": high, "items_share": ITEMS_SHARE},
 		"currency": frappe.get_cached_value("Company", company, "default_currency"),
-		"filters": {"from_date": params["from_date"], "to_date": params["to_date"], "company": company, "user": user},
+		"filters": {"from_date": params["from_date"], "to_date": params["to_date"], "company": company, "user": user,
+			"exclude_services": params["exclude"]},
 		"generated_at": str(now_datetime()),
 	}
 
 
 def invoices(from_date, to_date, company: str, user: str | None = None, search: str | None = None,
-		page: int = 0, page_len: int | None = INVOICES_PER_PAGE) -> dict:
+		page: int = 0, page_len: int | None = INVOICES_PER_PAGE, exclude_services: bool = True) -> dict:
 	"""The counted invoices behind ``compute``, newest first; ``page_len=None`` returns them all."""
-	params = _params(from_date, to_date, company, user, search)
+	params = _params(from_date, to_date, company, user, search, exclude_services)
 	query = _invoice_query(params)
 	count = cint(frappe.db.sql(f"select count(*) from ({query}) inv", params)[0][0])
 	limit = f"limit {cint(page_len)} offset {cint(page) * cint(page_len)}" if page_len else ""
@@ -217,6 +239,7 @@ def invoices(from_date, to_date, company: str, user: str | None = None, search: 
 		"status": inv.status,
 		"total": flt(inv.total),
 		"net_total": flt(inv.net_total),
+		"services": flt(inv.services),
 		**{k: _clean_qty(inv[k]) for k in UNIT_KEYS},
 	} for inv in rows]}
 

@@ -182,8 +182,13 @@ doc_events = {
 		"on_cancel": [
 			"delivery_management.drivers.delivery_note.on_cancel",
 			"delivery_management.returns.service.after_return",
+			"delivery_management.orders.split.release_own_booking",
 		],
-		"on_trash": "delivery_management.drivers.delivery_note.on_trash",
+		"on_trash": [
+			"delivery_management.drivers.delivery_note.on_trash",
+			"delivery_management.orders.split.release_own_booking",
+			"delivery_management.orders.split.detach_parts",
+		],
 	},
 	"Payment Entry": {
 		"on_submit": [
@@ -210,6 +215,10 @@ doc_events = {
 }
 
 required_apps = ["erpnext"]
+
+# The Order Log and the slot ledger keep their history: they never stop a draft Delivery Note
+# being deleted (a cancelled order, a merged split part).
+ignore_links_on_delete = ["Order Log", "Delivery Slot Reservation"]
 
 after_install = "delivery_management.install.after_install"
 after_migrate = "delivery_management.install.after_migrate"

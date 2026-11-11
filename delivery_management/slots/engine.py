@@ -419,6 +419,28 @@ def move_reservation(
 	return booked[0]
 
 
+def set_ac_units(reservation: str, units: int) -> None:
+	"""Change how many AC units an AC booking holds on its day (a split order moved some to
+	another note, or merged them back). Fewer units always fit, more must fit the day's
+	capacity; 0 frees the booking."""
+	units = cint(units)
+	if units <= 0:
+		_release_rows([reservation])
+		return
+	row = frappe.db.sql(f"select name, status, slot_type, delivery_date, qty from `tab{LEDGER}` where name = %s for update",
+		reservation, as_dict=True)
+	if not row or row[0].status != STATUS_RESERVED or row[0].slot_type != SLOT_AC:
+		frappe.throw(_("Reservation {0} is not an active AC booking.").format(reservation))
+	row = row[0]
+	day = _lock_ac_day(row.delivery_date)
+	reserved, capacity = cint(day.reserved_units) - cint(row.qty) + units, _ac_capacity(day)
+	if units > cint(row.qty) and reserved > capacity:
+		_unavailable(_("Not enough AC installation capacity on {0} for {1} more units.").format(
+			row.delivery_date, units - cint(row.qty)))
+	_write_ac_day(day.name, max(reserved, 0), capacity)
+	frappe.db.set_value(LEDGER, row.name, "qty", units)
+
+
 def _release_rows(names: list[str]) -> int:
 	if not names:
 		return 0

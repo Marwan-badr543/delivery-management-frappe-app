@@ -171,6 +171,8 @@ def dispatch(delivery_note: str, scans: dict) -> str:
 
 	# ERPNext refuses a note row out of the store its order line is reserved in: the whole line
 	# is released while the goods are out (what it delivers later is reserved again, ``reserve_rest``).
+	# Another note of a split order still in the store is held by the POS meanwhile
+	# (``orders.stock.held_for_split_notes``).
 	for so_detail in {r.so_detail for r in dn.items if r.get("so_detail")}:
 		unreserve(so_detail, flt(frappe.db.get_value("Sales Order Item", so_detail, "qty")))
 	driver = get_fullname(dn.dm_driver)
@@ -196,28 +198,53 @@ def dispatch(delivery_note: str, scans: dict) -> str:
 	return doc.name
 
 
-def reserve_rest(dn, warehouse: str) -> None:
+def reserve_rest(dn, warehouse: str, other_notes_only: bool = False) -> None:
 	"""Reserve again in ``warehouse`` what the note's order lines still deliver later and is
-	not out with a driver (released when the note was sent out)."""
+	not out with a driver (released when the note was sent out). ``other_notes_only``: just
+	what other notes of the order still in the store deliver (this note's goods came back
+	not to be reserved). Nothing is reserved while another note of the line is out: ERPNext
+	refuses a note out of the store its line is reserved in, so the last note to come back
+	or be delivered reserves the rest."""
 	from delivery_management.returns.service import out_qty
 
 	later: dict[tuple, float] = defaultdict(float)
 	for so_detail in {r.so_detail for r in dn.items if r.get("so_detail")}:
 		soi = frappe.db.get_value("Sales Order Item", so_detail, ["item_code", "qty", "delivered_qty", "returned_qty",
 			"conversion_factor", "reserve_stock"], as_dict=True)
-		held = sum(flt(r.reserved_qty) - flt(r.delivered_qty) for r in frappe.get_all("Stock Reservation Entry",
-			filters={"voucher_detail_no": so_detail, "docstatus": 1}, fields=["reserved_qty", "delivered_qty"]))
-		rest = flt(soi.qty) - flt(soi.delivered_qty) - flt(soi.returned_qty) - out_qty(so_detail)
-		if not cint(soi.reserve_stock) or held > EPSILON or rest <= EPSILON:
+		if not cint(soi.reserve_stock) or out_qty(so_detail) > EPSILON:
 			continue
+		rest = in_store_qty(so_detail, dn.name) if other_notes_only else \
+			flt(soi.qty) - flt(soi.delivered_qty) - flt(soi.returned_qty)
+		if rest <= EPSILON:
+			continue
+		# Still held per item (a split order's other note keeps its reservation): only the gap is added.
+		held: dict[str, float] = defaultdict(float)
+		for r in frappe.get_all("Stock Reservation Entry", filters={"voucher_detail_no": so_detail, "docstatus": 1},
+				fields=["item_code", "reserved_qty", "delivered_qty"]):
+			held[r.item_code] += flt(r.reserved_qty) - flt(r.delivered_qty)
 		packed = frappe.get_all("Packed Item", filters={"parenttype": "Sales Order", "parent_detail_docname": so_detail},
 			fields=["item_code", "qty"])
 		for p in packed:
-			later[(so_detail, p.item_code, True)] += flt(p.qty) * rest / flt(soi.qty)
+			gap = flt(p.qty) * rest / flt(soi.qty) - held[p.item_code]
+			if gap > EPSILON:
+				later[(so_detail, p.item_code, True)] += gap
 		if not packed:
-			later[(so_detail, soi.item_code, False)] += rest * (flt(soi.conversion_factor) or 1)
+			gap = rest * (flt(soi.conversion_factor) or 1) - held[soi.item_code]
+			if gap > EPSILON:
+				later[(so_detail, soi.item_code, False)] += gap
 	if later:
 		reservation.reserve_again(sales_order_of(dn), warehouse, later)
+
+
+def in_store_qty(so_detail: str, except_note: str | None = None) -> float:
+	"""Quantity of an order line on draft notes still in the store (a split order's other parts)."""
+	return flt(frappe.db.sql(
+		"""select ifnull(sum(dni.qty), 0) from `tabDelivery Note Item` dni
+		join `tabDelivery Note` dn on dn.name = dni.parent
+		where dn.docstatus = 0 and dn.is_return = 0 and ifnull(dn.dm_delivery_status, '') = ''
+		and dni.so_detail = %s and dn.name != %s""",
+		(so_detail, except_note or ""),
+	)[0][0])
 
 
 def _address(dn) -> str:
@@ -470,8 +497,7 @@ def _back_in_store(dn, main: str, reserve_again: bool) -> None:
 	_set_rows(dn, main, None)
 	dn.dm_delivery_status = None
 	_save(dn)
-	if reserve_again:
-		reserve_rest(dn, main)
+	reserve_rest(dn, main, other_notes_only=not reserve_again)
 
 
 def _keep_or_remove(doc, dn) -> None:
