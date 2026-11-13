@@ -360,13 +360,13 @@
    "fieldname": "commission_rule_note",
    "fieldtype": "HTML",
    "label": "Commission Rule",
-   "options": "<div class='text-muted small'><p><b>Commission %</b> = Min + (Small items sold ÷ Small Items Target) × (Max − Min), at most Max. With no target, it is Max.</p><p><b>Commission</b> = Sales × Commission % × (75% + 25% × the salesman's latest Sales Evaluation score in the period). With no evaluation, the 25% part is 0.</p></div>"
+   "options": "<div class='text-muted small'><p><b>Commission %</b> = Min + (Small items sold ÷ Small Items Target) × (Max − Min), at most Max. With no target, it is Max.</p><p><b>Commission</b> = Sales × Commission % × (75% + 25% × the salesman's latest Sales Evaluation overlapping the period, or else their latest one). With no evaluation at all, the 25% part is 0.</p></div>"
   }
  ],
  "index_web_pages_for_search": 0,
  "issingle": 1,
  "links": [],
- "modified": "2026-11-11 12:00:00.000000",
+ "modified": "2026-11-13 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Delivery Management",
  "name": "Delivery Settings",

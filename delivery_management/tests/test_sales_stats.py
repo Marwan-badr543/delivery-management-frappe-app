@@ -11,7 +11,7 @@ from delivery_management.api import sales_stats as api
 from delivery_management.delivery_management.doctype.sales_evaluation.sales_evaluation import CRITERIA
 from delivery_management.orders import payments, service
 from delivery_management.stats import sales, units
-from delivery_management.tests.fixtures import item
+from delivery_management.tests.fixtures import item, item_group
 from delivery_management.tests.test_orders import DATA, OrdersTestCase
 
 SECOND = "_dm_salesman@example.com"
@@ -83,7 +83,8 @@ class SalesStatsCase(OrdersTestCase):
 
 	def invoices(self, result, user=None, **kw):
 		f = result["filters"]
-		return sales.invoices(f["from_date"], f["to_date"], f["company"], user or f["user"], page_len=None, **kw)["invoices"]
+		return sales.invoices(f["from_date"], f["to_date"], f["company"], user or f["user"], page_len=None,
+			pos_profile=f.get("pos_profile"), **kw)["invoices"]
 
 	def names(self, result, user=None):
 		return sorted(i["name"] for i in self.invoices(result, user))
@@ -266,6 +267,17 @@ class TestSalesStatistics(SalesStatsCase):
 			self.assertEqual([r for r in result["rows"] if r["invoices"] or r["returns"]], [])
 
 
+	def test_pos_profile_filter(self):
+		mine = self.sell([(self.w.tv, 1, 100)], owner=SECOND)
+		self.assertEqual(frappe.db.get_value("Sales Invoice", mine, "pos_profile"), self.w.pos_profile)
+		through = sales.compute(self.today, self.today, self.company, pos_profile=self.w.pos_profile)
+		self.assertIn(mine, self.names(through))
+		self.assertEqual(through["filters"]["pos_profile"], self.w.pos_profile)
+		other = sales.compute(self.today, self.today, self.company, pos_profile="_DM no such profile")
+		self.assertEqual(other["rows"], [])  # salesmen with a target are not listed under a profile
+		self.assertEqual(self.names(other), [])
+
+
 class TestSalesStatisticsApi(SalesStatsCase):
 	def test_every_run_is_fresh(self):
 		first = api.start(str(self.today), str(self.today), self.company)
@@ -359,6 +371,15 @@ class TestSalesTargetsAndCommission(SalesStatsCase):
 		newer = self.evaluate(8, self.today, add_days(self.today, 10))
 		self.assertEqual(self.row(self.stats(), SECOND)["evaluation"]["name"], newer.name)
 
+	def test_latest_evaluation_when_none_overlaps(self):
+		self.sell([(self.w.pipe, 1, 10)], owner=SECOND)
+		self.assertIsNone(self.row(self.stats(), SECOND)["evaluation"])  # none at all
+		self.evaluate(4, add_days(self.today, -90), add_days(self.today, -60))
+		last = self.evaluate(6, add_days(self.today, -40), add_days(self.today, -20))
+		ev = self.row(self.stats(), SECOND)["evaluation"]
+		self.assertEqual((ev["name"], ev["overlaps"], ev["score"]), (last.name, False, flt(last.score)))
+		self.assertTrue(self.row(self.stats(), SECOND)["commission"]["total"]["evaluation"] > 0)
+
 	def test_salesman_with_a_target_is_listed_before_any_sale(self):
 		row = self.row(self.stats(), SECOND)
 		self.assertEqual((row["invoices"], row["total"], row["commission"]["total"]["amount"]), (0, 0.0, 0.0))
@@ -423,18 +444,11 @@ class TestLineUnits(SalesStatsCase):
 		self.assertEqual(self.row(self.stats(), SECOND)["small_units"], 0)
 
 
-def item_group(name, parent="All Item Groups"):
-	if not frappe.db.exists("Item Group", name):
-		frappe.get_doc({"doctype": "Item Group", "item_group_name": name, "parent_item_group": parent,
-			"is_group": 1}).insert(ignore_permissions=True)
-	return name
-
-
 class TestServices(SalesStatsCase):
 	def setUp(self):
 		super().setUp()
 		# The fee sits in a group under the Service Item Group: its children count too.
-		root = item_group("_DM Services")
+		root = item_group("_DM Services", is_group=1)
 		frappe.db.set_value("Item", self.w.service, "item_group", item_group("_DM Fees", root))
 		frappe.get_doc({"doctype": "Delivery Service Item Group", "parent": "Delivery Settings",
 			"parenttype": "Delivery Settings", "parentfield": "service_item_groups", "item_group": root}).db_insert()
@@ -466,3 +480,48 @@ class TestServices(SalesStatsCase):
 		frappe.db.delete("Delivery Service Item Group", {"parent": "Delivery Settings"})
 		self.sell([(self.w.tv, 1, 100), (self.w.service, 1, 5)])
 		self.assertEqual(self.row(self.stats(), "Administrator")["total"], 105.0)
+
+	def vat(self, rate):
+		account = frappe.db.get_value("Account", {"company": self.company, "account_type": "Tax", "is_group": 0})
+		if not account:
+			parent = frappe.db.get_value("Account", {"company": self.company, "root_type": "Liability", "is_group": 1})
+			account = frappe.get_doc({"doctype": "Account", "account_name": "_DM VAT", "parent_account": parent,
+				"company": self.company, "account_type": "Tax"}).insert(ignore_permissions=True).name
+		return [{"charge_type": "On Net Total", "account_head": account, "description": "VAT", "rate": rate}]
+
+	def test_service_takes_its_share_of_vat(self):
+		# 10% VAT: TV 100 + fee 10 = Net 110, Total 121. The fee with VAT is 10 × 121 ÷ 110 = 11.
+		# A desk invoice paid by a Payment Entry: the test POS Profile has no tax template.
+		from erpnext.accounts.doctype.payment_entry.payment_entry import get_payment_entry
+
+		doc = frappe.get_doc({"doctype": "Sales Invoice", "company": self.company, "customer": self.w.customer,
+			"update_stock": 0, "taxes": self.vat(10),
+			"items": [{"item_code": code, "qty": 1, "rate": rate, "price_list_rate": rate}
+				for code, rate in ((self.w.tv, 100), (self.w.service, 10))]}).insert()
+		doc.submit()
+		pe = get_payment_entry("Sales Invoice", doc.name)
+		pe.reference_no, pe.reference_date = "DM-VAT", nowdate()
+		pe.insert()
+		pe.submit()
+		name = doc.name
+		self.set_owner(name, "Administrator")
+		self.assertEqual(frappe.db.get_value("Sales Invoice", name, "base_grand_total"), 121)
+		row = self.row(self.stats(), "Administrator")
+		self.assertEqual((row["total"], row["net_total"], row["services"]), (110.0, 100.0, 11.0))
+		row = self.row(sales.compute(self.today, self.today, self.company, exclude_services=False), "Administrator")
+		self.assertEqual((row["total"], row["net_total"]), (121.0, 110.0))
+
+	def bundle(self, code, group, parts):
+		item(code, group, stock=0)
+		if not frappe.db.exists("Product Bundle", code):
+			frappe.get_doc({"doctype": "Product Bundle", "new_item_code": code,
+				"items": [{"item_code": c, "qty": q} for c, q in parts]}).insert()
+		return code
+
+	def test_bundle_is_classed_by_its_own_group(self):
+		# A bundle line is one priced line: its own Item Group decides, not its contents.
+		goods = self.bundle("_DM Pipe Kit", "_DM Goods", [(self.w.pipe, 1), (self.w.service, 1)])
+		fees = self.bundle("_DM Fee Kit", "_DM Fees", [(self.w.pipe, 1), (self.w.service, 1)])
+		self.sell([(goods, 1, 20), (fees, 1, 30)])
+		row = self.row(self.stats(), "Administrator")
+		self.assertEqual((row["total"], row["services"]), (20.0, 30.0))

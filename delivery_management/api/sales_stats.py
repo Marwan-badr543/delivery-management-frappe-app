@@ -28,7 +28,7 @@ def _is_manager() -> bool:
 	return frappe.session.user == "Administrator" or "System Manager" in frappe.get_roles()
 
 
-def _filters(from_date, to_date, company=None, user=None, exclude_services=1) -> dict:
+def _filters(from_date, to_date, company=None, user=None, exclude_services=1, pos_profile=None) -> dict:
 	frappe.only_for(PAGE_ROLES)
 	if not from_date or not to_date:
 		frappe.throw(_("Choose the From and To dates."))
@@ -42,7 +42,7 @@ def _filters(from_date, to_date, company=None, user=None, exclude_services=1) ->
 	if not _is_manager():
 		user = frappe.session.user  # salesmen see only their own numbers
 	return {"from_date": str(getdate(from_date)), "to_date": str(getdate(to_date)), "company": company,
-		"user": user or None, "exclude_services": bool(cint(exclude_services))}
+		"user": user or None, "exclude_services": bool(cint(exclude_services)), "pos_profile": pos_profile or None}
 
 
 def _redis_key(run_id: str) -> str:
@@ -70,9 +70,9 @@ def get_setup():
 
 
 @frappe.whitelist()
-def start(from_date, to_date, company=None, user=None, exclude_services=1):
+def start(from_date, to_date, company=None, user=None, exclude_services=1, pos_profile=None):
 	"""Queue a fresh calculation. Returns ``{key, status[, result]}``."""
-	filters = _filters(from_date, to_date, company, user, exclude_services)
+	filters = _filters(from_date, to_date, company, user, exclude_services, pos_profile)
 	run_id = frappe.generate_hash(length=20)
 	_set(run_id, {"status": "queued", "requested_by": frappe.session.user})
 	frappe.enqueue(
@@ -88,12 +88,13 @@ def start(from_date, to_date, company=None, user=None, exclude_services=1):
 
 
 @frappe.whitelist()
-def get_invoices(from_date, to_date, company=None, user=None, search=None, page=0, all_pages=0, exclude_services=1):
+def get_invoices(from_date, to_date, company=None, user=None, search=None, page=0, all_pages=0, exclude_services=1,
+		pos_profile=None):
 	"""One page of the invoices counted for these filters (``all_pages=1``: every one, for the CSV)."""
-	filters = _filters(from_date, to_date, company, user, exclude_services)
+	filters = _filters(from_date, to_date, company, user, exclude_services, pos_profile)
 	return sales.invoices(filters["from_date"], filters["to_date"], filters["company"], filters["user"],
 		search=search, page=page, page_len=None if cint(all_pages) else sales.INVOICES_PER_PAGE,
-		exclude_services=filters["exclude_services"])
+		exclude_services=filters["exclude_services"], pos_profile=filters["pos_profile"])
 
 
 @frappe.whitelist()
@@ -109,7 +110,7 @@ def run_job(run_id: str, filters: dict, requested_by: str):
 	_set(run_id, {"status": "running", "requested_by": requested_by})
 	try:
 		result = sales.compute(filters["from_date"], filters["to_date"], filters["company"], filters.get("user"),
-			filters.get("exclude_services", True))
+			filters.get("exclude_services", True), filters.get("pos_profile"))
 		_set(run_id, {"status": "done", "result": result, "requested_by": requested_by})
 	except Exception:
 		frappe.log_error(title="Sales Statistics failed")

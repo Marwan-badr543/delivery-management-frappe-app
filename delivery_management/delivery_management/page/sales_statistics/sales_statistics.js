@@ -94,6 +94,8 @@ class SalesStatisticsPage {
 		}
 		this.company = make({ fieldtype: "Link", options: "Company", label: __("Company"), fieldname: "company",
 			default: this.setup.company });
+		this.pos_profile = make({ fieldtype: "Link", options: "POS Profile", label: __("POS Profile"), fieldname: "pos_profile",
+			placeholder: __("All POS Profiles") });
 		this.exclude_services = make({ fieldtype: "Check", label: __("Exclude services"), fieldname: "exclude_services",
 			default: 1,
 			change: () => this.result && this.run() });
@@ -135,6 +137,7 @@ class SalesStatisticsPage {
 			company: this.company.get_value(),
 			user: this.user ? this.user.get_value() : null,
 			exclude_services: this.exclude_services.get_value() ? 1 : 0,
+			pos_profile: this.pos_profile.get_value() || null,
 		};
 	}
 
@@ -270,7 +273,7 @@ class SalesStatisticsPage {
 		const ev = row.evaluation;
 		if (ev) {
 			return `<a class="ss-eval" href="${frappe.utils.get_form_link("Sales Evaluation", ev.name)}" target="_blank"
-				title="${__("{0} to {1}", [frappe.datetime.str_to_user(ev.from_date), frappe.datetime.str_to_user(ev.to_date)])}">${this.pct(ev.score)}</a>`;
+				title="${__("{0} to {1}", [frappe.datetime.str_to_user(ev.from_date), frappe.datetime.str_to_user(ev.to_date)])}${ev.overlaps ? "" : " · " + __("latest evaluation, outside this period")}">${this.pct(ev.score)}${ev.overlaps ? "" : "*"}</a>`;
 		}
 		return this.setup.can_evaluate
 			? `<button type="button" class="btn btn-xs btn-default ss-evaluate">${__("Evaluate")}</button>`
@@ -418,8 +421,10 @@ class SalesStatisticsPage {
 				${step(3, __("Sales part (75%)"), __("{0} × {1} × 75%", [sales, this.pct(r.commission_percent)]), this.money(c.items))}
 				${step(4, __("Evaluation part (25%)"), ev
 					? __("{0} × {1} × 25% × score {2}", [sales, this.pct(r.commission_percent), this.pct(ev.score)]) +
-						` · <a href="${frappe.utils.get_form_link("Sales Evaluation", ev.name)}" target="_blank">${esc(ev.name)}</a>`
-					: __("No Sales Evaluation overlaps this period, so this part is 0."), this.money(c.evaluation), ev ? "" : "ss-step-missing")}
+						` · <a href="${frappe.utils.get_form_link("Sales Evaluation", ev.name)}" target="_blank">${esc(ev.name)}</a>` +
+						(ev.overlaps ? "" : ` · ${__("none in this period: the latest one ({0} to {1}) is used", [
+							frappe.datetime.str_to_user(ev.from_date), frappe.datetime.str_to_user(ev.to_date)])}`)
+					: __("This salesman has no Sales Evaluation, so this part is 0."), this.money(c.evaluation), ev ? "" : "ss-step-missing")}
 				${step("=", __("Commission"), __("Sales part + evaluation part"), this.money(c.amount), "ss-step-total")}
 			</ol>`);
 		$b.find(".ss-close").on("click", () => {
@@ -438,6 +443,7 @@ class SalesStatisticsPage {
 	invoice_args(extra = {}) {
 		const f = this.result.filters;
 		return { from_date: f.from_date, to_date: f.to_date, company: f.company, exclude_services: f.exclude_services,
+			pos_profile: f.pos_profile,
 			user: this.invoice_user || f.user, search: this.invoice_search, ...extra };
 	}
 

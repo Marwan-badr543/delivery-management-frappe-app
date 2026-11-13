@@ -28,7 +28,7 @@ Rules (each one is covered by ``tests/test_sales_stats.py``):
 * **Commission** (see ``commission``): the small items sold against the salesman's
   Small Items Target set the commission % between the Min and Max of Delivery
   Settings; 75% of it is paid on the sales, the other 25% times the score of the
-  salesman's latest Sales Evaluation that overlaps the period. Targets are monthly
+  salesman's latest Sales Evaluation that overlaps the period, or else their latest one. Targets are monthly
   and compared as they are, whatever the period.
 
 The salesman totals are grouped in SQL from the same per-invoice query that
@@ -81,9 +81,10 @@ def service_groups() -> tuple[str, ...]:
 		pluck="name"))
 
 
-def _params(from_date, to_date, company, user=None, search=None, exclude_services=True) -> dict:
+def _params(from_date, to_date, company, user=None, search=None, exclude_services=True, pos_profile=None) -> dict:
 	from_date, to_date = getdate(from_date), getdate(to_date)
 	return {
+		"pos_profile": pos_profile or None,
 		"exclude": 1 if exclude_services else 0,
 		"services": service_groups() or ("",),
 		"company": company,
@@ -113,6 +114,7 @@ def _invoice_query(params: dict) -> str:
 		where si.company = %(company)s and si.docstatus = 1
 			and si.creation >= %(start)s and si.creation < %(end)s
 			{f"and {_salesman()} = %(user)s" if params["user"] else ""}
+			{"and si.pos_profile = %(pos_profile)s" if params["pos_profile"] else ""}
 			{search}
 			and {PAID_CONDITION}
 		group by si.name"""
@@ -139,15 +141,19 @@ def commission(amount, percent, score) -> dict:
 
 
 def _latest_evaluations(users: list[str], from_date: str, to_date: str) -> dict:
-	"""Each salesman's latest Sales Evaluation whose dates overlap the period."""
-	rows = frappe.get_all(EVALUATION,
-		filters={"salesman": ["in", users or [""]], "from_date": ["<=", to_date], "to_date": [">=", from_date]},
-		fields=["name", "salesman", "score", "from_date", "to_date"],
-		order_by="to_date desc, modified desc")
+	"""Each salesman's latest Sales Evaluation that overlaps the period; with none, their
+	latest one (``overlaps`` says which)."""
+	rows = frappe.get_all(EVALUATION, filters={"salesman": ["in", users or [""]]},
+		fields=["name", "salesman", "score", "from_date", "to_date"], order_by="to_date desc, modified desc")
+	start, end = getdate(from_date), getdate(to_date)
 	latest = {}
 	for r in rows:
-		latest.setdefault(r.salesman, {"name": r.name, "score": flt(r.score), "from_date": str(r.from_date),
-			"to_date": str(r.to_date)})
+		overlaps = getdate(r.from_date) <= end and getdate(r.to_date) >= start
+		mine = latest.get(r.salesman)
+		if mine and (mine["overlaps"] or not overlaps):
+			continue
+		latest[r.salesman] = {"name": r.name, "score": flt(r.score), "from_date": str(r.from_date),
+			"to_date": str(r.to_date), "overlaps": overlaps}
 	return latest
 
 
@@ -163,9 +169,10 @@ def _targeted_users(user: str | None) -> list[str]:
 # ---------------------------------------------------------------- results
 
 
-def compute(from_date, to_date, company: str, user: str | None = None, exclude_services: bool = True) -> dict:
+def compute(from_date, to_date, company: str, user: str | None = None, exclude_services: bool = True,
+		pos_profile: str | None = None) -> dict:
 	"""Per-salesman totals, targets and commission for the period (one row per salesman)."""
-	params = _params(from_date, to_date, company, user, exclude_services=exclude_services)
+	params = _params(from_date, to_date, company, user, exclude_services=exclude_services, pos_profile=pos_profile)
 	sold = frappe.db.sql(
 		f"""select inv.user, count(*) - sum(inv.is_return) as invoices,
 			sum(inv.is_return = 0 and inv.order_type = 'Order') as orders, sum(inv.is_return) as returns,
@@ -177,7 +184,8 @@ def compute(from_date, to_date, company: str, user: str | None = None, exclude_s
 		as_dict=True,
 	)
 	by_user = {r.user: r for r in sold}
-	for name in _targeted_users(user):
+	# With a POS Profile, only who sold through it.
+	for name in [] if params["pos_profile"] else _targeted_users(user):
 		by_user.setdefault(name, frappe._dict(user=name, **{k: 0 for k in SUM_KEYS}))
 
 	users = list(by_user)
@@ -214,15 +222,16 @@ def compute(from_date, to_date, company: str, user: str | None = None, exclude_s
 		"commission_range": {"min": low, "max": high, "items_share": ITEMS_SHARE},
 		"currency": frappe.get_cached_value("Company", company, "default_currency"),
 		"filters": {"from_date": params["from_date"], "to_date": params["to_date"], "company": company, "user": user,
-			"exclude_services": params["exclude"]},
+			"exclude_services": params["exclude"], "pos_profile": params["pos_profile"]},
 		"generated_at": str(now_datetime()),
 	}
 
 
 def invoices(from_date, to_date, company: str, user: str | None = None, search: str | None = None,
-		page: int = 0, page_len: int | None = INVOICES_PER_PAGE, exclude_services: bool = True) -> dict:
+		page: int = 0, page_len: int | None = INVOICES_PER_PAGE, exclude_services: bool = True,
+		pos_profile: str | None = None) -> dict:
 	"""The counted invoices behind ``compute``, newest first; ``page_len=None`` returns them all."""
-	params = _params(from_date, to_date, company, user, search, exclude_services)
+	params = _params(from_date, to_date, company, user, search, exclude_services, pos_profile)
 	query = _invoice_query(params)
 	count = cint(frappe.db.sql(f"select count(*) from ({query}) inv", params)[0][0])
 	limit = f"limit {cint(page_len)} offset {cint(page) * cint(page_len)}" if page_len else ""
