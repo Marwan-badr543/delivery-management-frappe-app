@@ -138,6 +138,7 @@ jinja = {
 
 doc_events = {
 	"Sales Order": {
+		"before_validate": "delivery_management.orders.taxes.apply_default",
 		"validate": "delivery_management.orders.sales_order.validate",
 		"before_submit": "delivery_management.orders.sales_order.before_submit",
 		# Replaces the server script "Delivery Note From Sales Order".
@@ -153,7 +154,10 @@ doc_events = {
 		"on_trash": "delivery_management.orders.events.on_sales_order_trash",
 	},
 	"Delivery Note": {
-		"before_validate": "delivery_management.orders.serial_choice.keep_scanned",
+		"before_validate": [
+			"delivery_management.orders.taxes.apply_default",
+			"delivery_management.orders.serial_choice.keep_scanned",
+		],
 		"before_insert": [
 			"delivery_management.orders.events.inherit_header_from_sales_order",
 			"delivery_management.drivers.delivery_note.before_insert",
@@ -163,6 +167,7 @@ doc_events = {
 			"delivery_management.transit.service.check_locked",
 			"delivery_management.drivers.delivery_note.validate",
 			"delivery_management.orders.serial_choice.restore_scanned",
+			"delivery_management.drivers.delivery_note.set_work_date",  # last: the order type is set above
 		],
 		"before_submit": [
 			"delivery_management.drivers.delivery_note.before_submit",
@@ -201,12 +206,20 @@ doc_events = {
 		],
 	},
 	"Sales Invoice": {
+		"before_validate": "delivery_management.orders.taxes.apply_default",
+		"before_submit": "delivery_management.stats.sales.set_salesman",
 		"validate": [
 			"delivery_management.orders.serial_choice.apply_to_packed_items",
 			"delivery_management.stats.units.set_line_units",
 		],
 		"on_submit": "delivery_management.control.log.on_invoice_submit",
 		"on_cancel": "delivery_management.control.log.on_invoice_cancel",
+	},
+	"User": {
+		"validate": "delivery_management.stats.rules.validate_user_rules",
+	},
+	"Branch": {
+		"validate": "delivery_management.stats.branches.validate_branch",
 	},
 	"Issue": {
 		# A pickup slot booked for a support ticket is freed with it.

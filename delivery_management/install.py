@@ -66,6 +66,9 @@ def _delivery_note_fields() -> list[dict]:
 			"description": "On the way when the stock keeper sends its goods out (Stock Keeper page; the note stays a "
 				"draft), Delivered when the driver submits it at the customer, Returned when the whole order comes "
 				"back (customer not found) until the stock keeper receives it."},
+		{"fieldname": "dm_work_date", "fieldtype": "Date", "label": "Work Date", "insert_after": "dm_delivery_status",
+			"read_only": 1, "no_copy": 1, "hidden": 1, "search_index": 1,
+			"description": "AC installation date (AC) or delivery date: kept for searching."},
 		{"fieldname": "dm_split_from", "fieldtype": "Link", "label": "Split From", "options": "Delivery Note",
 			"insert_after": "dm_delivery_status", "read_only": 1, "no_copy": 1, "depends_on": "dm_split_from",
 			"search_index": 1,
@@ -82,18 +85,20 @@ def _delivery_note_fields() -> list[dict]:
 
 
 def _issue_fields() -> list[dict]:
-	"""Support ticket fields on Issue (customer_support/tickets.py). Set from the Support
+	"""Support ticket fields on Issue (customer_support/flow.py). Set from the Support
 	pages, so read-only here."""
 	ro = {"read_only": 1, "no_copy": 1}
 	return [
 		{"fieldname": "sm_stage", "fieldtype": "Select", "label": "Support Stage", "insert_after": "status",
-			"options": "\nCustomer Service\nTechnician\nMaintenance Technician", "in_list_view": 1,
-			"in_standard_filter": 1, "search_index": 1, "bold": 1, **ro,
-			"description": "Moved on the <a href='/desk/support-tickets'>Support Tickets</a> pages."},
+			"options": "\nCustomer Service\nTechnician\nMaintenance Technician", "in_standard_filter": 1,
+			"search_index": 1, **ro, "description": "Moved on the <a href='/desk/support-tickets'>Support Tickets</a> pages."},
+		{"fieldname": "sm_step", "fieldtype": "Select", "label": "Support Step", "insert_after": "sm_stage",
+			"options": "\nCustomer Service\nPickup\nTo Workshop\nUnder Repair\nReady for Return\nReturn\nOut for Return\nBack to Store\nClosed",
+			"in_list_view": 1, "in_standard_filter": 1, "search_index": 1, "bold": 1, **ro},
 		{"fieldname": "sm_section", "fieldtype": "Section Break", "label": "Support Ticket", "insert_after": "description",
 			"collapsible": 0, "depends_on": "sm_stage"},
 		{"fieldname": "sm_customer_phone", "fieldtype": "Data", "options": "Phone", "label": "Customer Phone",
-			"insert_after": "sm_section", "in_standard_filter": 1, **ro},
+			"insert_after": "sm_section", "in_standard_filter": 1, "search_index": 1, **ro},
 		{"fieldname": "sm_sales_invoice", "fieldtype": "Link", "options": "Sales Invoice", "label": "Sales Invoice",
 			"insert_after": "sm_customer_phone", **ro},
 		{"fieldname": "sm_delivery_note", "fieldtype": "Link", "options": "Delivery Note", "label": "Delivery Note",
@@ -101,39 +106,68 @@ def _issue_fields() -> list[dict]:
 		{"fieldname": "sm_item_code", "fieldtype": "Link", "options": "Item", "label": "Item", "insert_after": "sm_delivery_note", **ro},
 		{"fieldname": "sm_serial_no", "fieldtype": "Link", "options": "Serial No", "label": "Serial No",
 			"insert_after": "sm_item_code", **ro},
-		{"fieldname": "sm_column_1", "fieldtype": "Column Break", "insert_after": "sm_serial_no"},
-		{"fieldname": "sm_address", "fieldtype": "Small Text", "label": "Visit Address", "insert_after": "sm_column_1", **ro},
-		{"fieldname": "sm_visit_datetime", "fieldtype": "Datetime", "label": "Visit Date and Time",
-			"insert_after": "sm_address", "in_list_view": 1, **ro},
+		{"fieldname": "sm_warranty_expiry", "fieldtype": "Date", "label": "Warranty Until", "insert_after": "sm_serial_no", **ro,
+			"description": "The serial's warranty expiry, else the invoice date + the item's warranty period."},
+		{"fieldname": "sm_warehouse", "fieldtype": "Link", "options": "Warehouse", "label": "Item Is In",
+			"insert_after": "sm_warranty_expiry", **ro},
+		{"fieldname": "sm_column_1", "fieldtype": "Column Break", "insert_after": "sm_warehouse"},
+		{"fieldname": "sm_area", "fieldtype": "Link", "options": "Delivery Area", "label": "Area", "insert_after": "sm_column_1", **ro},
+		{"fieldname": "sm_block_no", "fieldtype": "Data", "label": "Block", "insert_after": "sm_area", **ro},
+		{"fieldname": "sm_road_no", "fieldtype": "Data", "label": "Road", "insert_after": "sm_block_no", **ro},
+		{"fieldname": "sm_building_no", "fieldtype": "Data", "label": "Building", "insert_after": "sm_road_no", **ro},
+		{"fieldname": "sm_address", "fieldtype": "Small Text", "label": "Full Address", "insert_after": "sm_building_no", **ro},
+		{"fieldname": "sm_column_2", "fieldtype": "Column Break", "insert_after": "sm_address"},
+		{"fieldname": "sm_trip_date", "fieldtype": "Date", "label": "Trip Date", "insert_after": "sm_column_2",
+			"in_list_view": 1, "search_index": 1, **ro},
+		{"fieldname": "sm_trip_time", "fieldtype": "Time", "label": "Trip Time", "insert_after": "sm_trip_date", **ro},
+		{"fieldname": "sm_driver", "fieldtype": "Link", "options": "User", "label": "Trip Technician",
+			"insert_after": "sm_trip_time", "in_standard_filter": 1, "search_index": 1, **ro},
 		{"fieldname": "sm_cs_user", "fieldtype": "Link", "options": "User", "label": "Customer Service",
-			"insert_after": "sm_visit_datetime", "in_standard_filter": 1, "search_index": 1, **ro},
-		{"fieldname": "sm_technician", "fieldtype": "Link", "options": "User", "label": "Technician",
-			"insert_after": "sm_cs_user", "in_standard_filter": 1, "search_index": 1, **ro},
-		{"fieldname": "sm_maint_technician", "fieldtype": "Link", "options": "User", "label": "Maintenance Technician",
-			"insert_after": "sm_technician", "in_standard_filter": 1, "search_index": 1, **ro},
+			"insert_after": "sm_driver", "in_standard_filter": 1, "search_index": 1, **ro},
+		{"fieldname": "sm_technician", "fieldtype": "Link", "options": "User", "label": "Pickup Technician",
+			"insert_after": "sm_cs_user", "search_index": 1, **ro},
 		{"fieldname": "sm_reports_section", "fieldtype": "Section Break", "label": "Support Reports",
-			"insert_after": "sm_maint_technician", "depends_on": "sm_stage"},
+			"insert_after": "sm_technician", "depends_on": "sm_stage"},
 		{"fieldname": "sm_cs_report", "fieldtype": "Small Text", "label": "Customer Service Report",
 			"insert_after": "sm_reports_section", **ro},
 		{"fieldname": "sm_tech_visits", "fieldtype": "Table", "options": "Support Technician Visit",
 			"label": "Technician Visits", "insert_after": "sm_cs_report", **ro},
-		{"fieldname": "sm_maint_report", "fieldtype": "Small Text", "label": "Maintenance Technician Report",
+		{"fieldname": "sm_maint_report", "fieldtype": "Small Text", "label": "Workshop Report",
 			"insert_after": "sm_tech_visits", **ro},
-		{"fieldname": "sm_maint_report_by", "fieldtype": "Link", "options": "User", "label": "Maintenance Report By",
-			"insert_after": "sm_maint_report", **ro},
-		{"fieldname": "sm_pickup_section", "fieldtype": "Section Break", "label": "Workshop Pickup",
-			"insert_after": "sm_maint_report_by", "depends_on": "sm_pickup_date", "collapsible": 1},
-		{"fieldname": "sm_pickup_area", "fieldtype": "Link", "options": "Delivery Area", "label": "Pickup Area",
-			"insert_after": "sm_pickup_section", **ro},
-		{"fieldname": "sm_pickup_date", "fieldtype": "Date", "label": "Pickup Date", "insert_after": "sm_pickup_area", **ro},
-		{"fieldname": "sm_pickup_time", "fieldtype": "Time", "label": "Pickup Time", "insert_after": "sm_pickup_date", **ro},
+		{"fieldname": "sm_repair_result", "fieldtype": "Select", "label": "Repair Result",
+			"options": "\nRepaired\nNot repairable", "insert_after": "sm_maint_report", **ro},
+		{"fieldname": "sm_maint_report_by", "fieldtype": "Link", "options": "User", "label": "Workshop Report By",
+			"insert_after": "sm_repair_result", **ro},
 		{"fieldname": "sm_resolved_by", "fieldtype": "Link", "options": "User", "label": "Resolved By",
-			"insert_after": "sm_pickup_time", **ro},
+			"insert_after": "sm_maint_report_by", **ro},
+		{"fieldname": "sm_last_note", "fieldtype": "Small Text", "label": "Last Note",
+			"insert_after": "sm_resolved_by", **ro},
+		{"fieldname": "sm_not_home_count", "fieldtype": "Int", "label": "Customer Not Home (times)",
+			"insert_after": "sm_last_note", **ro},
 	]
+
+
+OLD_ISSUE_FIELDS = ("sm_visit_datetime", "sm_maint_technician", "sm_pickup_section", "sm_pickup_area", "sm_pickup_date",
+	"sm_pickup_time")
+
+
+def remove_old_support_fields():
+	"""Fields of the old support flow (visit time, maintenance technician, pickup slot)."""
+	for fieldname in OLD_ISSUE_FIELDS:
+		name = frappe.db.get_value("Custom Field", {"dt": "Issue", "fieldname": fieldname})
+		if name:
+			frappe.delete_doc("Custom Field", name, ignore_permissions=True, force=True)
 
 
 def get_custom_fields() -> dict:
 	return {
+		"Branch": [
+			{"fieldname": "dm_sales_target", "fieldtype": "Currency", "label": "Sales Target", "insert_after": "branch",
+				"description": "Monthly sales this branch should reach (Sales Statistics)."},
+			{"fieldname": "dm_pos_profiles", "fieldtype": "Table MultiSelect", "label": "POS Profiles",
+				"options": "Branch POS Profile", "insert_after": "dm_sales_target",
+				"description": "Sales made through these POS Profiles count for this branch. A POS Profile belongs to one branch only."},
+		],
 		"Issue": _issue_fields(),
 		"Item": [
 			{"fieldname": "dm_has_delivery_charge", "fieldtype": "Check", "label": "Has Delivery Charge",
@@ -163,12 +197,13 @@ def get_custom_fields() -> dict:
 			{"fieldname": "dm_ac_unit_cost", "fieldtype": "Currency", "label": "AC Unit Installation Cost",
 				"insert_after": "mobile_no", "permlevel": 1, "non_negative": 1,
 				"description": "Paid to this AC Tech for each AC unit installed (Installation Statistics)."},
-			{"fieldname": "dm_sales_target", "fieldtype": "Currency", "label": "Sales Target",
-				"insert_after": "dm_ac_unit_cost", "permlevel": 1, "non_negative": 1,
-				"description": "The amount this salesman should sell in a month (Sales Statistics)."},
-			{"fieldname": "dm_small_items_target", "fieldtype": "Int", "label": "Small Items Target",
-				"insert_after": "dm_sales_target", "permlevel": 1, "non_negative": 1,
-				"description": "How many Small Items this salesman should sell in a month. It sets their commission %."},
+			{"fieldname": "dm_commission_section", "fieldtype": "Section Break", "label": "Sales Commission",
+				"insert_after": "dm_ac_unit_cost", "permlevel": 1},
+			{"fieldname": "dm_commission_rules", "fieldtype": "Table", "label": "Commission Rules",
+				"options": "Sales Commission Rule", "insert_after": "dm_commission_section", "permlevel": 1,
+				"description": "One row per month: targets and the commission range of that month. A month without "
+					"a row uses the closest one, so one row is enough until something changes (Sales Statistics, "
+					"Sales Commission Payment)."},
 		],
 		"Address": [
 			{"fieldname": "dm_delivery_area", "fieldtype": "Link", "label": "Delivery Area",
@@ -186,6 +221,12 @@ def get_custom_fields() -> dict:
 		# On the Details tab, just above the items.
 		"Sales Order": _delivery_fields("ignore_pricing_rule", editable=True),
 		"Sales Invoice": _delivery_fields("ignore_pricing_rule", editable=False) + [
+			# Sales commission (stats/sales.py): who made the sale, and the payment that paid its commission.
+			{"fieldname": "dm_salesman", "fieldtype": "Link", "label": "Salesman", "options": "User",
+				"insert_after": "dm_ac_tech", "hidden": 1, "read_only": 1, "no_copy": 1, "allow_on_submit": 1},
+			{"fieldname": "dm_commission_payment", "fieldtype": "Link", "label": "Commission Payment",
+				"options": "Sales Commission Payment", "insert_after": "dm_salesman", "hidden": 1, "read_only": 1,
+				"no_copy": 1, "allow_on_submit": 1},
 			# Set when the order's AC Delivery Note is assigned (drivers/assignment.py), printed on the invoice.
 			{"fieldname": "dm_ac_tech", "fieldtype": "Link", "label": "AC Tech", "options": "User",
 				"insert_after": "dm_ac_units", "read_only": 1, "allow_on_submit": 1, "no_copy": 1,
@@ -264,6 +305,11 @@ def ensure_indexes():
 	if frappe.db.has_index("tabSales Invoice", "dm_creation_index"):
 		frappe.db.sql_ddl("alter table `tabSales Invoice` drop index `dm_creation_index`")
 	frappe.db.add_index("Sales Invoice", ["company", "docstatus", "creation"], index_name="dm_sales_stats_index")
+	# Sales Commission Payment: a salesman's invoices whose commission is not paid yet.
+	frappe.db.add_index("Sales Invoice", ["dm_salesman", "dm_commission_payment", "creation"],
+		index_name="dm_commission_index")
+	# Driver Assignment / Schedule, Stock Keeper and Installation Statistics: one type, one state, by day.
+	frappe.db.add_index("Delivery Note", ["dm_delivery_type", "docstatus", "dm_work_date"], index_name="dm_type_work_date_index")
 
 
 DRIVER_ROLES = ("AC Tech", "TV Driver")
@@ -324,6 +370,16 @@ def ensure_drivers_cash_account():
 	ensure_accounts()
 
 
+def remove_old_commission_fields():
+	"""Targets and the commission range moved to the User's Commission Rules."""
+	for field in ("dm_sales_target", "dm_small_items_target"):
+		name = frappe.db.get_value("Custom Field", {"dt": "User", "fieldname": field})
+		if name:
+			frappe.delete_doc("Custom Field", name, ignore_permissions=True)
+	frappe.db.delete("Singles", {"doctype": "Delivery Settings",
+		"field": ["in", ["commission_min_percent", "commission_max_percent"]]})
+
+
 def after_migrate():
 	ensure_role()
 	ensure_driver_roles()
@@ -333,5 +389,7 @@ def after_migrate():
 	ensure_returns_not_reserved()
 	ensure_ac_installation_account()
 	ensure_drivers_cash_account()
+	remove_old_commission_fields()
+	remove_old_support_fields()
 	ensure_delivery_note_print_format()
 	ensure_indexes()

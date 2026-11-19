@@ -1,0 +1,143 @@
+{
+ "actions": [],
+ "creation": "2026-11-16 12:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "month",
+  "late",
+  "invoices",
+  "unpaid_sales",
+  "month_sales",
+  "month_small_units",
+  "column_break_r",
+  "rule_month",
+  "sales_target",
+  "small_items_target",
+  "min_percent",
+  "max_percent",
+  "percent",
+  "evaluation",
+  "score",
+  "commission"
+ ],
+ "fields": [
+  {
+   "fieldname": "month",
+   "fieldtype": "Date",
+   "label": "Month",
+   "in_list_view": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "late",
+   "fieldtype": "Check",
+   "label": "Late",
+   "in_list_view": 1,
+   "read_only": 1,
+   "description": "Before the From Month: sales paid by the customer after that month was paid."
+  },
+  {
+   "fieldname": "invoices",
+   "fieldtype": "Int",
+   "label": "Invoices Paid",
+   "read_only": 1
+  },
+  {
+   "fieldname": "unpaid_sales",
+   "fieldtype": "Currency",
+   "label": "Sales Paid Now",
+   "in_list_view": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "month_sales",
+   "fieldtype": "Currency",
+   "label": "Month Sales",
+   "read_only": 1
+  },
+  {
+   "fieldname": "month_small_units",
+   "fieldtype": "Float",
+   "label": "Month Small Items",
+   "in_list_view": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_r",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "rule_month",
+   "fieldtype": "Date",
+   "label": "Rule Of",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sales_target",
+   "fieldtype": "Currency",
+   "label": "Sales Target",
+   "read_only": 1
+  },
+  {
+   "fieldname": "small_items_target",
+   "fieldtype": "Int",
+   "label": "Small Items Target",
+   "read_only": 1
+  },
+  {
+   "fieldname": "min_percent",
+   "fieldtype": "Percent",
+   "label": "Min %",
+   "read_only": 1
+  },
+  {
+   "fieldname": "max_percent",
+   "fieldtype": "Percent",
+   "label": "Max %",
+   "read_only": 1
+  },
+  {
+   "fieldname": "percent",
+   "fieldtype": "Percent",
+   "label": "Commission %",
+   "in_list_view": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "evaluation",
+   "fieldtype": "Link",
+   "label": "Evaluation",
+   "options": "Sales Evaluation",
+   "read_only": 1
+  },
+  {
+   "fieldname": "score",
+   "fieldtype": "Percent",
+   "label": "Evaluation Score",
+   "in_list_view": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "commission",
+   "fieldtype": "Currency",
+   "label": "Commission",
+   "in_list_view": 1,
+   "bold": 1,
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-11-16 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Delivery Management",
+ "name": "Sales Commission Payment Month",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

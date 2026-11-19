@@ -17,6 +17,7 @@ it runs as one background job (``api.dashboard``).
 from __future__ import annotations
 
 import frappe
+from frappe.utils.caching import redis_cache
 from frappe.utils import now_datetime
 
 from delivery_management.slots.settings import get_settings
@@ -26,7 +27,9 @@ ONLINE_TERRITORY = "All Territories"
 TOP = 20
 
 
+@redis_cache(ttl=600)
 def summary() -> dict:
+	"""All-time totals: counted again at most every 10 minutes."""
 	return {
 		"orders": frappe.db.count("Sales Invoice", {"docstatus": ["<", 2]}),
 		"products": frappe.db.count("Item", {"disabled": 0, "is_sales_item": 1}),

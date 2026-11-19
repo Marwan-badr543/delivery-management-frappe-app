@@ -26,9 +26,7 @@ from frappe.utils import flt
 
 from delivery_management.slots.cart import unit_counts
 
-WORK_DATE = """(case when dn.dm_delivery_type = 'AC'
-	then coalesce(dn.dm_ac_installation_date, dn.dm_delivery_date, dn.posting_date)
-	else coalesce(dn.dm_delivery_date, dn.posting_date) end)"""
+WORK_DATE = "dn.dm_work_date"  # kept on the note (drivers.delivery_note.set_work_date), indexed
 
 
 def delivered_notes(start_date=None, end_date=None, technician: str | None = None, order_type: str | None = None,
@@ -36,9 +34,10 @@ def delivered_notes(start_date=None, end_date=None, technician: str | None = Non
 	"""Delivered notes with a driver: name, driver, order type and work date, oldest first."""
 	# Submitted notes still On the way (or that all came back) were not delivered (older notes
 	# have no Delivery Status).
-	conditions = ["dn.docstatus = 1", "ifnull(dn.dm_delivery_status, '') not in ('On the way', 'Returned')",
+	conditions = ["dn.docstatus = 1",
+		"(dn.dm_delivery_status is null or dn.dm_delivery_status not in ('On the way', 'Returned'))",
 		"dn.is_return = 0",
-		"ifnull(dn.dm_driver, '') != ''"]
+		"dn.dm_driver is not null and dn.dm_driver != ''"]
 	if start_date:
 		conditions.append(f"{WORK_DATE} >= %(start)s")
 	if end_date:

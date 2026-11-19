@@ -4,6 +4,7 @@ A POS sale, Invoice or Order, gets one account per TV unit (stock UOM). An item 
 TV when it is one of the TV Items of Delivery Settings, or when its Item Group is one
 of the TV Item Groups (or under one) and it is not an Excluded Item. Desk orders get
 no accounts: only the POS submit (``orders.service``) calls ``add_to_pos_sale``.
+They are made in a background job once the sale is saved (``add_to_pos_sale``).
 
 The accounts live in the external accounts database (table ``lines``), not in ERPNext.
 Usernames continue the member's ``ERP-<n>`` series, which the website orders also use,
@@ -95,6 +96,17 @@ def tv_units(items) -> int:
 
 
 def add_to_pos_sale(invoice: str, sales_order: str | None = None) -> None:
+	"""Queue the TV accounts of a POS sale, made once the sale is saved: the accounts server
+	(up to a 10 s connect timeout and a row lock there) never holds up the POS request.
+	The receipt printed right after the sale does not show them yet: reprint it."""
+	if not get_accounts_db():
+		return
+	frappe.enqueue("delivery_management.orders.tv_accounts.make_for_pos_sale", queue="short",
+		invoice=invoice, sales_order=sales_order, enqueue_after_commit=True,
+		now=frappe.in_test)  # tests run it in the same transaction
+
+
+def make_for_pos_sale(invoice: str, sales_order: str | None = None) -> None:
 	"""Create the accounts for the TV units of a submitted POS sale and append them to
 	the notes of its invoice and order.
 

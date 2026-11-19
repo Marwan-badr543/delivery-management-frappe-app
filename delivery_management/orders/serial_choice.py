@@ -104,17 +104,21 @@ def scan_problem(serial_no, warehouse) -> str | None:
 	return None
 
 
-def free_serials(item_code, warehouse, exclude=()) -> list[str]:
-	"""Serials of the item in the warehouse that nobody holds, oldest first."""
+PICKER_LIMIT = 200  # serials shown to choose from in the POS
+
+
+def free_serials(item_code, warehouse, exclude=(), limit: int = PICKER_LIMIT) -> list[str]:
+	"""Up to ``limit`` serials of the item in the warehouse that nobody holds, oldest first.
+	Only enough rows are read to fill it (not every serial in stock)."""
 	reserved = set(get_sre_reserved_serial_nos_details(item_code, warehouse))
-	return [sn for sn in frappe.get_all("Serial No", filters={"item_code": item_code, "warehouse": warehouse,
-			"status": "Active"}, order_by="creation asc, name asc", pluck="name")
-		if sn not in reserved and sn not in exclude]
+	rows = frappe.get_all("Serial No", filters={"item_code": item_code, "warehouse": warehouse, "status": "Active"},
+		order_by="creation asc, name asc", pluck="name", limit=limit + len(reserved) + len(exclude))
+	return [sn for sn in rows if sn not in reserved and sn not in exclude][:limit]
 
 
 def _free(item_code, warehouse, count, exclude) -> list[str]:
 	"""The ``count`` oldest free serials (see :func:`free_serials`)."""
-	free = free_serials(item_code, warehouse, exclude)
+	free = free_serials(item_code, warehouse, exclude, limit=count)
 	if len(free) < count:
 		frappe.throw(_("Not enough free serials of {0} in {1}.").format(item_code, warehouse))
 	return free[:count]

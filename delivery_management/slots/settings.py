@@ -22,7 +22,7 @@ class SlotSettings:
 	tv_driver_gap_hours_manager: float = 0.5
 	auto_create_delivery_note: bool = True
 	auto_delivery_note_company: str | None = None
-	support_visit_gap_minutes: int = 60
+	support_workshop_warehouse: str | None = None
 	support_maint_service_person: str | None = None
 	tv_items: tuple[str, ...] = ()
 	tv_item_groups: tuple[str, ...] = ()
@@ -46,7 +46,7 @@ def get_settings() -> SlotSettings:
 		tv_driver_gap_hours_manager=_non_negative(doc.get("tv_driver_gap_hours_manager"), 0.5),
 		auto_create_delivery_note=bool(cint(doc.get("auto_create_delivery_note"))),
 		auto_delivery_note_company=doc.get("auto_delivery_note_company") or None,
-		support_visit_gap_minutes=cint(_non_negative(doc.get("support_visit_gap_minutes"), 60)),
+		support_workshop_warehouse=doc.get("support_workshop_warehouse") or None,
 		support_maint_service_person=doc.get("support_maint_service_person") or None,
 		tv_items=tuple(row.item_code for row in (doc.get("tv_items") or [])),
 		tv_item_groups=tuple(row.item_group for row in (doc.get("tv_item_groups") or [])),

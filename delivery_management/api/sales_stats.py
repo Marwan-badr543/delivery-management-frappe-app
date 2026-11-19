@@ -8,13 +8,16 @@ fallback); the stored copy is deleted after an hour and is never served for
 another run. The run holds the per-salesman summary only; the invoices behind it
 are read a page at a time with ``get_invoices``.
 
-Only System Manager sees every salesman; anyone else with page access sees only their own sales.
+Only System Manager sees every salesman and every branch. Anyone else with page access sees
+only their own sales and the whole-branch totals of their branches (found from their POS
+Profiles); without a branch they see nothing.
 """
 
 import frappe
 from frappe import _
 from frappe.utils import cint, getdate
 
+from delivery_management.stats import branches as branch_utils
 from delivery_management.stats import sales
 
 MANAGER_ROLES = ("System Manager", "Sales Manager", "Accounts Manager")
@@ -28,7 +31,13 @@ def _is_manager() -> bool:
 	return frappe.session.user == "Administrator" or "System Manager" in frappe.get_roles()
 
 
-def _filters(from_date, to_date, company=None, user=None, exclude_services=1, pos_profile=None) -> dict:
+def _allowed_branches() -> list[str]:
+	if _is_manager():
+		return branch_utils.all_branches()
+	return branch_utils.branches_of_user(frappe.session.user)
+
+
+def _filters(from_date, to_date, company=None, user=None, exclude_services=1, pos_profile=None, branch=None) -> dict:
 	frappe.only_for(PAGE_ROLES)
 	if not from_date or not to_date:
 		frappe.throw(_("Choose the From and To dates."))
@@ -39,10 +48,17 @@ def _filters(from_date, to_date, company=None, user=None, exclude_services=1, po
 		frappe.throw(_("Choose a company."))
 	if not frappe.has_permission("Company", "read", company):
 		frappe.throw(_("Not permitted"), frappe.PermissionError)
+	allowed = _allowed_branches()
 	if not _is_manager():
 		user = frappe.session.user  # salesmen see only their own numbers
+		if not allowed:
+			frappe.throw(_("No branch is linked to you. Ask your manager to add you to a POS Profile of a branch."),
+				title=_("No branch"))
+	if branch and not (_is_manager() and frappe.db.exists("Branch", branch)) and branch not in allowed:
+		frappe.throw(_("You can only see your own branch."), frappe.PermissionError)
 	return {"from_date": str(getdate(from_date)), "to_date": str(getdate(to_date)), "company": company,
-		"user": user or None, "exclude_services": bool(cint(exclude_services)), "pos_profile": pos_profile or None}
+		"user": user or None, "exclude_services": bool(cint(exclude_services)), "pos_profile": pos_profile or None,
+		"branch": branch or None, "branch_cards": [branch] if branch else allowed}
 
 
 def _redis_key(run_id: str) -> str:
@@ -63,6 +79,7 @@ def get_setup():
 	frappe.only_for(PAGE_ROLES)
 	return {
 		"is_manager": _is_manager(),
+		"branches": _allowed_branches(),
 		"can_evaluate": bool(frappe.has_permission("Sales Evaluation", "create")),
 		"user": frappe.session.user,
 		"company": frappe.defaults.get_user_default("Company") or frappe.defaults.get_global_default("company"),
@@ -70,9 +87,9 @@ def get_setup():
 
 
 @frappe.whitelist()
-def start(from_date, to_date, company=None, user=None, exclude_services=1, pos_profile=None):
+def start(from_date, to_date, company=None, user=None, exclude_services=1, pos_profile=None, branch=None):
 	"""Queue a fresh calculation. Returns ``{key, status[, result]}``."""
-	filters = _filters(from_date, to_date, company, user, exclude_services, pos_profile)
+	filters = _filters(from_date, to_date, company, user, exclude_services, pos_profile, branch)
 	run_id = frappe.generate_hash(length=20)
 	_set(run_id, {"status": "queued", "requested_by": frappe.session.user})
 	frappe.enqueue(
@@ -89,12 +106,12 @@ def start(from_date, to_date, company=None, user=None, exclude_services=1, pos_p
 
 @frappe.whitelist()
 def get_invoices(from_date, to_date, company=None, user=None, search=None, page=0, all_pages=0, exclude_services=1,
-		pos_profile=None):
+		pos_profile=None, branch=None):
 	"""One page of the invoices counted for these filters (``all_pages=1``: every one, for the CSV)."""
-	filters = _filters(from_date, to_date, company, user, exclude_services, pos_profile)
+	filters = _filters(from_date, to_date, company, user, exclude_services, pos_profile, branch)
 	return sales.invoices(filters["from_date"], filters["to_date"], filters["company"], filters["user"],
 		search=search, page=page, page_len=None if cint(all_pages) else sales.INVOICES_PER_PAGE,
-		exclude_services=filters["exclude_services"], pos_profile=filters["pos_profile"])
+		exclude_services=filters["exclude_services"], pos_profile=filters["pos_profile"], branch=filters["branch"])
 
 
 @frappe.whitelist()
@@ -110,7 +127,8 @@ def run_job(run_id: str, filters: dict, requested_by: str):
 	_set(run_id, {"status": "running", "requested_by": requested_by})
 	try:
 		result = sales.compute(filters["from_date"], filters["to_date"], filters["company"], filters.get("user"),
-			filters.get("exclude_services", True), filters.get("pos_profile"))
+			filters.get("exclude_services", True), filters.get("pos_profile"), filters.get("branch"),
+			filters.get("branch_cards"))
 		_set(run_id, {"status": "done", "result": result, "requested_by": requested_by})
 	except Exception:
 		frappe.log_error(title="Sales Statistics failed")

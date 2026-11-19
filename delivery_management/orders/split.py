@@ -193,6 +193,10 @@ def _split(dn, plan, delivery_date, delivery_time, ac_date, address) -> str:
 	else:
 		part.update({"dm_delivery_date": booking["delivery_date"], "dm_delivery_time": booking["delivery_time"]})
 
+	# Every slot row this split changes, locked in the engine's order (no deadlock).
+	own = ac_booking_of(dn)
+	engine.lock_in_order([own] if own else [], ac_dates=[booking.get("ac_date")],
+		slots=[(booking.get("area"), booking.get("delivery_date"), booking.get("delivery_time"))])
 	dn.flags.ignore_permissions = part.flags.ignore_permissions = True
 	dn.save()
 	part.insert()
@@ -237,6 +241,8 @@ def merge(delivery_note: str) -> str:
 	if dn.dm_delivery_type == asg.TYPE_AC:
 		dn.dm_ac_units = profile_cart(dn.items).ac_units
 
+	own = ac_booking_of(dn)
+	engine.lock_in_order(engine.get_reservations(DN, part.name) + ([own] if own else []))
 	engine.release(DN, part.name)
 	_change_ac_booking(dn, back_ac)
 	dn.flags.ignore_permissions = True

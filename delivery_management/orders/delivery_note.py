@@ -27,7 +27,7 @@ from frappe.utils import cint
 
 from delivery_management.drivers import assignment as asg
 from delivery_management.drivers.delivery_note import OTHER_TYPE_FIELDS
-from delivery_management.slots import profile_cart
+from delivery_management.slots.cart import profile_lines
 from delivery_management.slots.settings import get_settings
 
 
@@ -65,8 +65,8 @@ def split_by_order_type(dn) -> list:
 	if asg.order_type_of(dn.items):
 		return [dn]
 	ac_rows, other_rows = [], []
-	for row in dn.items:
-		profile = profile_cart([row])
+	# Each line on its own, the items read once for all of them.
+	for row, profile in zip(dn.items, profile_lines([[r] for r in dn.items])):
 		(ac_rows if profile.has_ac or profile.accessory_items else other_rows).append(row)
 	if not ac_rows or not other_rows:
 		return [dn]

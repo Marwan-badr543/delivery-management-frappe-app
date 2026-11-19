@@ -115,21 +115,30 @@ def expand_bundles(lines: list[tuple[str, float]]) -> list[tuple[str, float]]:
 	A bundle parent is a non-stock item, so without this a bundle of a TV and a
 	bracket would book no delivery slot and an AC bundle no AC capacity.
 	"""
-	codes = list({code for code, _qty in lines})
+	return _expand(lines, bundle_components([code for code, _qty in lines]))
+
+
+def bundle_components(codes) -> dict[str, list[tuple[str, float]]]:
+	"""``{bundle item: [(component, qty)]}`` for the Product Bundles among ``codes``."""
+	codes = list({c for c in codes if c})
 	if not codes:
-		return lines
+		return {}
 	bundles = dict(frappe.get_all("Product Bundle", filters={"new_item_code": ["in", codes], "disabled": 0},
 		fields=["new_item_code", "name"], as_list=True))
 	if not bundles:
-		return lines
+		return {}
 	components: dict[str, list] = {}
 	for row in frappe.get_all("Product Bundle Item", filters={"parent": ["in", list(bundles.values())],
 			"parenttype": "Product Bundle"}, fields=["parent", "item_code", "qty"], order_by="idx asc"):
 		components.setdefault(row.parent, []).append((row.item_code, flt(row.qty)))
+	return {code: components.get(bundle, []) for code, bundle in bundles.items()}
+
+
+def _expand(lines, components: dict) -> list[tuple[str, float]]:
 	expanded = []
 	for code, qty in lines:
-		if code in bundles:
-			expanded += [(child, qty * child_qty) for child, child_qty in components.get(bundles[code], [])]
+		if code in components:
+			expanded += [(child, qty * child_qty) for child, child_qty in components[code]]
 		else:
 			expanded.append((code, qty))
 	return expanded
@@ -144,13 +153,24 @@ def component_rows(items) -> list[dict]:
 
 def profile_cart(items) -> CartProfile:
 	"""Build a :class:`CartProfile` from order lines (dicts or child docs). Bundles count by their components."""
-	lines = expand_bundles([(it.get("item_code"), stock_qty(it)) for it in items if it.get("item_code")])
-	codes = [code for code, _qty in lines]
+	return profile_lines([items])[0]
+
+
+def profile_lines(groups: list) -> list[CartProfile]:
+	"""One :class:`CartProfile` per group of lines, the items read once for all the groups
+	(e.g. each line of an order on its own, ``orders.delivery_note.split_by_order_type``)."""
+	groups = [[(it.get("item_code"), stock_qty(it)) for it in g if it.get("item_code")] for g in groups]
+	components = bundle_components([code for g in groups for code, _qty in g])
+	groups = [_expand(g, components) for g in groups]
+	codes = list({code for g in groups for code, _qty in g})
 	kinds = classify_items(codes)
 	stock_codes = set(
 		frappe.get_all("Item", filters={"name": ["in", codes or [""]], "is_stock_item": 1}, pluck="name")
 	)
+	return [_profile(g, kinds, stock_codes) for g in groups]
 
+
+def _profile(lines, kinds: dict, stock_codes: set) -> CartProfile:
 	profile = CartProfile()
 	for code, qty in lines:
 		kind = kinds.get(code, KIND_OTHER)

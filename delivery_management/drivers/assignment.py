@@ -132,13 +132,20 @@ def schedules_conflict(scheduled, target, window_hours: float) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def busy_tv_drivers(day, time, window_hours: float, exclude_delivery_note: str | None = None) -> set[str]:
+def busy_tv_drivers(day, time, window_hours: float, exclude_delivery_note: str | None = None,
+		exclude_ticket: str | None = None) -> set[str]:
+	"""TV Drivers with a TV order, or a support ticket trip, too close to ``time`` that day."""
+	from delivery_management.customer_support import tickets as t
+
 	rows = frappe.get_all(
 		ASSIGNMENT,
 		filters={"order_type": TYPE_NON_AC, "delivery_date": day,
 			"delivery_note": ["!=", exclude_delivery_note or ""]},
 		fields=["driver", "delivery_time"],
 	)
+	rows += frappe.get_all("Issue", filters={"sm_trip_date": day, "sm_step": ["in", t.TRIP_STEPS],
+		"sm_driver": ["is", "set"], "name": ["!=", exclude_ticket or ""]},
+		fields=["sm_driver as driver", "sm_trip_time as delivery_time"])
 	return {r.driver for r in rows if schedules_conflict(r.delivery_time, time, window_hours)}
 
 

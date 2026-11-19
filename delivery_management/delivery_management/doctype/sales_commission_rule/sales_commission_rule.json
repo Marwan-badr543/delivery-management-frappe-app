@@ -1,0 +1,65 @@
+{
+ "actions": [],
+ "creation": "2026-11-16 12:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "month",
+  "sales_target",
+  "small_items_target",
+  "min_percent",
+  "max_percent"
+ ],
+ "fields": [
+  {
+   "fieldname": "month",
+   "fieldtype": "Date",
+   "label": "Month",
+   "reqd": 1,
+   "in_list_view": 1,
+   "description": "Any day of the month; saved as its first day."
+  },
+  {
+   "fieldname": "sales_target",
+   "fieldtype": "Currency",
+   "label": "Sales Target",
+   "in_list_view": 1,
+   "non_negative": 1
+  },
+  {
+   "fieldname": "small_items_target",
+   "fieldtype": "Int",
+   "label": "Small Items Target",
+   "in_list_view": 1,
+   "non_negative": 1
+  },
+  {
+   "fieldname": "min_percent",
+   "fieldtype": "Percent",
+   "label": "Min Commission %",
+   "in_list_view": 1,
+   "non_negative": 1
+  },
+  {
+   "fieldname": "max_percent",
+   "fieldtype": "Percent",
+   "label": "Max Commission %",
+   "in_list_view": 1,
+   "non_negative": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-11-16 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Delivery Management",
+ "name": "Sales Commission Rule",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "description": "A salesman's targets and commission range from this month on, until the next rule. A month without a rule uses the closest one."
+}

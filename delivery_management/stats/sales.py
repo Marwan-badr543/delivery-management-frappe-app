@@ -25,11 +25,15 @@ Rules (each one is covered by ``tests/test_sales_stats.py``):
   rounding).
 * **Units** (AC, non-AC, small items) are frozen on each invoice line when it is
   saved, with Product Bundles counted by their contents: see ``stats/units.py``.
-* **Commission** (see ``commission``): the small items sold against the salesman's
-  Small Items Target set the commission % between the Min and Max of Delivery
-  Settings; 75% of it is paid on the sales, the other 25% times the score of the
-  salesman's latest Sales Evaluation that overlaps the period, or else their latest one. Targets are monthly
-  and compared as they are, whatever the period.
+* **Commission** is worked out **month by month** (``month_commission``). Each month uses
+  the salesman's Sales Commission Rule of that month (User ▸ Commission Rules), or else
+  the closest one: its Small Items Target sets the commission % between its Min and Max.
+  75% of it is paid on the month's sales, the other 25% times the score of the Sales
+  Evaluation overlapping the month (the latest), or else the closest one. A period's
+  commission is the sum of its months. The Sales Commission Payment uses the same code.
+* **Paid commission**: an invoice paid on a submitted Sales Commission Payment carries it
+  in ``dm_commission_payment``. A return against such an invoice is never subtracted (the
+  salesman already got the money); a return of an invoice not paid yet is.
 
 The salesman totals are grouped in SQL from the same per-invoice query that
 feeds the invoice list, so the table and the list always agree. The cost is one
@@ -41,8 +45,10 @@ Everything is read with SQL (no documents are loaded).
 
 from __future__ import annotations
 
+import datetime
+
 import frappe
-from frappe.utils import add_days, cint, flt, getdate, now_datetime
+from frappe.utils import add_days, add_months, cint, flt, get_last_day, getdate, now_datetime
 
 
 # A paid sale, or a credit note against a paid sale.
@@ -66,9 +72,26 @@ EVALUATION = "Sales Evaluation"
 
 
 def _salesman() -> str:
+	"""The salesman frozen on the invoice at submit (``dm_salesman``); older invoices: the cashier, else the owner."""
 	if frappe.db.has_column("Sales Invoice", "posa_cashier"):
-		return "coalesce(nullif(si.posa_cashier, ''), si.owner)"
-	return "si.owner"
+		return "coalesce(nullif(si.dm_salesman, ''), nullif(si.posa_cashier, ''), si.owner)"
+	return "coalesce(nullif(si.dm_salesman, ''), si.owner)"
+
+
+def salesman_of(doc) -> str:
+	return doc.get("posa_cashier") or doc.owner
+
+
+def set_salesman(doc, method=None):
+	"""Sales Invoice ``before_submit``: freeze who made the sale (indexed, for the commission payment)."""
+	doc.dm_salesman = salesman_of(doc)
+
+
+# A return whose original sale's commission was already paid (on another payment) is not
+# subtracted: the salesman already took that money.
+RETURN_OF_PAID = """(si.is_return = 1 and exists (select 1 from `tabSales Invoice` comm
+	where comm.name = si.return_against and comm.dm_commission_payment is not null
+	and (si.dm_commission_payment is null or si.dm_commission_payment != comm.dm_commission_payment)))"""
 
 
 def service_groups() -> tuple[str, ...]:
@@ -81,10 +104,18 @@ def service_groups() -> tuple[str, ...]:
 		pluck="name"))
 
 
-def _params(from_date, to_date, company, user=None, search=None, exclude_services=True, pos_profile=None) -> dict:
+def _params(from_date, to_date, company, user=None, search=None, exclude_services=True, pos_profile=None,
+		branch=None, unpaid_of=None) -> dict:
+	"""``unpaid_of``: only that salesman's invoices whose commission is not paid yet, from any
+	time up to ``to_date`` (the Sales Commission Payment; read through the commission index)."""
+	from delivery_management.stats.branches import profiles_of
+
 	from_date, to_date = getdate(from_date), getdate(to_date)
 	return {
 		"pos_profile": pos_profile or None,
+		"branch": branch or None,
+		# A branch's sales are those made through its POS Profiles.
+		"profiles": tuple(profiles_of([branch]) or [""]) if branch else None,
 		"exclude": 1 if exclude_services else 0,
 		"services": service_groups() or ("",),
 		"company": company,
@@ -95,6 +126,7 @@ def _params(from_date, to_date, company, user=None, search=None, exclude_service
 		"q": f"%{search.strip()}%" if search and search.strip() else None,
 		"from_date": str(from_date),
 		"to_date": str(to_date),
+		"unpaid_of": unpaid_of or None,
 	}
 
 
@@ -103,18 +135,24 @@ def _invoice_query(params: dict) -> str:
 	``services`` is its services' share of the Total; with ``exclude`` it is taken off the sales."""
 	search = """and (si.name like %(q)s or si.customer like %(q)s or si.customer_name like %(q)s
 		or si.return_against like %(q)s)""" if params["q"] else ""
-	return f"""select si.name, {_salesman()} as user, si.creation, si.posting_date, si.customer, si.customer_name,
+	# The payment reads its rows through the commission index and skips returns it must not subtract.
+	unpaid = f"""and si.dm_salesman = %(unpaid_of)s and si.dm_commission_payment is null
+		and not {RETURN_OF_PAID}""" if params.get("unpaid_of") else ""
+	return f"""select si.name, {_salesman()} as user, si.creation, date_format(si.creation, '%%Y-%%m-01') as month,
+			si.posting_date, si.customer, si.customer_name, not {RETURN_OF_PAID} as commissionable,
 			si.is_return, si.return_against, ifnull(si.dm_order_type, '') as order_type, si.status,
 			{TOTAL_COLUMN} - %(exclude)s * {SERVICE_TOTAL} as total,
 			si.base_net_total - %(exclude)s * {SERVICE_NET} as net_total, {SERVICE_TOTAL} as services,
 			coalesce(sum(sii.dm_ac_units), 0) as ac_units, coalesce(sum(sii.dm_non_ac_units), 0) as non_ac_units,
 			coalesce(sum(sii.dm_small_units), 0) as small_units
-		from `tabSales Invoice` si
+		from `tabSales Invoice` si {"force index (dm_commission_index)" if params.get("unpaid_of") else ""}
 		left join `tabSales Invoice Item` sii on sii.parent = si.name and sii.parenttype = 'Sales Invoice'
 		where si.company = %(company)s and si.docstatus = 1
-			and si.creation >= %(start)s and si.creation < %(end)s
+			{"" if params.get("unpaid_of") else "and si.creation >= %(start)s"} and si.creation < %(end)s
+			{unpaid}
 			{f"and {_salesman()} = %(user)s" if params["user"] else ""}
 			{"and si.pos_profile = %(pos_profile)s" if params["pos_profile"] else ""}
+			{"and si.pos_profile in %(profiles)s" if params["profiles"] else ""}
 			{search}
 			and {PAID_CONDITION}
 		group by si.name"""
@@ -140,74 +178,169 @@ def commission(amount, percent, score) -> dict:
 	return {"items": _money(items), "evaluation": _money(evaluation), "amount": _money(items + evaluation)}
 
 
-def _latest_evaluations(users: list[str], from_date: str, to_date: str) -> dict:
-	"""Each salesman's latest Sales Evaluation that overlaps the period; with none, their
-	latest one (``overlaps`` says which)."""
-	rows = frappe.get_all(EVALUATION, filters={"salesman": ["in", users or [""]]},
-		fields=["name", "salesman", "score", "from_date", "to_date"], order_by="to_date desc, modified desc")
+# ---------------------------------------------------------------- rules and months
+
+RULE = "Sales Commission Rule"
+
+
+def month_start(day) -> datetime.date:
+	return getdate(day).replace(day=1)
+
+
+def month_end(day) -> datetime.date:
+	return getdate(get_last_day(day))
+
+
+def month_parts(from_date, to_date) -> list[tuple]:
+	"""``(month, part_from, part_to)`` for each month the period touches."""
 	start, end = getdate(from_date), getdate(to_date)
-	latest = {}
+	parts, month = [], month_start(start)
+	while month <= end:
+		parts.append((month, max(start, month), min(end, month_end(month))))
+		month = getdate(add_months(month, 1))
+	return parts
+
+
+def rules_of(users: list[str]) -> dict[str, list]:
+	"""Each salesman's Sales Commission Rules, oldest month first."""
+	rows = frappe.get_all(RULE, filters={"parenttype": "User", "parentfield": "dm_commission_rules",
+		"parent": ["in", users or [""]]}, fields=["parent", "month", "sales_target", "small_items_target",
+		"min_percent", "max_percent"], order_by="month asc")
+	out = {}
 	for r in rows:
-		overlaps = getdate(r.from_date) <= end and getdate(r.to_date) >= start
-		mine = latest.get(r.salesman)
-		if mine and (mine["overlaps"] or not overlaps):
-			continue
-		latest[r.salesman] = {"name": r.name, "score": flt(r.score), "from_date": str(r.from_date),
-			"to_date": str(r.to_date), "overlaps": overlaps}
-	return latest
+		out.setdefault(r.parent, []).append(r)
+	return out
+
+
+def rule_for(rules: list, month) -> dict | None:
+	"""The month's rule, else the closest one (however old); on a tie the older one."""
+	if not rules:
+		return None
+	month = month_start(month)
+	best = min(rules, key=lambda r: (abs((getdate(r.month) - month).days), getdate(r.month) > month))
+	return {"month": str(best.month), "exact": getdate(best.month) == month, "sales_target": _money(best.sales_target),
+		"small_items_target": cint(best.small_items_target), "min_percent": flt(best.min_percent),
+		"max_percent": flt(best.max_percent)}
+
+
+def evaluations_of(users: list[str]) -> dict[str, list]:
+	out = {}
+	for r in frappe.get_all(EVALUATION, filters={"salesman": ["in", users or [""]], "docstatus": ["<", 2]},
+			fields=["name", "salesman", "score", "from_date", "to_date"], order_by="to_date desc, modified desc"):
+		out.setdefault(r.salesman, []).append(r)
+	return out
+
+
+def evaluation_for(evaluations: list, from_date, to_date) -> dict | None:
+	"""The latest Sales Evaluation overlapping the period, else the closest one to it."""
+	start, end = getdate(from_date), getdate(to_date)
+
+	def gap(r):
+		if getdate(r.to_date) < start:
+			return (start - getdate(r.to_date)).days
+		if getdate(r.from_date) > end:
+			return (getdate(r.from_date) - end).days
+		return 0
+
+	if not evaluations:
+		return None
+	best = min(evaluations, key=gap)  # the list is latest first, so the latest wins a tie
+	return {"name": best.name, "score": flt(best.score), "from_date": str(best.from_date), "to_date": str(best.to_date),
+		"overlaps": gap(best) == 0}
+
+
+def month_commission(sales: dict, small_units, rule: dict | None, evaluation: dict | None) -> dict:
+	"""One month: the % from its small items against its rule, then the commission on ``sales``
+	(``{basis: amount}``). No rule: nothing is earned."""
+	percent = commission_percent(small_units, rule["small_items_target"], rule["min_percent"], rule["max_percent"]) \
+		if rule else 0
+	score = evaluation["score"] if evaluation else 0
+	return {"percent": flt(percent, 4), "score": score,
+		"commission": {basis: commission(sales.get(basis), percent, score) for basis in BASES}}
 
 
 def _targeted_users(user: str | None) -> list[str]:
-	"""Salesmen with a target show up even before their first sale of the period."""
-	filters = {"enabled": 1, "user_type": "System User"}
+	"""Salesmen with a commission rule show up even before their first sale of the period."""
+	having = set(frappe.get_all(RULE, filters={"parenttype": "User", "parentfield": "dm_commission_rules"},
+		pluck="parent", distinct=True))
+	filters = {"enabled": 1, "user_type": "System User", "name": ["in", list(having) or [""]]}
 	if user:
-		filters["name"] = user
-	return frappe.get_all("User", filters=filters,
-		or_filters={"dm_sales_target": [">", 0], "dm_small_items_target": [">", 0]}, pluck="name")
+		filters["name"] = user if user in having else ""
+	return frappe.get_all("User", filters=filters, pluck="name")
+
+
+def sold_by_month(params: dict) -> dict:
+	"""``{(user, month): totals}`` from the per-invoice query (the same rows as the invoice list)."""
+	rows = frappe.db.sql(
+		f"""select inv.user, inv.month, count(*) - sum(inv.is_return) as invoices,
+			sum(inv.is_return = 0 and inv.order_type = 'Order') as orders, sum(inv.is_return) as returns,
+			sum(inv.total) as total, sum(inv.net_total) as net_total, sum(inv.services) as services, sum(inv.ac_units) as ac_units,
+			sum(inv.non_ac_units) as non_ac_units, sum(inv.small_units) as small_units,
+			sum(inv.total * inv.commissionable) as commission_total,
+			sum(inv.net_total * inv.commissionable) as commission_net_total,
+			sum(inv.small_units * inv.commissionable) as commission_small_units
+		from ({_invoice_query(params)}) inv
+		group by inv.user, inv.month""",
+		params,
+		as_dict=True,
+	)
+	return {(r.user, str(r.month)): r for r in rows}
 
 
 # ---------------------------------------------------------------- results
 
 
 def compute(from_date, to_date, company: str, user: str | None = None, exclude_services: bool = True,
-		pos_profile: str | None = None) -> dict:
-	"""Per-salesman totals, targets and commission for the period (one row per salesman)."""
-	params = _params(from_date, to_date, company, user, exclude_services=exclude_services, pos_profile=pos_profile)
-	sold = frappe.db.sql(
-		f"""select inv.user, count(*) - sum(inv.is_return) as invoices,
-			sum(inv.is_return = 0 and inv.order_type = 'Order') as orders, sum(inv.is_return) as returns,
-			sum(inv.total) as total, sum(inv.net_total) as net_total, sum(inv.services) as services, sum(inv.ac_units) as ac_units,
-			sum(inv.non_ac_units) as non_ac_units, sum(inv.small_units) as small_units
-		from ({_invoice_query(params)}) inv
-		group by inv.user""",
-		params,
-		as_dict=True,
-	)
-	by_user = {r.user: r for r in sold}
-	# With a POS Profile, only who sold through it.
-	for name in [] if params["pos_profile"] else _targeted_users(user):
-		by_user.setdefault(name, frappe._dict(user=name, **{k: 0 for k in SUM_KEYS}))
+		pos_profile: str | None = None, branch: str | None = None, branch_cards: list[str] | None = None) -> dict:
+	"""Per-salesman totals, targets and commission for the period (one row per salesman), and
+	the whole-branch totals of ``branch_cards`` (every salesman's sales in that branch)."""
+	params = _params(from_date, to_date, company, user, exclude_services=exclude_services, pos_profile=pos_profile,
+		branch=branch)
+	sold = sold_by_month(params)
+	users = sorted({u for u, _m in sold})
+	# With a POS Profile or a branch, only who sold through it.
+	for name in [] if params["pos_profile"] or params["branch"] else _targeted_users(user):
+		if name not in users:
+			users.append(name)
 
-	users = list(by_user)
 	people = {u.name: u for u in frappe.get_all("User", filters={"name": ["in", users or [""]]},
-		fields=["name", "full_name", "dm_sales_target", "dm_small_items_target"])}
-	evaluations = _latest_evaluations(users, params["from_date"], params["to_date"])
-	low = flt(frappe.db.get_single_value("Delivery Settings", "commission_min_percent"))
-	high = flt(frappe.db.get_single_value("Delivery Settings", "commission_max_percent"))
+		fields=["name", "full_name"])}
+	rules = rules_of(users)
+	evaluations = evaluations_of(users)
+	parts = month_parts(params["from_date"], params["to_date"])
+	zero = frappe._dict({k: 0 for k in SUM_KEYS})
 
 	rows = []
-	for name, r in by_user.items():
+	for name in users:
 		person = people.get(name) or frappe._dict()
-		row = {"user": name, "full_name": person.full_name or name}
-		row.update({k: cint(r[k]) for k in COUNT_KEYS})
-		row.update({k: _money(r[k]) for k in MONEY_KEYS})
-		row.update({k: _clean_qty(r[k]) for k in UNIT_KEYS})
-		row["sales_target"] = _money(person.dm_sales_target)
-		row["small_items_target"] = cint(person.dm_small_items_target)
-		row["commission_percent"] = flt(commission_percent(row["small_units"], row["small_items_target"], low, high), 4)
-		row["evaluation"] = evaluations.get(name)
-		score = row["evaluation"]["score"] if row["evaluation"] else 0
-		row["commission"] = {basis: commission(row[basis], row["commission_percent"], score) for basis in BASES}
+		row = {"user": name, "full_name": person.full_name or name, "months": []}
+		row.update({k: 0 for k in SUM_KEYS + ("sales_target", "small_items_target")})
+		row["commission"] = {b: {"items": 0, "evaluation": 0, "amount": 0} for b in BASES}
+		for month, part_from, part_to in parts:
+			r = sold.get((name, str(month))) or zero
+			rule = rule_for(rules.get(name), month)
+			evaluation = evaluation_for(evaluations.get(name), part_from, part_to)
+			# Returns of sales whose commission was paid count in the sales, not in the commission.
+			result = month_commission({b: r.get(f"commission_{b}", r[b]) for b in BASES},
+				r.get("commission_small_units", r.small_units), rule, evaluation)
+			for k in SUM_KEYS:
+				row[k] += flt(r[k])
+			row["sales_target"] += rule["sales_target"] if rule else 0
+			row["small_items_target"] += rule["small_items_target"] if rule else 0
+			for b in BASES:
+				for part in ("items", "evaluation", "amount"):
+					row["commission"][b][part] = _money(row["commission"][b][part] + result["commission"][b][part])
+			row["months"].append({"month": str(month), "from_date": str(part_from), "to_date": str(part_to),
+				**{k: _money(r[k]) for k in MONEY_KEYS}, "small_units": _clean_qty(r.small_units),
+				"rule": rule, "evaluation": evaluation, **result})
+		row.update({k: cint(row[k]) for k in COUNT_KEYS})
+		row.update({k: _money(row[k]) for k in MONEY_KEYS + ("sales_target",)})
+		row.update({k: _clean_qty(row[k]) for k in UNIT_KEYS})
+		# One month: its %. Several: the average % weighted by each month's sales (for display).
+		sales = sum(max(m["total"], 0) for m in row["months"])
+		row["commission_percent"] = row["months"][0]["percent"] if len(row["months"]) == 1 else \
+			flt(sum(m["percent"] * max(m["total"], 0) for m in row["months"]) / sales, 4) if sales else 0
+		row["evaluation"] = evaluation_for(evaluations.get(name), params["from_date"], params["to_date"])
 		rows.append(row)
 	rows.sort(key=lambda r: (-r["total"], r["full_name"]))
 
@@ -219,28 +352,43 @@ def compute(from_date, to_date, company: str, user: str | None = None, exclude_s
 	return {
 		"rows": rows,
 		"totals": totals,
-		"commission_range": {"min": low, "max": high, "items_share": ITEMS_SHARE},
+		"items_share": ITEMS_SHARE,
 		"currency": frappe.get_cached_value("Company", company, "default_currency"),
+		"branches": [branch_summary(params, name) for name in branch_cards or []],
 		"filters": {"from_date": params["from_date"], "to_date": params["to_date"], "company": company, "user": user,
-			"exclude_services": params["exclude"], "pos_profile": params["pos_profile"]},
+			"exclude_services": params["exclude"], "pos_profile": params["pos_profile"], "branch": params["branch"]},
 		"generated_at": str(now_datetime()),
 	}
 
 
+def branch_summary(params: dict, branch: str) -> dict:
+	"""Everyone's sales in the branch for the period, against the branch's Sales Target."""
+	from delivery_management.stats.branches import profiles_of
+
+	p = {**params, "user": None, "q": None, "pos_profile": None, "branch": branch,
+		"profiles": tuple(profiles_of([branch]) or [""])}
+	r = frappe.db.sql(f"""select count(*) - coalesce(sum(inv.is_return), 0) as invoices, sum(inv.total) as total,
+		sum(inv.net_total) as net_total, sum(inv.services) as services from ({_invoice_query(p)}) inv""", p, as_dict=True)[0]
+	return {"branch": branch, "target": _money(frappe.db.get_value("Branch", branch, "dm_sales_target")),
+		"invoices": cint(r.invoices), **{k: _money(r[k]) for k in MONEY_KEYS}}
+
+
 def invoices(from_date, to_date, company: str, user: str | None = None, search: str | None = None,
 		page: int = 0, page_len: int | None = INVOICES_PER_PAGE, exclude_services: bool = True,
-		pos_profile: str | None = None) -> dict:
+		pos_profile: str | None = None, branch: str | None = None) -> dict:
 	"""The counted invoices behind ``compute``, newest first; ``page_len=None`` returns them all."""
-	params = _params(from_date, to_date, company, user, search, exclude_services, pos_profile)
+	params = _params(from_date, to_date, company, user, search, exclude_services, pos_profile, branch)
 	query = _invoice_query(params)
 	count = cint(frappe.db.sql(f"select count(*) from ({query}) inv", params)[0][0])
-	limit = f"limit {cint(page_len)} offset {cint(page) * cint(page_len)}" if page_len else ""
+	# The export (no page) is capped too, so one click cannot read a whole year of lines.
+	limit = f"limit {cint(page_len)} offset {cint(page) * cint(page_len)}" if page_len else "limit 20000"
 	rows = frappe.db.sql(f"{query} order by si.creation desc {limit}", params, as_dict=True)
 	return {"count": count, "page": cint(page), "page_len": page_len, "invoices": [{
 		"name": inv.name,
 		"user": inv.user,
 		"created": str(inv.creation)[:19],
 		"posting_date": str(inv.posting_date),
+		"month": str(inv.month),
 		"customer": inv.customer,
 		"customer_name": inv.customer_name or inv.customer,
 		"type": "Return" if cint(inv.is_return) else (inv.order_type or "Invoice"),
@@ -260,3 +408,60 @@ def _money(value) -> float:
 def _clean_qty(value):
 	value = round(flt(value), 3)
 	return int(value) if value == int(value) else value
+
+
+# ---------------------------------------------------------------- commission payment
+
+
+def unpaid_commission(salesman: str, company: str, to_month, exclude_services: bool = True, basis: str = "total",
+		from_month=None, names: list[str] | None = None) -> dict:
+	"""What a Sales Commission Payment pays: every invoice / return of the salesman whose
+	commission is not paid yet, created up to the end of ``to_month`` (late ones from older
+	months too), each at **its own month's** % (from the whole month, ``month_commission``).
+
+	Cost: the unpaid invoices come through the index (dm_salesman, dm_commission_payment,
+	creation), so already paid ones are never read; then one grouped query per month that
+	has unpaid invoices, for that month's whole sales."""
+	if basis not in BASES:
+		frappe.throw(frappe._("Unknown commission basis {0}.").format(basis))
+	end = month_end(to_month)
+	params = _params(end, end, company, exclude_services=exclude_services, unpaid_of=salesman)
+	lines = frappe.db.sql(f"{_invoice_query(params)} order by si.creation", params, as_dict=True)
+	if names is not None:
+		lines = [r for r in lines if r.name in set(names)]
+
+	rules = rules_of([salesman]).get(salesman)
+	evaluations = evaluations_of([salesman]).get(salesman)
+	first = month_start(from_month) if from_month else None
+	months, invoices = [], []
+	for month in sorted({str(r.month) for r in lines}):
+		start, stop = getdate(month), month_end(month)
+		whole = sold_by_month(_params(start, stop, company, user=salesman, exclude_services=exclude_services))
+		totals = whole.get((salesman, month)) or frappe._dict({k: 0 for k in SUM_KEYS})
+		rule = rule_for(rules, month)
+		evaluation = evaluation_for(evaluations, start, stop)
+		mine = [r for r in lines if str(r.month) == month]
+		unpaid_sales = _money(sum(flt(r[basis]) for r in mine))
+		result = month_commission({basis: unpaid_sales}, totals.get("commission_small_units", 0), rule, evaluation)
+		factor = flt(result["percent"]) / 100 * (ITEMS_SHARE + (1 - ITEMS_SHARE) * flt(result["score"]) / 100)
+		months.append({
+			"month": month, "late": bool(first and start < first),
+			"month_sales": _money(totals.get(f"commission_{basis}", 0)),
+			"month_small_units": _clean_qty(totals.get("commission_small_units", 0)),
+			"unpaid_sales": unpaid_sales, "invoices": len(mine),
+			"rule_month": rule["month"] if rule else None,
+			"sales_target": rule["sales_target"] if rule else 0,
+			"small_items_target": rule["small_items_target"] if rule else 0,
+			"min_percent": rule["min_percent"] if rule else 0, "max_percent": rule["max_percent"] if rule else 0,
+			"percent": result["percent"], "evaluation": evaluation["name"] if evaluation else None,
+			"score": result["score"], "commission": result["commission"][basis]["amount"],
+		})
+		for r in mine:
+			invoices.append({
+				"sales_invoice": r.name, "month": month, "late": bool(first and start < first),
+				"created": str(r.creation)[:19], "customer_name": r.customer_name or r.customer,
+				"is_return": cint(r.is_return), "return_against": r.return_against,
+				"amount": _money(r[basis]), "small_units": _clean_qty(r.small_units),
+				"percent": result["percent"], "commission": _money(flt(r[basis]) * factor),
+			})
+	return {"months": months, "invoices": invoices, "total": _money(sum(m["commission"] for m in months))}

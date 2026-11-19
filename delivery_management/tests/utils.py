@@ -5,7 +5,7 @@ import datetime
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
-from delivery_management.tests.fixtures import warehouse
+from delivery_management.tests.fixtures import TEST_COMPANY, ensure_test_company, warehouse
 
 # A Monday far in the future, so real "now" never interferes.
 DAY = datetime.date(2031, 3, 3)
@@ -18,14 +18,20 @@ class DeliveryTestCase(FrappeTestCase):
 		frappe.db.rollback()
 		self._refs = {}
 		frappe.set_user("Administrator")
+		ensure_test_company()
+		# The app falls back to the default company; during a test that is the test company.
+		frappe.db.set_default("company", TEST_COMPANY)
+		frappe.defaults._clear_cache("__default")
 		self.settings(global_ac_daily_capacity=20, slot_lead_time_hours=2, booking_window_days=30,
-			main_warehouse=warehouse("_DM Main"), transit_warehouse=warehouse("_DM Transit"))
+			main_warehouse=warehouse("_DM Main"), transit_warehouse=warehouse("_DM Transit"),
+			support_workshop_warehouse=warehouse("_DM Workshop"))
 		# Orders reserve their stock (the tests check it), whatever the site's Stock Settings.
 		frappe.db.set_single_value("Stock Settings", {"enable_stock_reservation": 1, "auto_reserve_stock": 1})
 		frappe.clear_document_cache("Stock Settings", "Stock Settings")
 
 	def tearDown(self):
 		frappe.db.rollback()
+		frappe.defaults._clear_cache("__default")  # the default company is back to the site's
 		frappe.clear_document_cache("Delivery Settings", "Delivery Settings")
 		frappe.set_user("Administrator")
 

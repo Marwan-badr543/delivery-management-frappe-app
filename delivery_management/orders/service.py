@@ -138,9 +138,15 @@ def submit_pos_order(invoice: dict, data: dict, delivery: dict | None, unpaid: b
 	invoice["sales_team"] = sales_team_of_current_user()
 	so = _make_sales_order(invoice, items, main_store, booking, profile, address_name, delivery)
 	so.insert(ignore_permissions=True)
-	# Books the slot / AC day from the schedule fields (sales_order.before_submit).
-	with quiet_messages():
-		so.submit()
+	# The slot / AC day is booked last (below): its row stays locked until the request ends,
+	# so other sales for the same day wait only for that, not for the whole sale. validate
+	# already checked it is free; the booking re-checks under the lock.
+	frappe.flags.dm_book_later = True
+	try:
+		with quiet_messages():
+			so.submit()
+	finally:
+		frappe.flags.dm_book_later = False
 
 	# so.items were built from ``items`` in the same order, so index i matches i.
 	for row, so_item in zip(items, so.items):
@@ -165,6 +171,9 @@ def submit_pos_order(invoice: dict, data: dict, delivery: dict | None, unpaid: b
 		result = _submit_with_posawesome(invoice, data)
 	result["sales_order"] = so.name
 	tv_accounts.add_to_pos_sale(result["name"], so.name)
+	from delivery_management.orders.sales_order import book
+
+	book(so)  # last: a slot that just became full fails the request and rolls the sale back
 	return result
 
 

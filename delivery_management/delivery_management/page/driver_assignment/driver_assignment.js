@@ -247,7 +247,7 @@ class DriverAssignmentPage {
 				__("Nothing to deliver matches these filters.")));
 			return;
 		}
-		$tbody.html(this.rows.map((r) => `
+		$tbody.html(this.rows.map((r) => r.kind === "ticket" ? this.ticketRow(r) : `
 			<tr data-name="${D.esc(r.name)}" tabindex="0">
 				<td data-label="${__("Delivery Note")}"><span class="dd-dn">${D.esc(r.name)}</span>
 					<span class="dd-sub">${D.date(r.posting_date)}</span></td>
@@ -269,13 +269,73 @@ class DriverAssignmentPage {
 		$tbody.find("tr[data-name]").on("click keydown", (e) => {
 			if (e.type === "keydown" && e.key !== "Enter") return;
 			if ($(e.target).closest("[data-assign], a").length) return;
+			const row = this.rows.find((r) => r.name === $(e.currentTarget).data("name"));
+			if (row && row.kind === "ticket") return window.dm_support.openTicket(row.name, () => this.load());
 			frappe.set_route("Form", "Delivery Note", $(e.currentTarget).data("name"));
 		});
 		$tbody.find("[data-assign]").on("click", (e) => {
 			e.stopPropagation();
 			const row = this.rows.find((r) => r.name === $(e.currentTarget).data("assign"));
-			this.openPicker(row);
+			row.kind === "ticket" ? this.openTicketPicker(row) : this.openPicker(row);
 		});
+	}
+
+	/** A support trip (pickup or return of a customer's item), among the TV orders. */
+	ticketRow(r) {
+		const D = this.D;
+		return `<tr data-name="${D.esc(r.name)}" tabindex="0" class="dd-ticket-row">
+			<td data-label="${__("Ticket")}"><span class="dd-dn">${D.esc(r.name)}</span>
+				<span class="dd-sub">${D.esc(r.subject || "")}</span></td>
+			<td data-label="${__("Customer")}"><b>${D.esc(r.customer_name || r.customer || "")}</b>
+				<span class="dd-sub">${D.phoneLink(r.phone)}</span></td>
+			<td data-label="${__("Address")}" class="dd-addr">${D.esc(r.address) || `<span class="dd-muted">—</span>`}</td>
+			<td data-label="${__("Delivery")}">${D.whenCell(r)}</td>
+			<td data-label="${__("Type")}"><span class="dd-pill dd-pill-purple">${frappe.utils.icon("tool", "xs")} ${__("Maintenance")}</span>
+				<span class="dd-sub">${D.esc(r.trip)} · ${D.esc(r.item_code || "")}</span>
+				${r.under_warranty ? `<span class="dd-sub"><span class="dd-pill dd-pill-green">${__("Under warranty")}</span></span>` : ""}</td>
+			<td data-label="${__("Payment")}"><span class="dd-muted">—</span></td>
+			<td data-label="${__("Driver")}">
+				<button class="dd-driver-btn ${r.driver ? "assigned" : "unassigned"}" data-assign="${D.esc(r.name)}">
+					<span>${r.driver ? D.esc(r.driver_name || r.driver) : __("Assign Driver")}</span>
+					${frappe.utils.icon(r.driver ? "edit" : "add", "xs")}
+				</button></td>
+		</tr>`;
+	}
+
+	async openTicketPicker(row) {
+		const D = this.D;
+		const API = "delivery_management.api.support.";
+		const d = new frappe.ui.Dialog({ title: __("Driver for {0}", [row.name]), size: "large",
+			fields: [{ fieldname: "body", fieldtype: "HTML" }] });
+		const $b = d.fields_dict.body.$wrapper.html(`<div class="dd-empty">${__("Checking availability…")}</div>`);
+		d.show();
+		d.$wrapper.on("hidden.bs.modal", () => d.$wrapper.remove());
+		const info = await frappe.xcall(API + "get_driver_options", { name: row.name });
+		const assign = async (driver, label) => {
+			await frappe.call({ method: API + "assign_driver", args: { name: row.name, driver }, type: "POST", freeze: true });
+			d.hide();
+			this.load();
+		};
+		$b.html(`<div class="dd-pick-head">
+				<span>${__("Customer")}: <b>${D.esc(row.customer_name || "")}</b></span>
+				<span>${D.esc(row.trip)}: <b>${D.date(info.delivery_date)} · ${D.time(info.delivery_time)}</b></span>
+				<span>${__("Area")}: <b>${D.esc(row.area || "—")}</b></span></div>
+			<p class="text-muted small">${__("A driver is busy if he has another order or visit within {0} hour(s) of this time.", [info.window_hours])}</p>
+			${info.drivers.length ? `<div class="dd-pick-list">${info.drivers.map((x) => `
+				<button class="dd-pick ${x.user === info.current_driver ? "current" : ""}" data-user="${D.esc(x.user)}"
+					${x.available || x.user === info.current_driver ? "" : "disabled"}>
+					${D.avatar(x.full_name)}<span class="dd-pick-body"><b>${D.esc(x.full_name)}</b>
+					<small class="${x.available ? "dd-ok" : "dd-no"}">${x.user === info.current_driver ? __("Assigned now")
+						: x.available ? __("Available") : __("Unavailable")}</small></span></button>`).join("")}</div>`
+				: `<div class="dd-banner dd-banner-warn">${__("No user has the TV Driver role. Give it in User settings.")}</div>`}`);
+		$b.find(".dd-pick:not([disabled])").on("click", (e) => {
+			const user = $(e.currentTarget).data("user");
+			user === info.current_driver ? d.hide() : assign(user, $(e.currentTarget).find("b").text());
+		});
+		if (info.current_driver && row.step !== "Out for Return") {
+			d.set_secondary_action_label(__("Unassign Driver"));
+			d.set_secondary_action(() => assign(""));
+		}
 	}
 
 	// ------------------------------------------------------------ assign

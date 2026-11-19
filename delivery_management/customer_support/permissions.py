@@ -1,4 +1,5 @@
-"""Technicians see only the support tickets (Issues) assigned to them, in the desk too.
+"""Technicians see only their trips' tickets (Issues), the workshop only the tickets that reached
+it, in the desk too (the same rule as ``tickets.can_view``).
 
 A user with a full-access role (System Manager, Support Team, ...) is not limited.
 """
@@ -23,14 +24,22 @@ def get_permission_query_conditions(user=None, doctype=None):
 	if not only_own_tickets(user):
 		return ""
 	u = frappe.db.escape(user)
-	return f"(`tabIssue`.sm_technician = {u} or `tabIssue`.sm_maint_technician = {u})"
+	roles = set(frappe.get_roles(user))
+	conditions = []
+	if ROLE_TECH in roles:
+		conditions.append(f"`tabIssue`.sm_driver = {u} or `tabIssue`.sm_technician = {u}")
+	if ROLE_MAINT in roles:
+		conditions.append("`tabIssue`.sm_step not in ('', 'Customer Service', 'Pickup')")
+	return "(" + " or ".join(conditions) + ")"
 
 
 def has_permission(doc, ptype=None, user=None, debug=False):
 	user = user or frappe.session.user
 	if not only_own_tickets(user):
 		return True
-	return user in (doc.get("sm_technician"), doc.get("sm_maint_technician"))
+	from delivery_management.customer_support.tickets import can_view
+
+	return can_view(doc, user)
 
 
 def on_issue_trash(doc, method=None):

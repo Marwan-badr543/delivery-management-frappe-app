@@ -14,6 +14,7 @@
   "sales_order",
   "sales_invoice",
   "delivery_note",
+  "support_ticket",
   "customer",
   "customer_name",
   "section_b",
@@ -31,10 +32,11 @@
    "fieldtype": "Select",
    "label": "Event",
    "read_only": 1,
-   "options": "Order created\nOrder cancelled\nStore sale\nInvoice cancelled\nDriver assigned\nDriver changed\nDriver removed\nSent out\nDelivered\nNot delivered items\nCustomer not available\nReceived back\nPOS return\nPayment\nRefund\nCredit note\nPayment cancelled\nCash handed over\nDelivery split\nDelivery merged back",
+   "options": "Order created\nOrder cancelled\nStore sale\nInvoice cancelled\nDriver assigned\nDriver changed\nDriver removed\nSent out\nDelivered\nNot delivered items\nCustomer not available\nReceived back\nPOS return\nPayment\nRefund\nCredit note\nPayment cancelled\nCash handed over\nDelivery split\nDelivery merged back\nTicket opened\nVisit booked\nTicket driver assigned\nTicket driver changed\nVisit logged\nResolved at the customer\nCustomer not home\nItem picked up\nReceived in workshop\nRepaired\nNot repairable\nReturn booked\nSent out from workshop\nReturned to customer\nTicket resolved\nReceived back in store\nSent out from store",
    "in_list_view": 1,
    "in_standard_filter": 1,
-   "reqd": 1
+   "reqd": 1,
+   "search_index": 1
   },
   {
    "fieldname": "at",
@@ -61,7 +63,8 @@
    "label": "Driver / AC Tech",
    "read_only": 1,
    "options": "User",
-   "in_standard_filter": 1
+   "in_standard_filter": 1,
+   "search_index": 1
   },
   {
    "fieldname": "column_break_a",
@@ -90,7 +93,16 @@
    "fieldtype": "Link",
    "label": "Delivery Note",
    "read_only": 1,
-   "options": "Delivery Note"
+   "options": "Delivery Note",
+   "search_index": 1
+  },
+  {
+   "fieldname": "support_ticket",
+   "fieldtype": "Link",
+   "label": "Support Ticket",
+   "read_only": 1,
+   "options": "Issue",
+   "search_index": 1
   },
   {
    "fieldname": "customer",
@@ -98,7 +110,8 @@
    "label": "Customer",
    "read_only": 1,
    "options": "Customer",
-   "in_standard_filter": 1
+   "in_standard_filter": 1,
+   "search_index": 1
   },
   {
    "fieldname": "customer_name",
@@ -155,7 +168,7 @@
   }
  ],
  "in_create": 1,
- "modified": "2026-11-10 10:00:00.000000",
+ "modified": "2026-11-18 18:00:00.000000",
  "modified_by": "Administrator",
  "module": "Delivery Management",
  "name": "Order Log",

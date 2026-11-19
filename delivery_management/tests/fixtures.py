@@ -1,15 +1,45 @@
-"""Self-contained POS/stock fixtures, built on the site's default company.
+"""Self-contained POS/stock fixtures, built on their own company (``_DM Test Company``),
+so test data never mixes with the site's real companies.
 
-Everything is created inside the test transaction and rolled back afterwards.
+The company itself is made once and kept; everything else is created inside the test
+transaction and rolled back afterwards.
 """
 
 import frappe
 from frappe.utils import add_days, nowdate
 
+TEST_COMPANY = "_DM Test Company"
+TEST_ABBR = "DMT"
+
+
+def ensure_test_company():
+	"""Create (once, committed) the test company with the accounts the app needs.
+	Call right after a rollback, so nothing else is committed with it."""
+	if frappe.db.exists("Company", TEST_COMPANY):
+		return
+	from delivery_management import install
+
+	home = frappe.get_cached_doc("Company", frappe.get_all("Company", pluck="name", limit=1)[0])
+	frappe.get_doc({"doctype": "Company", "company_name": TEST_COMPANY, "abbr": TEST_ABBR,
+		"default_currency": home.default_currency, "country": home.country,
+		"chart_of_accounts": "Standard"}).insert(ignore_permissions=True)
+	install.ensure_ac_installation_account()
+	install.ensure_drivers_cash_account()
+	bank = frappe.db.get_value("Account", {"company": TEST_COMPANY, "account_type": "Bank", "is_group": 0}) or \
+		frappe.get_doc({"doctype": "Account", "account_name": "_DM Bank", "company": TEST_COMPANY, "account_type": "Bank",
+			"parent_account": frappe.db.get_value("Account", {"company": TEST_COMPANY, "account_type": "Bank",
+				"is_group": 1})}).insert(ignore_permissions=True).name
+	cash = frappe.db.get_value("Account", {"company": TEST_COMPANY, "account_name": "Cash", "is_group": 0})
+	for mode in frappe.get_all("Mode of Payment", fields=["name", "type"]):
+		doc = frappe.get_doc("Mode of Payment", mode.name)
+		if not any(r.company == TEST_COMPANY for r in doc.accounts):
+			doc.append("accounts", {"company": TEST_COMPANY, "default_account": cash if mode.type == "Cash" else bank})
+			doc.save(ignore_permissions=True)
+	frappe.db.commit()
+
 
 def company():
-	name = frappe.defaults.get_global_default("company") or frappe.get_all("Company", pluck="name", limit=1)[0]
-	return frappe.get_cached_doc("Company", name)
+	return frappe.get_cached_doc("Company", TEST_COMPANY)
 
 
 def warehouse(label):

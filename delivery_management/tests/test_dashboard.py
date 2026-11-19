@@ -38,6 +38,7 @@ class TestSalesDashboard(OrdersTestCase):
 			{**self.delivery, "ac_date": None})["sales_order"]
 		before = dashboard.summary()["pending_orders"]
 		make_delivery_note(so).insert()
+		dashboard.summary.clear_cache()  # the totals are kept 10 minutes
 		self.assertEqual(dashboard.summary()["pending_orders"], before + 1)
 
 	def test_page_result_comes_from_the_background_job(self):

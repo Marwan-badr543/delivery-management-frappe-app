@@ -109,10 +109,12 @@ class ACTechPayment(Document):
 
 
 @frappe.whitelist()
-def get_unpaid_installations(technician: str, up_to_date=None) -> list[dict]:
-	"""Delivered AC installations of the AC Tech not paid yet, oldest first."""
+def get_unpaid_installations(technician: str, up_to_date=None, from_date=None) -> list[dict]:
+	"""Delivered AC installations of the AC Tech not paid yet, oldest first. From ``from_date``
+	only (the last payment's date by default), so the tech's whole history is not read."""
 	frappe.has_permission("AC Tech Payment", "create", throw=True)
-	notes = stats.delivered_notes(end_date=up_to_date, technician=technician, order_type=asg.TYPE_AC)
+	notes = stats.delivered_notes(start_date=from_date, end_date=up_to_date, technician=technician,
+		order_type=asg.TYPE_AC)
 	units = stats.units_by_note([n.name for n in notes])
 	paid = stats.paid_notes(list(units))
 	cost = flt(frappe.db.get_value("User", technician, "dm_ac_unit_cost"))
@@ -127,6 +129,15 @@ def get_unpaid_installations(technician: str, up_to_date=None) -> list[dict]:
 			"installation_date": note.work_date, "ac_units": ac_units, "unit_cost": cost,
 			"amount": flt(ac_units * cost, 3)})
 	return rows
+
+
+@frappe.whitelist()
+def last_payment_date(technician: str) -> str | None:
+	"""The date the AC Tech's last submitted payment covers up to (else its payment date)."""
+	frappe.has_permission("AC Tech Payment", "create", throw=True)
+	last = frappe.get_all("AC Tech Payment", filters={"technician": technician, "docstatus": 1},
+		fields=["up_to_date", "posting_date"], order_by="posting_date desc, creation desc", limit=1)
+	return (last[0].up_to_date or last[0].posting_date) if last else None
 
 
 @frappe.whitelist()

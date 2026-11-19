@@ -41,6 +41,15 @@ def validate(doc, method=None):
 
 
 def before_submit(doc, method=None):
+	# The POS books at the very end of its request (orders.service.submit_pos_order), so the
+	# day / slot row stays locked for milliseconds, not for the whole sale.
+	if frappe.flags.dm_book_later:
+		return
+	book(doc)
+
+
+def book(doc) -> None:
+	"""Book the capacity the order's schedule asks for and does not hold yet."""
 	booking = requested_booking(doc)
 	held = {r.slot_type for r in engine.get_reservations(doc.doctype, doc.name)}
 	if engine.SLOT_AC in held:

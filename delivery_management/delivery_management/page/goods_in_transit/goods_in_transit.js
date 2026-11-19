@@ -41,6 +41,7 @@ class GoodsInTransitPage {
 							<th>${__("Left the store")}</th><th>${__("Status")}</th><th>${__("Items")}</th></tr></thead>
 						<tbody></tbody></table></div>
 				</div>
+				<div class="git-support"></div>
 			</div>
 			<div class="git-cash hidden"></div>
 		</div>`).appendTo(page.main);
@@ -116,8 +117,40 @@ class GoodsInTransitPage {
 
 	// ------------------------------------------------------------------ goods
 
+	/** Customer items of support tickets in the transit store: taken from the customer for
+	 * the workshop, or out for return. Not our stock (zero value). */
+	async loadSupport() {
+		const D = this.D;
+		const S = window.dm_support;
+		const $s = this.$root.find(".git-support");
+		let rows;
+		try {
+			rows = await frappe.xcall("delivery_management.api.support.get_transit_items");
+		} catch (e) {
+			return $s.empty();  // not the office nor the workshop
+		}
+		if (!rows.length) return $s.empty();
+		$s.html(`<div class="dd-panel dd-table-panel"><div class="dd-panel-head"><h4>${frappe.utils.icon("tool", "sm")}
+				${__("Customer items (support tickets)")}</h4><span class="dd-muted small">${__("Not our stock: repairs on their way.")}</span></div>
+			<div class="dd-scroll"><table class="dd-table dd-cards"><thead><tr><th>${__("Ticket")}</th><th>${__("Customer")}</th>
+				<th>${__("Item")}</th><th>${__("Status")}</th><th>${__("Driver")}</th></tr></thead><tbody>${rows.map((r) => `
+				<tr data-ticket="${D.esc(r.name)}" tabindex="0">
+					<td data-label="${__("Ticket")}"><span class="dd-dn">${D.esc(r.name)}</span><span class="dd-sub">${D.esc(r.subject)}</span></td>
+					<td data-label="${__("Customer")}"><b>${D.esc(r.customer_name || "")}</b><span class="dd-sub">${D.phoneLink(r.customer_phone)}</span></td>
+					<td data-label="${__("Item")}">${D.esc(r.item_code)}${r.serial_no ? `<span class="dd-sub">${D.esc(r.serial_no)}</span>` : ""}
+						<span class="dd-sub">${S.warrantyPill(r)}</span></td>
+					<td data-label="${__("Status")}">${r.step === "To Workshop"
+						? `<span class="dd-pill dd-pill-blue">${__("To the workshop")}</span>`
+						: r.step === "Back to Store" ? `<span class="dd-pill dd-pill-red">${__("Customer not home: back to the main store")}</span>`
+						: `<span class="dd-pill dd-pill-orange">${__("Back to the customer")}</span>`}</td>
+					<td data-label="${__("Driver")}">${D.esc(r.driver_name || r.technician_name || "")}</td>
+				</tr>`).join("")}</tbody></table></div></div>`);
+		$s.find("tr[data-ticket]").on("click", (e) => S.openTicket(e.currentTarget.dataset.ticket, () => this.load()));
+	}
+
 	async loadGoods() {
 		const D = this.D;
+		this.loadSupport();
 		const $tbody = this.$root.find(".git-goods tbody").html(D.skeleton(6));
 		const rows = await frappe.xcall(GIT_API + "get_transit", this.f);
 		this.$root.find('[data-count="goods"]').text(rows.length);

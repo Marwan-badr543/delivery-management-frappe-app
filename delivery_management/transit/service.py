@@ -64,13 +64,18 @@ def key(dn_detail: str, item_code: str) -> str:
 	return f"{dn_detail}|{item_code}"
 
 
-def stock_lines(dn) -> list[frappe._dict]:
+ITEM_FIELDS = ["name", "item_name", "is_stock_item", "has_serial_no", "stock_uom"]
+
+
+def stock_lines(dn, items: dict | None = None) -> list[frappe._dict]:
 	"""What physically moves: ``key``, ``item_code``, ``qty`` (stock UOM), ``serials``,
-	``dn_detail`` (the note row; a bundle's row for its components), ``bundle_item``."""
+	``dn_detail`` (the note row; a bundle's row for its components), ``bundle_item``.
+	``items``: ``{code: Item fields}`` already read for many notes (``ITEM_FIELDS``)."""
 	packed = list(dn.get("packed_items") or [])
-	codes = {r.item_code for r in dn.items} | {p.item_code for p in packed}
-	items = {i.name: i for i in frappe.get_all("Item", filters={"name": ["in", list(codes) or [""]]},
-		fields=["name", "item_name", "is_stock_item", "has_serial_no", "stock_uom"])}
+	if items is None:
+		codes = {r.item_code for r in dn.items} | {p.item_code for p in packed}
+		items = {i.name: i for i in frappe.get_all("Item", filters={"name": ["in", list(codes) or [""]]},
+			fields=ITEM_FIELDS)}
 	bundles = {p.parent_detail_docname for p in packed}
 	lines = []
 	for r in dn.items:
@@ -422,16 +427,16 @@ def set_driver(delivery_note: str, driver: str | None) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def pending(doc, dn=None) -> dict[str, frappe._dict]:
+def pending(doc, dn=None, items: dict | None = None) -> dict[str, frappe._dict]:
 	"""``{Delivery Transit row: {qty, serials}}`` still outside the store and not with the
-	customer: what the stock keeper can receive."""
+	customer: what the stock keeper can receive. ``items``: see ``stock_lines``."""
 	dn = dn or frappe.get_doc(DN, doc.delivery_note)
 	on_note: dict = {}
 	if dn.docstatus == 1:
 		on_note = {key(r.dn_detail, r.item_code): (flt(r.delivered_qty), get_serial_nos(r.delivered_serials or ""))
 			for r in doc.items}
 	elif dn.get("dm_delivery_status") == ON_THE_WAY:
-		on_note = {line.key: (line.qty, line.serials) for line in stock_lines(dn)}
+		on_note = {line.key: (line.qty, line.serials) for line in stock_lines(dn, items)}
 	out = {}
 	for r in doc.items:
 		qty_on, sns_on = on_note.get(key(r.dn_detail, r.item_code), (0, []))

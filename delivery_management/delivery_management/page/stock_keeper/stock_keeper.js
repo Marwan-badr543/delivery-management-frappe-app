@@ -28,6 +28,7 @@ class StockKeeperPage {
 			${this.D.tabs([
 				{ key: "send", label: __("Send out"), icon: "arrow-up-right" },
 				{ key: "receive", label: __("Receive back"), icon: "arrow-down-left" },
+				{ key: "support", label: __("Support items"), icon: "tool" },
 			], this.tab)}
 			<div class="dd-panel dd-filter-panel"></div>
 			<div class="dd-panel dd-table-panel">
@@ -52,14 +53,16 @@ class StockKeeperPage {
 		const send = this.tab === "send";
 		const $p = this.$root.find(".dd-filter-panel").html(`
 			<div class="dd-filters">
-				${send ? `<div class="dd-field"><label>${__("Delivery / installation day")}</label>
+				${send && this.tab !== "support" ? `<div class="dd-field"><label>${__("Delivery / installation day")}</label>
 					<input type="date" class="form-control" data-f="work_date" value="${this.f.work_date}"></div>` : ""}
 				<div class="dd-field dd-search"><label>${__("Search")}</label>
 					<span class="dd-search-icon">${frappe.utils.icon("search", "sm")}</span>
 					<input class="form-control" data-f="search" placeholder="${__("DN number, customer, phone")}"
 						value="${this.D.esc(this.f.search)}"></div>
 			</div>
-			<div class="dd-filter-foot"><span class="dd-hint">${send
+			<div class="dd-filter-foot"><span class="dd-hint">${this.tab === "support"
+				? __("Customer items of support tickets: scan in what the driver brought back, and hand the next return to its driver.")
+				: send
 				? __("Orders with a driver, waiting in the store. Open one, scan its serials and send it out.")
 				: __("Goods out with drivers that are coming back. Open one and scan what came back.")}</span>
 				<span class="dd-count" data-count-label>–</span></div>`);
@@ -71,6 +74,7 @@ class StockKeeperPage {
 	}
 
 	async load() {
+		if (this.tab === "support") return this.loadSupport();
 		const D = this.D;
 		const send = this.tab === "send";
 		this.$root.find(".dd-table thead").html(send
@@ -114,6 +118,62 @@ class StockKeeperPage {
 			const name = $(e.currentTarget).data("name");
 			send ? this.openSend(name) : this.openReceive(this.rows.find((r) => r.name === name));
 		});
+	}
+
+	// ------------------------------------------------------------ support tickets
+
+	async loadSupport() {
+		const D = this.D;
+		const S = window.dm_support;
+		this.$root.find(".dd-table thead").html(`<tr><th>${__("Ticket")}</th><th>${__("Customer")}</th><th>${__("Item")}</th>
+			<th>${__("Driver")}</th><th>${__("To do")}</th></tr>`);
+		const $tbody = this.$root.find(".dd-table tbody").html(D.skeleton(5));
+		const r = await S.call("get_store_items", { search: this.f.search });
+		const rows = [...r.back.map((x) => ({ ...x, todo: "back" })), ...r.send.map((x) => ({ ...x, todo: "send" }))];
+		this.$root.find("[data-count-label]").text(__("{0} items", [rows.length]));
+		this.$root.find(`[data-count="support"]`).text(rows.length);
+		if (!rows.length) return $tbody.html(D.emptyRow(5, __("Nothing here"), __("No support item to receive or send out.")));
+		$tbody.html(rows.map((x, i) => `
+			<tr data-i="${i}" tabindex="0">
+				<td data-label="${__("Ticket")}"><span class="dd-dn">${D.esc(x.name)}</span><span class="dd-sub">${D.esc(x.subject)}</span></td>
+				<td data-label="${__("Customer")}"><b>${D.esc(x.customer_name || "")}</b><span class="dd-sub">${D.phoneLink(x.customer_phone)}</span></td>
+				<td data-label="${__("Item")}">${D.esc(x.item_code)}${x.serial_no ? `<span class="dd-sub">${D.esc(x.serial_no)}</span>` : ""}</td>
+				<td data-label="${__("Driver")}">${D.esc(x.driver_name || x.driver || "")}${x.trip_date
+					? `<span class="dd-sub">${D.date(x.trip_date)} · ${D.time(x.trip_time)}</span>` : ""}</td>
+				<td data-label="${__("To do")}">${x.todo === "back"
+					? `<button class="btn btn-sm btn-warning" data-do>${frappe.utils.icon("arrow-down-left", "xs")} ${__("Receive into {0}", [D.esc(r.main)])}</button>`
+					: `<button class="btn btn-sm btn-primary" data-do>${frappe.utils.icon("arrow-up-right", "xs")} ${__("Hand to driver")}</button>`}</td>
+			</tr>`).join(""));
+		$tbody.find("tr[data-i]").on("click", (e) => {
+			const x = rows[$(e.currentTarget).data("i")];
+			if (!$(e.target).closest("[data-do]").length) return S.openTicket(x.name, () => this.load());
+			this.supportMove(x, r.main);
+		});
+	}
+
+	/** Scan the ticket's serial, then move it: transit -> main store, or main store -> transit. */
+	supportMove(x, main) {
+		const back = x.todo === "back";
+		const d = new frappe.ui.Dialog({
+			title: back ? __("Receive {0} into {1}", [x.name, main]) : __("Hand {0} to {1}", [x.name, x.driver_name || x.driver]),
+			fields: [
+				{ fieldname: "info", fieldtype: "HTML", options: `<p>${this.D.esc(x.customer_name || "")} · <b>${this.D.esc(x.item_code)}</b></p>
+					<p class="small text-muted">${back ? __("The customer was not home. Scan the serial of the item the driver brought back.")
+						: __("Scan the serial of the item you hand to the driver. It moves to Goods in Transit.")}</p>` },
+				...(x.serial_no ? [{ fieldname: "serial", fieldtype: "Data", options: "Barcode", reqd: 1, label: __("Scan serial number") }] : []),
+			],
+			primary_action_label: back ? __("Receive") : __("Hand to driver"),
+			primary_action: async (v) => {
+				if (x.serial_no && (v.serial || "").trim() !== x.serial_no)
+					return frappe.msgprint(__("This is not the serial of the ticket ({0}).", [x.serial_no]));
+				await window.dm_support.call(back ? "receive_back" : "store_send_out", { name: x.name, serial_no: (v.serial || "").trim() },
+					{ post: true, freeze: true });
+				frappe.show_alert({ message: back ? __("Received into {0}", [main]) : __("Handed to the driver"), indicator: "green" });
+				d.hide();
+				this.load();
+			},
+		});
+		d.show();
 	}
 
 	// ------------------------------------------------------------ scanning

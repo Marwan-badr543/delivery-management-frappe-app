@@ -57,6 +57,32 @@ def copy_schedule_from_sales_order(dn) -> None:
 			dn.set(field, values[field])
 
 
+def work_date_of(doc) -> str | None:
+	"""The day the order is worked: AC on its installation day, else on its delivery day. A
+	submitted note without a schedule (hand-made) counts on its posting date."""
+	if doc.get("dm_delivery_type") == asg.TYPE_AC:
+		day = doc.get("dm_ac_installation_date") or doc.get("dm_delivery_date")
+	else:
+		day = doc.get("dm_delivery_date")
+	if not day and doc.get("docstatus") == 1:
+		day = doc.get("posting_date")
+	return day
+
+
+def set_work_date(doc, method=None):
+	"""Kept on the note (``dm_work_date``, indexed) so the driver, stock keeper and statistics
+	pages search a column, not a formula over every note."""
+	doc.dm_work_date = work_date_of(doc)
+
+
+def refresh_work_date(delivery_note: str) -> None:
+	"""After the schedule was written straight to the database (``orders.schedule``)."""
+	doc = frappe.db.get_value("Delivery Note", delivery_note, ["dm_delivery_type", "dm_ac_installation_date",
+		"dm_delivery_date", "docstatus", "posting_date"], as_dict=True)
+	if doc:
+		frappe.db.set_value("Delivery Note", delivery_note, "dm_work_date", work_date_of(doc), update_modified=False)
+
+
 def before_insert(doc, method=None):
 	copy_schedule_from_sales_order(doc)
 	if not doc.get("dm_delivery_type"):

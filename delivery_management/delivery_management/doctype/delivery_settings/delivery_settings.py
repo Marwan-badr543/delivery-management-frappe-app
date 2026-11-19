@@ -19,14 +19,20 @@ class DeliverySettings(Document):
 		self.validate_main_warehouse()
 		self.validate_delivery_charge_item()
 		self.validate_day_limits()
-		self.validate_commission()
+		self.validate_sales_taxes()
 
-	def validate_commission(self):
-		low, high = flt(self.commission_min_percent), flt(self.commission_max_percent)
-		if low < 0 or high > 100:
-			frappe.throw(_("Commission % must be between 0 and 100."))
-		if low > high:
-			frappe.throw(_("Min Commission % cannot be more than Max Commission %."))
+	def validate_sales_taxes(self):
+		template = self.get("sales_taxes_template")
+		if not template:
+			return
+		rows = frappe.get_all("Sales Taxes and Charges", fields=["idx", "included_in_print_rate"],
+			filters={"parent": template, "parenttype": "Sales Taxes and Charges Template"})
+		if not rows:
+			frappe.throw(_("The tax template {0} has no tax rows.").format(frappe.bold(template)))
+		for row in rows:
+			if not cint(row.included_in_print_rate):
+				frappe.throw(_("Row {0} of {1}: tick \"Is this Tax included in Basic Rate?\". POS prices already include VAT.")
+					.format(row.idx, frappe.bold(template)))
 
 	def validate_excluded_groups(self):
 		groups = [row.item_group for row in self.ac_item_groups if row.item_group]
@@ -55,6 +61,14 @@ class DeliverySettings(Document):
 		if self.main_warehouse and frappe.db.get_value("Warehouse", transit, "company") != \
 				frappe.db.get_value("Warehouse", self.main_warehouse, "company"):
 			frappe.throw(_("Transit Store and Main Store must belong to the same company."))
+		workshop = self.get("support_workshop_warehouse")
+		if workshop:
+			if cint(frappe.db.get_value("Warehouse", workshop, "is_group")):
+				frappe.throw(_("Workshop Store must be a ledger warehouse, not a group."))
+			if workshop in (transit, self.main_warehouse):
+				frappe.throw(_("Workshop Store must be another store than the Main and Transit Stores."))
+			if frappe.db.get_value("Warehouse", workshop, "company") != frappe.db.get_value("Warehouse", transit, "company"):
+				frappe.throw(_("Workshop Store and Transit Store must belong to the same company."))
 
 	def validate_delivery_charge_item(self):
 		if not self.get("delivery_charge_item"):

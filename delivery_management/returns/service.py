@@ -561,7 +561,10 @@ def _clear_debt(invoice: str, credit_note: str) -> None:
 		return
 	si = frappe.db.get_value(SI, invoice, ["company", "customer", "debit_to"], as_dict=True)
 	pr = frappe.get_doc({"doctype": "Payment Reconciliation", "company": si.company, "party_type": "Customer",
-		"party": si.customer, "receivable_payable_account": si.debit_to})
+		"party": si.customer, "receivable_payable_account": si.debit_to,
+		# Only these two: else ERPNext reads the customer's whole ledger and keeps 50 rows,
+		# which may not hold them (a walk-in customer).
+		"invoice_name": invoice, "payment_name": credit_note})
 	pr.get_unreconciled_entries()
 	payment = next(p for p in pr.payments if p.reference_name == credit_note)
 	debt = next(i for i in pr.invoices if i.invoice_number == invoice)

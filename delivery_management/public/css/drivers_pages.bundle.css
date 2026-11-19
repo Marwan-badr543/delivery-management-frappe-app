@@ -197,8 +197,9 @@
 .dm-sup-visit { border-left: 3px solid var(--orange-500, #f59e0b); padding: 4px 10px; display: flex; flex-direction: column; gap: 4px; }
 .dm-sup-visit-head { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 13px; }
 .dm-sup-slot-list { display: flex; flex-wrap: wrap; gap: 6px; }
-.dm-sup-foot { display: flex; flex-wrap: wrap; justify-content: flex-end; margin-top: 14px; }
-.dm-sup-foot .btn { width: auto; padding: 0 16px; }
+.dm-sup-foot { margin-top: 14px; }
+.dm-sup-foot .btn.dm-sup-small { width: auto !important; min-width: 0; height: auto; padding: 4px 12px; font-size: 12px; line-height: 1.4; flex: 0 0 auto; }
+.dm-sup-pager .btn { width: 28px; height: 26px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
 .dm-sup-techs .dd-pick-body small.dd-muted { font-weight: 400; }
 
 /* Phones: order cards, dialogs and the Stock Keeper / Goods in Transit pages */
@@ -309,3 +310,28 @@
 	.git-hold { align-items: flex-start; }
 	.git-driver-head .btn { width: 100%; }
 }
+
+/* Order Control: any dates (From / To) next to the period buttons. */
+.oc-range { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.oc-range label { display: flex; align-items: center; gap: 6px; margin: 0; font-size: var(--text-xs, 12px); color: var(--text-muted); }
+.oc-range .form-control { height: 28px; width: 140px; font-size: var(--text-sm, 13px); }
+
+/* Support ticket: journey tracker, next-step guide, the work panel first */
+.dm-journey { list-style: none; display: flex; margin: 0 0 12px; padding: 0; overflow-x: auto; gap: 0; }
+.dm-journey li { flex: 1 1 0; min-width: 64px; display: flex; flex-direction: column; align-items: center; gap: 4px; position: relative; font-size: 11px; color: var(--text-muted); text-align: center; }
+.dm-journey li::before { content: ""; position: absolute; top: 11px; left: -50%; width: 100%; height: 2px; background: var(--border-color); z-index: 0; }
+.dm-journey li:first-child::before { display: none; }
+.dm-journey li.done::before, .dm-journey li.now::before { background: var(--green-500, #22c55e); }
+.dm-journey .dot { position: relative; z-index: 1; width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 600; background: var(--control-bg); border: 2px solid var(--border-color); color: var(--text-muted); }
+.dm-journey li.done .dot { background: var(--green-500, #22c55e); border-color: var(--green-500, #22c55e); color: #fff; }
+.dm-journey li.now .dot { background: var(--primary, #2563eb); border-color: var(--primary, #2563eb); color: #fff; box-shadow: 0 0 0 4px var(--blue-100, rgba(37,99,235,.15)); }
+.dm-journey li.now.bad .dot { background: var(--red-500, #ef4444); border-color: var(--red-500, #ef4444); box-shadow: 0 0 0 4px var(--red-100, rgba(239,68,68,.15)); }
+.dm-journey li.now .lbl { color: var(--text-color); font-weight: 600; }
+.dm-next { display: flex; gap: 10px; align-items: flex-start; padding: 10px 14px; margin-bottom: 12px; border-radius: var(--border-radius-md, 8px); background: var(--blue-50, var(--bg-blue)); border: 1px solid var(--blue-200, var(--border-color)); font-size: 13px; color: var(--text-color); }
+.dm-next > svg { flex: 0 0 auto; margin-top: 2px; }
+.dm-work { display: flex; flex-direction: column; gap: 12px; margin-bottom: 14px; padding: 12px; border-radius: var(--border-radius-lg, 10px); border: 2px solid var(--primary, #2563eb); background: var(--card-bg, var(--fg-color)); }
+.dm-work .dd-box { border: none; box-shadow: none; padding: 0; background: transparent; }
+.dm-work .dd-box + .dd-box { border-top: 1px dashed var(--border-color); padding-top: 12px; }
+.dm-work textarea, .dm-work input.form-control { font-size: 14px; }
+.dm-work .dm-sup-foot { margin-top: 0; }
+@media (max-width: 576px) { .dm-journey .lbl { display: none; } .dm-journey li.now .lbl { display: block; } }

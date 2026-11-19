@@ -1,0 +1,247 @@
+{
+ "actions": [],
+ "autoname": "format:SCP-{YYYY}-{#####}",
+ "creation": "2026-11-16 12:00:00.000000",
+ "description": "Pays a salesman his commission month by month (same calculation as Sales Statistics). Each invoice's commission is paid once. Submitting posts the expense (Journal Entry).",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "salesman",
+  "salesman_name",
+  "from_month",
+  "to_month",
+  "column_break_a",
+  "company",
+  "posting_date",
+  "basis",
+  "exclude_services",
+  "currency",
+  "accounts_section",
+  "paid_from",
+  "column_break_b",
+  "commission_account",
+  "cost_center",
+  "months_section",
+  "months",
+  "total_amount",
+  "invoices_section",
+  "invoices",
+  "more_section",
+  "remarks",
+  "column_break_m",
+  "journal_entry",
+  "amended_from"
+ ],
+ "fields": [
+  {
+   "fieldname": "salesman",
+   "fieldtype": "Link",
+   "label": "Salesman",
+   "options": "User",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "salesman_name",
+   "fieldtype": "Data",
+   "label": "Salesman Name",
+   "fetch_from": "salesman.full_name",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "from_month",
+   "fieldtype": "Date",
+   "label": "From Month",
+   "description": "Filled with the month after the last payment. Unpaid sales of earlier months (paid late by the customer) are still brought, marked Late."
+  },
+  {
+   "fieldname": "to_month",
+   "fieldtype": "Date",
+   "label": "To Month",
+   "reqd": 1,
+   "description": "Pays up to the end of this month. Only a month that has ended can be paid."
+  },
+  {
+   "fieldname": "column_break_a",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "reqd": 1,
+   "remember_last_selected_value": 1
+  },
+  {
+   "fieldname": "posting_date",
+   "fieldtype": "Date",
+   "label": "Payment Date",
+   "default": "Today",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "basis",
+   "fieldtype": "Select",
+   "label": "Commission On",
+   "reqd": 1,
+   "options": "Total (incl. VAT)\nNet Total (excl. VAT)",
+   "default": "Total (incl. VAT)"
+  },
+  {
+   "fieldname": "exclude_services",
+   "fieldtype": "Check",
+   "label": "Exclude services",
+   "default": "1"
+  },
+  {
+   "fieldname": "currency",
+   "fieldtype": "Link",
+   "label": "Currency",
+   "options": "Currency",
+   "fetch_from": "company.default_currency",
+   "read_only": 1,
+   "hidden": 1
+  },
+  {
+   "fieldname": "accounts_section",
+   "fieldtype": "Section Break",
+   "label": "Accounts"
+  },
+  {
+   "fieldname": "paid_from",
+   "fieldtype": "Link",
+   "label": "Paid From",
+   "options": "Account",
+   "reqd": 1,
+   "description": "The cash or bank account the money is paid from."
+  },
+  {
+   "fieldname": "column_break_b",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "commission_account",
+   "fieldtype": "Link",
+   "label": "Commission Account",
+   "options": "Account",
+   "description": "Filled with the company's Commission on Sales account; you can choose another expense account."
+  },
+  {
+   "fieldname": "cost_center",
+   "fieldtype": "Link",
+   "label": "Cost Center",
+   "options": "Cost Center",
+   "description": "Empty: the company's default cost center."
+  },
+  {
+   "fieldname": "months_section",
+   "fieldtype": "Section Break",
+   "label": "Commission by Month"
+  },
+  {
+   "fieldname": "months",
+   "fieldtype": "Table",
+   "label": "Months",
+   "options": "Sales Commission Payment Month",
+   "read_only": 1
+  },
+  {
+   "fieldname": "total_amount",
+   "fieldtype": "Currency",
+   "label": "Total Commission",
+   "options": "currency",
+   "read_only": 1,
+   "bold": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "invoices_section",
+   "fieldtype": "Section Break",
+   "label": "Invoices",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "invoices",
+   "fieldtype": "Table",
+   "label": "Invoices",
+   "options": "Sales Commission Payment Invoice",
+   "reqd": 1
+  },
+  {
+   "fieldname": "more_section",
+   "fieldtype": "Section Break",
+   "label": "More"
+  },
+  {
+   "fieldname": "remarks",
+   "fieldtype": "Small Text",
+   "label": "Remarks"
+  },
+  {
+   "fieldname": "column_break_m",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "journal_entry",
+   "fieldtype": "Link",
+   "label": "Journal Entry",
+   "options": "Journal Entry",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "options": "Sales Commission Payment",
+   "read_only": 1,
+   "no_copy": 1,
+   "print_hide": 1
+  }
+ ],
+ "is_submittable": 1,
+ "modified": "2026-11-16 15:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Delivery Management",
+ "name": "Sales Commission Payment",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "submit": 1,
+   "cancel": 1,
+   "amend": 1,
+   "report": 1,
+   "print": 1,
+   "export": 1
+  },
+  {
+   "role": "Accounts Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "submit": 1,
+   "cancel": 1,
+   "amend": 1,
+   "report": 1,
+   "print": 1,
+   "export": 1
+  }
+ ],
+ "search_fields": "salesman_name",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "salesman_name",
+ "track_changes": 1
+}

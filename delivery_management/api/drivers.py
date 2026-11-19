@@ -79,9 +79,7 @@ def _type(order_type: str) -> str:
 
 def _date_column(order_type: str) -> str:
 	"""AC orders are worked on their installation day."""
-	if order_type == asg.TYPE_AC:
-		return "coalesce(dn.dm_ac_installation_date, dn.dm_delivery_date)"
-	return "dn.dm_delivery_date"
+	return "dn.dm_work_date"  # the installation day for AC (drivers.delivery_note.set_work_date), indexed
 
 
 # ---------------------------------------------------------------------------
@@ -198,7 +196,8 @@ def get_areas():
 
 
 @frappe.whitelist()
-def get_drivers(order_type):
+def get_drivers(order_type, with_technicians=0):
+	"""The TV Drivers / AC Techs (the TV Drivers make the support trips too)."""
 	_require_staff()
 	return asg.drivers_for(_type(order_type))
 
@@ -214,9 +213,9 @@ def get_assignment_orders(order_type, search=None, assigned_status=None, driver=
 	conditions = ["dn.docstatus = 0", "dn.is_return = 0", "dn.dm_delivery_type = %(type)s"]
 	values = {"type": order_type}
 	if assigned_status == "assigned":
-		conditions.append("ifnull(dn.dm_driver, '') != ''")
+		conditions.append("dn.dm_driver is not null and dn.dm_driver != ''")
 	elif assigned_status == "unassigned":
-		conditions.append("ifnull(dn.dm_driver, '') = ''")
+		conditions.append("(dn.dm_driver is null or dn.dm_driver = '')")
 	if driver:
 		conditions.append("dn.dm_driver = %(driver)s")
 		values["driver"] = driver
@@ -231,21 +230,84 @@ def get_assignment_orders(order_type, search=None, assigned_status=None, driver=
 			or dn.contact_mobile like %(search)s or dn.customer like %(search)s)""")
 		values["search"] = f"%{search.strip()}%"
 	where = " and ".join(conditions)
+	limit, offset = cint(limit) or 20, cint(offset)
+	if order_type == asg.TYPE_NON_AC:
+		# Support trips share the TV slots: listed with the orders, one sorted page of both.
+		ticket_where, ticket_values = _ticket_trip_filters(assigned_status, driver, area, delivery_date, search)
+		union = f"""select 'dn' as kind, dn.name, {date_col} as d, dn.dm_delivery_time as tm from `tabDelivery Note` dn
+			where {where}
+			union all
+			select 'ticket', i.name, i.sm_trip_date, i.sm_trip_time from `tabIssue` i where {ticket_where}"""
+		values.update(ticket_values)
+		total = frappe.db.sql(f"select count(*) from ({union}) u", values)[0][0]
+		keys = frappe.db.sql(f"""select kind, name from ({union}) u order by d is null, d asc, tm asc, name asc
+			limit %(limit)s offset %(offset)s""", {**values, "limit": limit, "offset": offset}, as_dict=True)
+		dns = [k.name for k in keys if k.kind == "dn"]
+		by_name = {r.name: r for r in _finish_rows(frappe.db.sql(
+			f"select {_ROW_FIELDS} from `tabDelivery Note` dn where dn.name in %(names)s", {"names": dns},
+			as_dict=True))} if dns else {}
+		by_name.update({r["name"]: r for r in _ticket_rows([k.name for k in keys if k.kind == "ticket"])})
+		rows = [by_name[k.name] for k in keys if k.name in by_name]
+		return {"rows": rows, "total": total, "untyped": untyped_orders()}
 	total = frappe.db.sql(f"select count(*) from `tabDelivery Note` dn where {where}", values)[0][0]
 	rows = frappe.db.sql(
 		f"""select {_ROW_FIELDS} from `tabDelivery Note` dn where {where}
 		order by {date_col} is null, {date_col} asc, dn.dm_delivery_time asc, dn.name asc
 		limit %(limit)s offset %(offset)s""",
-		{**values, "limit": cint(limit) or 20, "offset": cint(offset)},
+		{**values, "limit": limit, "offset": offset},
 		as_dict=True,
 	)
 	return {"rows": _finish_rows(rows), "total": total, "untyped": untyped_orders()}
 
 
+def _ticket_trip_filters(assigned_status, driver, area, delivery_date, search) -> tuple[str, dict]:
+	"""Support tickets with a trip (pickup or return) not done yet, as the order filters."""
+	from delivery_management.customer_support import tickets as t
+
+	conditions = ["i.sm_step in %(trip_steps)s"]
+	values = {"trip_steps": t.TRIP_STEPS}
+	if assigned_status == "assigned":
+		conditions.append("i.sm_driver is not null and i.sm_driver != ''")
+	elif assigned_status == "unassigned":
+		conditions.append("(i.sm_driver is null or i.sm_driver = '')")
+	if driver:
+		conditions.append("i.sm_driver = %(driver)s")
+	if area:
+		conditions.append("i.sm_area = %(area)s")
+	if delivery_date:
+		conditions.append("i.sm_trip_date = %(day)s")
+	if search:
+		conditions.append("""(i.name like %(search)s or i.customer_name like %(search)s
+			or i.sm_customer_phone like %(search)s or i.customer like %(search)s)""")
+	return " and ".join(conditions), values
+
+
+def _ticket_rows(names: list[str]) -> list[dict]:
+	"""Support trips in the shape of the order rows (``kind`` = ticket)."""
+	if not names:
+		return []
+	from delivery_management.api.support import _rows
+	from delivery_management.customer_support import tickets as t
+
+	rows = []
+	for r in _rows(["name in %(names)s"], {"names": names}):
+		rows.append(frappe._dict({
+			"kind": "ticket", "name": r["name"], "customer": r["customer"], "customer_name": r["customer_name"],
+			"phone": r["customer_phone"], "address": r["address"], "area": r["area"],
+			"delivery_date": r["trip_date"], "work_date": r["trip_date"], "delivery_time": r["trip_time"],
+			"driver": r["driver"], "driver_name": r["driver_name"], "order_type": "Maintenance",
+			"trip": _("Pickup") if r["step"] == t.STEP_PICKUP else _("Return"), "step": r["step"],
+			"subject": r["subject"], "item_code": r["item_code"], "under_warranty": r["under_warranty"],
+		}))
+	return rows
+
+
 def untyped_orders() -> list[dict]:
 	"""Draft Delivery Notes with AC and non-AC items and no Order Type chosen yet."""
-	return frappe.get_all(DN, filters={"docstatus": 0, "is_return": 0, "dm_delivery_type": ["in", ["", None]]},
-		fields=["name", "customer_name", "posting_date"], order_by="posting_date asc", limit=50)
+	# No ifnull() on the column, so the (type, docstatus, work date) index is used.
+	return frappe.db.sql("""select name, customer_name, posting_date from `tabDelivery Note`
+		where (dm_delivery_type is null or dm_delivery_type = '') and docstatus = 0 and is_return = 0
+		order by posting_date asc limit 50""", as_dict=True)
 
 
 @frappe.whitelist()
@@ -291,7 +353,7 @@ def get_schedule(order_type, start_date=None, end_date=None, status=None, search
 	start = getdate(start_date or nowdate())
 	end = getdate(end_date or add_months(start, 1))
 	conditions = ["dn.docstatus < 2", "dn.is_return = 0", "dn.dm_delivery_type = %(type)s",
-		"dn.dm_delivery_status in %(states)s", "ifnull(dn.dm_driver, '') != ''",
+		"dn.dm_delivery_status in %(states)s", "dn.dm_driver is not null and dn.dm_driver != ''",
 		f"{date_col} between %(start)s and %(end)s"]
 	values = {"type": order_type, "start": start, "end": end, "states": (ON_THE_WAY, RETURNED, DELIVERED)}
 	if not asg.can_manage():
@@ -317,7 +379,7 @@ def get_schedule(order_type, start_date=None, end_date=None, status=None, search
 		values["search"] = f"%{search.strip()}%"
 	rows = frappe.db.sql(
 		f"""select {_ROW_FIELDS} from `tabDelivery Note` dn where {' and '.join(conditions)}
-		order by {date_col} asc, dn.dm_delivery_time asc, dn.name asc""",
+		order by {date_col} asc, dn.dm_delivery_time asc, dn.name asc limit 1000""",  # safety cap
 		values,
 		as_dict=True,
 	)

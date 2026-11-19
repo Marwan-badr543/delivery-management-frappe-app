@@ -26,7 +26,12 @@ class DeliverySchedulePage {
 		const saved = D.prefs("schedule");
 		// A driver with only one of the two roles starts on his own tab.
 		const onlyAc = !this.isManager && frappe.user.has_role("AC Tech") && !frappe.user.has_role("TV Driver");
+		// Support return trips (Maintenance tab): the TV Drivers and the office.
+		this.canOrders = this.isManager || frappe.user.has_role(["TV Driver", "AC Tech"]);
+		this.canTrips = this.isManager || frappe.user.has_role("TV Driver");
 		this.tab = saved.tab || (onlyAc ? "ac" : "tv");
+		if (!this.canOrders) this.tab = "mt";
+		if (this.tab === "mt" && !this.canTrips) this.tab = "tv";
 		this.pageSize = saved.pageSize || 20;
 		this.pageNo = 0;
 		const today = frappe.datetime.get_today();
@@ -38,8 +43,9 @@ class DeliverySchedulePage {
 
 		this.$root = $(`<div class="dd-page">
 			${D.tabs([
-				{ key: "tv", label: __("TV / Non AC deliveries"), icon: "truck" },
-				{ key: "ac", label: __("AC installations"), icon: "snowflake" },
+				...(this.canOrders ? [{ key: "tv", label: __("TV / Non AC deliveries"), icon: "truck" },
+					{ key: "ac", label: __("AC installations"), icon: "snowflake" }] : []),
+				...(this.canTrips ? [{ key: "mt", label: __("Maintenance"), icon: "tool" }] : []),
 			], this.tab)}
 			<div class="dd-panel dd-filter-panel"></div>
 			<div class="dd-panel dd-table-panel">
@@ -79,7 +85,7 @@ class DeliverySchedulePage {
 		const ac = this.tab === "ac";
 		const [areas, drivers] = await Promise.all([
 			D.areas(),
-			this.isManager ? D.call("get_drivers", { order_type: this.type }) : Promise.resolve([]),
+			this.isManager && this.tab !== "mt" ? D.call("get_drivers", { order_type: this.type }) : Promise.resolve([]),
 		]);
 		this.$root.find(".dd-filter-panel").html(`
 			<div class="dd-filters">
@@ -149,6 +155,7 @@ class DeliverySchedulePage {
 	}
 
 	async load() {
+		if (this.tab === "mt") return this.loadTrips();
 		const D = this.D;
 		const ac = this.tab === "ac";
 		this.$root.find(".dd-table thead").html(`<tr>
@@ -171,6 +178,28 @@ class DeliverySchedulePage {
 		const other = this.tab === "tv" ? "ac" : "tv";
 		D.call("get_schedule", { order_type: DS_TYPES[other], ...this.f, driver: this.f.driver })
 			.then((r) => this.$root.find(`[data-count="${other}"]`).text(r.rows.length));
+		if (this.canTrips) this.tripsCall().then((r) => this.$root.find('[data-count="mt"]').text(r.rows.length));
+	}
+
+	tripsCall() {
+		return frappe.xcall("delivery_management.api.support.get_return_trips",
+			{ search: this.f.search, start_date: this.f.start_date, end_date: this.f.end_date });
+	}
+
+	/** Maintenance tab: return trips of repaired customer items (support tickets). */
+	async loadTrips() {
+		const D = this.D;
+		this.$root.find(".dd-table thead").html(`<tr><th>${__("Ticket")}</th><th>${__("Customer")}</th><th>${__("Address")}</th>
+			<th>${__("Schedule")}</th><th>${__("Driver")}</th><th>${__("Item")}</th><th>${__("Status")}</th></tr>`);
+		const seq = (this.seq = (this.seq || 0) + 1);
+		const res = await this.tripsCall();
+		if (seq !== this.seq) return;
+		this.rows = res.rows.map((r) => ({ ...r, work_date: r.trip_date, delivery_time: r.trip_time }));
+		this.$root.find('[data-count="mt"]').text(res.rows.length);
+		this.renderRows();
+		if (this.canOrders)
+			["tv", "ac"].forEach((k) => D.call("get_schedule", { order_type: DS_TYPES[k], ...this.f })
+				.then((r) => this.$root.find(`[data-count="${k}"]`).text(r.rows.length)));
 	}
 
 	renderRows() {
@@ -187,6 +216,27 @@ class DeliverySchedulePage {
 		const $tbody = this.$root.find(".dd-table tbody");
 		if (!slice.length) {
 			$tbody.html(D.emptyRow(7, __("No orders on the way"), __("Nothing on the way in this date range.")));
+			return;
+		}
+		if (this.tab === "mt") {
+			const S = window.dm_support;
+			$tbody.html(slice.map((r) => `
+				<tr data-name="${D.esc(r.name)}" tabindex="0">
+					<td data-label="${__("Ticket")}"><span class="dd-dn">${D.esc(r.name)}</span><span class="dd-sub">${D.esc(r.subject)}</span></td>
+					<td data-label="${__("Customer")}"><b>${D.esc(r.customer_name || "")}</b><span class="dd-sub">${D.phoneLink(r.customer_phone)}</span></td>
+					<td data-label="${__("Address")}" class="dd-addr">${D.esc(r.address) || "—"}</td>
+					<td data-label="${__("Schedule")}">${D.whenCell(r)}</td>
+					<td data-label="${__("Driver")}">${D.esc(r.driver_name || r.driver)}</td>
+					<td data-label="${__("Item")}">${D.esc(r.item_code)}${r.serial_no ? `<span class="dd-sub">${D.esc(r.serial_no)}</span>` : ""}
+						<span class="dd-sub">${S.warrantyPill(r)}</span></td>
+					<td data-label="${__("Status")}">${r.step === "Out for Return" ? S.stepPill(r.step)
+						: `<span class="dd-pill dd-pill-orange">${__("Collect from {0}", [D.esc(r.take_from || r.warehouse || "")])}</span>`}</td>
+				</tr>`).join(""));
+			$tbody.find("tr[data-name]").on("click keydown", (e) => {
+				if (e.type === "keydown" && e.key !== "Enter") return;
+				if ($(e.target).closest("a").length) return;
+				S.openTicket($(e.currentTarget).data("name"), () => this.load(), "schedule");
+			});
 			return;
 		}
 		$tbody.html(slice.map((r) => `

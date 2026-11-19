@@ -33,17 +33,22 @@ def _profile(pos_profile):
 def search_sales(pos_profile, query=""):
 	"""The latest sales matching an invoice / order number, customer name or mobile."""
 	profile = _profile(pos_profile)
-	like = f"%{(query or '').strip()}%"
+	query = (query or "").strip()
+	like = f"{query}%"
+	# Each match from an index, from the start of the text: invoice number, order number
+	# (Sales Invoice Item), or a customer found by name / mobile. Not a scan of every sale.
+	match = """and si.name in (
+				select name from `tabSales Invoice` where name like %(q)s
+				union select parent from `tabSales Invoice Item` where sales_order like %(q)s
+				union select s.name from `tabSales Invoice` s where s.customer in (select c.name from `tabCustomer` c
+					where c.name like %(q)s or c.customer_name like %(q)s or c.mobile_no like %(q)s))""" if query else ""
 	return frappe.db.sql(
 		f"""select si.name, si.docstatus, si.customer, si.customer_name, si.contact_mobile, si.posting_date,
 			si.rounded_total, si.grand_total, si.currency, si.update_stock, si.outstanding_amount,
 			(select soi.sales_order from `tabSales Invoice Item` soi where soi.parent = si.name
 				and ifnull(soi.sales_order, '') != '' limit 1) as sales_order
 		from `tabSales Invoice` si
-		where {_RETURNABLE} and si.company = %(company)s
-			and (si.name like %(q)s or si.customer like %(q)s or si.customer_name like %(q)s
-				or ifnull(si.contact_mobile, '') like %(q)s
-				or exists (select 1 from `tabSales Invoice Item` i where i.parent = si.name and i.sales_order like %(q)s))
+		where {_RETURNABLE} and si.company = %(company)s {match}
 		order by si.posting_date desc, si.creation desc
 		limit 20""",
 		{"company": profile.company, "q": like},
@@ -112,7 +117,7 @@ def submit_return(data):
 def search_customers(pos_profile, query=""):
 	"""Customers matching a name or mobile, with their credit and what they still owe."""
 	profile = _profile(pos_profile)
-	like = f"%{(query or '').strip()}%"
+	like = f"{(query or '').strip()}%"  # from the start of the name / mobile
 	return frappe.db.sql(
 		f"""select c.name, c.customer_name, c.mobile_no,
 			(select -ifnull(sum(si.outstanding_amount), 0) from `tabSales Invoice` si where si.customer = c.name
@@ -122,7 +127,7 @@ def search_customers(pos_profile, query=""):
 				from `tabSales Invoice` si where si.customer = c.name and si.company = %(company)s and {_RETURNABLE}
 				and si.outstanding_amount > 0) as due
 		from `tabCustomer` c
-		where c.disabled = 0 and (c.name like %(q)s or c.customer_name like %(q)s or ifnull(c.mobile_no, '') like %(q)s)
+		where c.disabled = 0 and (c.name like %(q)s or c.customer_name like %(q)s or c.mobile_no like %(q)s)
 		order by c.modified desc
 		limit 20""",
 		{"company": profile.company, "q": like},

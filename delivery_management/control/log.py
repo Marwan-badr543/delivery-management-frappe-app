@@ -17,18 +17,22 @@ NO_REMARKS = ("", "No Remarks")
 
 
 def add(event: str, *, sales_order=None, sales_invoice=None, delivery_note=None, driver=None, amount=None,
-		mode_of_payment=None, items=None, reference=None, note=None) -> None:
+		mode_of_payment=None, items=None, reference=None, note=None, support_ticket=None) -> None:
 	if delivery_note and not sales_order:
 		from delivery_management.drivers.delivery_note import sales_order_of
 
-		sales_order = sales_order_of(frappe.get_doc("Delivery Note", delivery_note))
+		# The note's order, without loading the whole note.
+		orders = frappe.get_all("Delivery Note Item", filters={"parent": delivery_note, "parenttype": "Delivery Note",
+			"against_sales_order": ["is", "set"]}, pluck="against_sales_order", distinct=True)
+		sales_order = orders[0] if len(orders) == 1 else None
 	party = frappe.db.get_value("Sales Order", sales_order, ["customer", "customer_name"], as_dict=True) if sales_order \
 		else frappe.db.get_value("Sales Invoice", sales_invoice, ["customer", "customer_name"], as_dict=True) \
-		if sales_invoice else None
+		if sales_invoice else frappe.db.get_value("Issue", support_ticket, ["customer", "customer_name"], as_dict=True) \
+		if support_ticket else None
 	frappe.get_doc({
 		"doctype": LOG, "event": event, "at": now_datetime(), "user": frappe.session.user, "driver": driver,
 		"sales_order": sales_order, "sales_invoice": sales_invoice, "delivery_note": delivery_note,
-		"customer": party and party.customer, "customer_name": party and party.customer_name,
+		"support_ticket": support_ticket, "customer": party and party.customer, "customer_name": party and party.customer_name,
 		"amount": amount, "mode_of_payment": mode_of_payment, "items": items_text(items) if isinstance(items, list) else items,
 		"reference_doctype": reference and reference[0], "reference_name": reference and reference[1], "note": note,
 	}).insert(ignore_permissions=True)

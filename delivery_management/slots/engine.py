@@ -179,16 +179,17 @@ def _delivery_reasons(area_row, date, time, reserved, sources, lead, now) -> lis
 	return reasons
 
 
-def get_ac_day_status(date, units: int = 0, now=None) -> dict:
-	"""AC capacity of one day. ``units`` is what the caller wants to book."""
+_AC_DAY_FIELDS = ["reserved_units", "manually_disabled", "has_capacity_override", "capacity_override"]
+
+
+def get_ac_day_status(date, units: int = 0, now=None, row=None) -> dict:
+	"""AC capacity of one day. ``units`` is what the caller wants to book. ``row``: the day's
+	row already read (``get_ac_calendar``), ``{}`` when it has none."""
 	date = to_date(date)
 	units = max(cint(units), 0)
-	row = frappe.db.get_value(
-		AC_DAY,
-		ac_day_key(date),
-		["reserved_units", "manually_disabled", "has_capacity_override", "capacity_override"],
-		as_dict=True,
-	) or frappe._dict()
+	if row is None:
+		row = frappe.db.get_value(AC_DAY, ac_day_key(date), _AC_DAY_FIELDS, as_dict=True)
+	row = row or frappe._dict()
 
 	capacity = _ac_capacity(row)
 	reserved = cint(row.reserved_units)
@@ -217,7 +218,11 @@ def get_ac_day_status(date, units: int = 0, now=None) -> dict:
 def get_ac_calendar(start_date=None, days: int | None = None, units: int = 0, now=None) -> list[dict]:
 	start = to_date(start_date) if start_date else resolve_now(now).date()
 	days = cint(days) or get_settings().booking_window_days
-	return [get_ac_day_status(start + datetime.timedelta(days=i), units, now) for i in range(days)]
+	dates = [start + datetime.timedelta(days=i) for i in range(days)]
+	# One query for the whole window, not one per day.
+	rows = {to_date(r.delivery_date): r for r in frappe.get_all(AC_DAY, filters={"delivery_date":
+		["between", [dates[0], dates[-1]]]}, fields=["delivery_date", *_AC_DAY_FIELDS])} if dates else {}
+	return [get_ac_day_status(d, units, now, row=rows.get(d, {})) for d in dates]
 
 
 def _ac_capacity(row) -> int:
@@ -257,6 +262,7 @@ def reserve(
 	customer: str | None = None,
 	contact_phone: str | None = None,
 	remarks: str | None = None,
+	add_to_existing: bool = False,
 ) -> list[str]:
 	"""Book capacity for one document. Returns the ledger row names.
 
@@ -267,7 +273,8 @@ def reserve(
 	The booking is all-or-nothing within the caller's transaction. ``force``
 	(admin only) skips the availability rules and may exceed capacity; the row
 	is flagged ``forced``. Booking a document that already holds capacity is
-	refused; use :func:`reschedule` to move it.
+	refused; use :func:`reschedule` to move it. ``add_to_existing`` books one more
+	(a support ticket: the pickup trip and later the return trip, both counted).
 	"""
 	wants_delivery = bool(area or delivery_date or delivery_time)
 	wants_ac = bool(ac_date or cint(ac_units))
@@ -275,7 +282,7 @@ def reserve(
 		frappe.throw(_("Nothing to reserve: no delivery slot or AC day given."))
 	if bool(reference_doctype) != bool(reference_name):
 		frappe.throw(_("Reference DocType and Reference Name must be given together."))
-	if reference_doctype:
+	if reference_doctype and not add_to_existing:
 		requested = {SLOT_AC} if wants_ac else set()
 		requested |= {SLOT_DELIVERY} if wants_delivery else set()
 		held = {r.slot_type for r in get_reservations(reference_doctype, reference_name)}
@@ -383,10 +390,30 @@ def release_reservation(reservation: str) -> bool:
 	return bool(_release_rows([reservation]))
 
 
+def lock_in_order(rows=(), ac_dates=(), slots=()) -> None:
+	"""Lock every AC day, then every delivery slot, each in sorted order, before a change
+	that touches several (move, reschedule, split, merge). Everyone locks in the same
+	order, so two such changes wait for each other instead of deadlocking.
+	``rows``: bookings (``get_reservations``); ``slots``: ``(area, date, time)``."""
+	ac, counters = {to_date(d) for d in ac_dates if d}, {(a, to_date(d), to_time_str(t)) for a, d, t in slots
+		if a and d and t}
+	for r in rows:
+		if r.slot_type == SLOT_AC:
+			ac.add(to_date(r.delivery_date))
+		elif r.area and r.delivery_date and r.delivery_time:
+			counters.add((r.area, to_date(r.delivery_date), to_time_str(r.delivery_time)))
+	for date in sorted(ac):
+		_lock_ac_day(date)
+	for area, date, time in sorted(counters):
+		_lock_counter(area, date, time)
+
+
 def reschedule(reference_doctype: str, reference_name: str, **booking) -> list[str]:
 	"""Move a document's booking. Old capacity is freed before the new one is checked,
 	so moving within the same full slot works; if the new booking fails, the
 	caller's transaction rolls the release back too."""
+	lock_in_order(get_reservations(reference_doctype, reference_name), ac_dates=[booking.get("ac_date")],
+		slots=[(booking.get("area"), booking.get("delivery_date"), booking.get("delivery_time"))])
 	release(reference_doctype, reference_name)
 	return reserve(reference_doctype, reference_name, **booking)
 
@@ -407,6 +434,9 @@ def move_reservation(
 	)
 	if not row or row.status != STATUS_RESERVED:
 		frappe.throw(_("Reservation {0} is not active.").format(reservation))
+	old = frappe.db.get_value(LEDGER, reservation, ["slot_type", "area", "delivery_date", "delivery_time"], as_dict=True)
+	lock_in_order([old], ac_dates=[ac_date] if row.slot_type == SLOT_AC else [],
+		slots=[(area, delivery_date, delivery_time)] if row.slot_type != SLOT_AC else [])
 	_release_rows([row.name])
 	common = dict(
 		customer=row.customer, contact_phone=row.contact_phone, remarks=row.remarks, force=force, now=now
@@ -450,8 +480,9 @@ def _release_rows(names: list[str]) -> int:
 		{"names": tuple(names)},
 		as_dict=True,
 	)
-	# Same lock order as reserve: AC days before delivery slots.
-	rows = sorted((r for r in rows if r.status == STATUS_RESERVED), key=lambda r: r.slot_type != SLOT_AC)
+	# Same lock order as lock_in_order: AC days before delivery slots, each by date.
+	rows = sorted((r for r in rows if r.status == STATUS_RESERVED), key=lambda r: (r.slot_type != SLOT_AC,
+		str(r.delivery_date), r.area or "", str(r.delivery_time or "")))
 	for r in rows:
 		if r.slot_type == SLOT_AC:
 			day = _lock_ac_day(r.delivery_date)

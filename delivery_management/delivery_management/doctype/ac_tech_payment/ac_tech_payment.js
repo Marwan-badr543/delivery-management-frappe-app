@@ -14,6 +14,21 @@ frappe.ui.form.on("AC Tech Payment", {
 		frm.set_query("cost_center", () => ({ filters: { company: frm.doc.company, is_group: 0 } }));
 	},
 
+	async technician(frm) {
+		if (!frm.doc.technician || frm.doc.docstatus !== 0) return;
+		const { message: date } = await frappe.call({
+			method: "delivery_management.delivery_management.doctype.ac_tech_payment.ac_tech_payment.last_payment_date",
+			args: { technician: frm.doc.technician },
+		});
+		frm.set_value("from_date", date || null);
+		if (date) {
+			frappe.show_alert({
+				message: __("Installed From is set to the last payment's date ({0}). Installations before it are not fetched: change it if some were missed.", [frappe.datetime.str_to_user(date)]),
+				indicator: "orange",
+			}, 10);
+		}
+	},
+
 	refresh(frm) {
 		if (frm.doc.docstatus === 0) {
 			frm.add_custom_button(__("Get Unpaid Installations"), () => frm.trigger("get_unpaid"));
@@ -27,7 +42,7 @@ frappe.ui.form.on("AC Tech Payment", {
 		}
 		const { message: rows } = await frappe.call({
 			method: "delivery_management.delivery_management.doctype.ac_tech_payment.ac_tech_payment.get_unpaid_installations",
-			args: { technician: frm.doc.technician, up_to_date: frm.doc.up_to_date },
+			args: { technician: frm.doc.technician, from_date: frm.doc.from_date, up_to_date: frm.doc.up_to_date },
 			freeze: true,
 		});
 		frm.clear_table("items");

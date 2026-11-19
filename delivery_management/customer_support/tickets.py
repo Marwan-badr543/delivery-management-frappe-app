@@ -1,46 +1,67 @@
-"""Support tickets: port of the old system's support part (issue_tickets.py,
-technicians.py, maint_tech.py) onto ERPNext's own documents.
+"""Support tickets: an ERPNext **Issue** with the support fields ``sm_*``.
 
-A ticket is an ERPNext **Issue** (the old system already created one per ticket) with
-the support fields ``sm_*``. It moves through three stages:
+The journey (``sm_step``; the trips, stock moves and steps are in ``flow.py``):
 
-    Customer Service  ->  Technician  ->  Maintenance Technician
+1. **Customer Service** (role Support Team) opens the ticket: customer by phone, item,
+   address (area, block, road, building). If the call does not solve it, *Assign to Tech*
+   books a delivery slot (date, area, time; the TV slots) -> **Pickup**.
+2. The delivery office gives the visit a TV Driver (Driver Assignment, with the TV orders).
+3. The driver (Technician Issues) writes his report, then resolves it at the customer (-> **Closed**), or
+   fetches the item: it enters the transit store with its serial -> **To Workshop**.
+4. The workshop (Maintenance Issues, role Maintenance Technician) receives it into the
+   workshop store (**Under Repair**), repairs it with a photo / video as proof
+   (**Ready for Return**).
+5. Customer Service books the return slot (**Return**), the office gives it a TV Driver,
+   the workshop sends the item out to the transit store (**Out for Return**).
+6. The driver (Delivery Schedule, Maintenance tab) hands it over with the customer's
+   signature and a photo / video: the item leaves the transit store -> **Closed**.
+   Customer not home: the driver brings it back (**Back to Store**); the stock keeper scans
+   it into the main store (**Ready for Return** again). Customer service books a new slot
+   and, on the next trip, the stock keeper sends it out from the main store.
 
-* **Customer Service** (role Support Team): opens the ticket for a customer found by
-  phone, with an internal report, the visit address and time.
-* **Technician** (role Technician): visits the customer. Each visit is logged as an
-  ERPNext **Maintenance Visit**; if the item's serial is still under warranty, a
-  **Warranty Claim** is opened too. The visits are the ``sm_tech_visits`` rows.
-* **Maintenance Technician** (role Maintenance Technician): the workshop. Writes the
-  final report. A pickup delivery slot can be booked when the ticket is escalated.
+Every step is in the Order Log (Order Control page). A serialised item never moves without
+its serial.
 
-A ticket can be resolved at any stage once that stage's report exists. Resolving sets
-the Issue to Resolved and closes its Warranty Claims.
-
-System Manager = the old admin: sees every ticket and may act at every stage.
+System Manager = the old admin: sees every ticket and may act at every step.
 """
 
 from __future__ import annotations
 
 import frappe
 from frappe import _
-from frappe.utils import add_to_date, cint, cstr, get_datetime, getdate, now_datetime, nowdate, strip_html
+from frappe.utils import add_days, cint, cstr, getdate, now_datetime, nowdate, strip_html
 
 ISSUE = "Issue"
 STAGE_CS = "Customer Service"
 STAGE_TECH = "Technician"
 STAGE_MAINT = "Maintenance Technician"
-STAGES = (STAGE_CS, STAGE_TECH, STAGE_MAINT)
+
+# sm_step
+STEP_CS = "Customer Service"
+STEP_PICKUP = "Pickup"
+STEP_TO_WORKSHOP = "To Workshop"
+STEP_REPAIR = "Under Repair"
+STEP_READY = "Ready for Return"
+STEP_RETURN = "Return"
+STEP_OUT = "Out for Return"
+STEP_BACK = "Back to Store"  # customer not home at the return: the driver brings it to the main store
+STEP_CLOSED = "Closed"
+TRIP_STEPS = (STEP_PICKUP, STEP_RETURN, STEP_OUT)  # a TV Driver goes to the customer
+WORKSHOP_STEPS = (STEP_TO_WORKSHOP, STEP_REPAIR, STEP_READY, STEP_RETURN)  # Maintenance Issues
+STAGE_OF_STEP = {STEP_CS: STAGE_CS, STEP_PICKUP: STAGE_TECH, STEP_READY: STAGE_CS}
 
 ROLE_CS = "Support Team"
-ROLE_TECH = "Technician"
+ROLE_TECH = "TV Driver"  # the TV Drivers make the support trips
 ROLE_MAINT = "Maintenance Technician"
 ADMIN_ROLE = "System Manager"
+OFFICE_ROLES = ("System Manager", "Delivery Manager")
 
 STATUS_OPEN_ON_CREATE = "Replied"  # as the old system: the customer has been answered
 RESOLVED = ("Resolved", "Closed")
 PRIORITIES = ("Low", "Medium", "High")
 COMPLETION = ("Fully Completed", "Partially Completed")
+ADDRESS_PARTS = (("area", "sm_area"), ("block_no", "sm_block_no"), ("road_no", "sm_road_no"),
+	("building_no", "sm_building_no"), ("address", "sm_address"))
 
 
 # ---------------------------------------------------------------------------
@@ -51,6 +72,12 @@ COMPLETION = ("Fully Completed", "Partially Completed")
 def is_admin(user: str | None = None) -> bool:
 	user = user or frappe.session.user
 	return user == "Administrator" or ADMIN_ROLE in frappe.get_roles(user)
+
+
+def is_office(user: str | None = None) -> bool:
+	"""The delivery office: assigns the drivers, sees every ticket."""
+	user = user or frappe.session.user
+	return user == "Administrator" or bool(set(OFFICE_ROLES) & set(frappe.get_roles(user)))
 
 
 def has_role(role: str, user: str | None = None) -> bool:
@@ -77,30 +104,63 @@ def is_resolved(ticket) -> bool:
 	return ticket.status in RESOLVED
 
 
-def get_ticket(name: str):
-	ticket = frappe.get_doc(ISSUE, name)
+def get_ticket(name: str, for_update: bool = False):
+	ticket = frappe.get_doc(ISSUE, name, for_update=for_update)
 	if not ticket.get("sm_stage"):
 		frappe.throw(_("{0} is not a support ticket.").format(name))
 	return ticket
 
 
-def require_view(ticket, user: str | None = None) -> None:
-	"""Admin: all. Customer service: the tickets they opened. Technicians: their own."""
+def can_view(ticket, user: str | None = None) -> bool:
+	"""Office: all. Customer service: the tickets they opened. Technician: his trips.
+	Workshop: every ticket that reached it."""
 	user = user or frappe.session.user
-	if is_admin(user):
-		return
+	if is_office(user):
+		return True
 	if has_role(ROLE_CS, user) and ticket.sm_cs_user == user:
-		return
-	if has_role(ROLE_TECH, user) and ticket.sm_technician == user:
-		return
-	if has_role(ROLE_MAINT, user) and ticket.sm_maint_technician == user:
-		return
-	frappe.throw(_("This ticket is not assigned to you."), frappe.PermissionError)
+		return True
+	if has_role(ROLE_TECH, user) and user in (ticket.sm_driver, ticket.sm_technician):
+		return True
+	step = ticket.get("sm_step") or STEP_CS
+	if step in (STEP_BACK, STEP_READY, STEP_RETURN, STEP_OUT) and bool(
+			{"Stock User", "Stock Manager"} & set(frappe.get_roles(user))):
+		return True  # the stock keeper: items brought back to the main store
+	return has_role(ROLE_MAINT, user) and step not in (STEP_CS, STEP_PICKUP)
+
+
+def require_view(ticket, user: str | None = None) -> None:
+	if not can_view(ticket, user):
+		frappe.throw(_("This ticket is not assigned to you."), frappe.PermissionError)
 
 
 def require_open(ticket, action: str | None = None) -> None:
 	if is_resolved(ticket):
 		frappe.throw(action or _("This ticket is already {0}.").format(_(ticket.status).lower()))
+
+
+def require_step(ticket, *steps) -> None:
+	require_open(ticket)
+	if (ticket.get("sm_step") or STEP_CS) not in steps:
+		frappe.throw(_("Ticket {0} is at step {1}; this needs {2}.").format(
+			ticket.name, _(ticket.sm_step or STEP_CS), " / ".join(_(s) for s in steps)))
+
+
+def warranty_expiry(serial_no=None, sales_invoice=None, item_code=None):
+	"""The serial's warranty expiry, else the invoice date + the item's warranty period (days)."""
+	if serial_no:
+		expiry = frappe.db.get_value("Serial No", serial_no, "warranty_expiry_date")
+		if expiry:
+			return getdate(expiry)
+	if sales_invoice and item_code:
+		days = cint(frappe.db.get_value("Item", item_code, "warranty_period"))
+		posted = frappe.db.get_value("Sales Invoice", sales_invoice, "posting_date")
+		if days and posted:
+			return add_days(getdate(posted), days)
+	return None
+
+
+def under_warranty(ticket) -> bool:
+	return bool(ticket.get("sm_warranty_expiry")) and getdate(ticket.sm_warranty_expiry) >= getdate(nowdate())
 
 
 # ---------------------------------------------------------------------------
@@ -128,6 +188,19 @@ def find_customer(phone: str) -> str | None:
 	return row[0][0] if row else None
 
 
+def last_address(customer: str | None) -> dict:
+	"""Area, block, road and building of the customer's last order that has them."""
+	if not customer:
+		return {}
+	for doctype in ("Sales Invoice", "Sales Order"):
+		row = frappe.db.get_value(doctype, {"customer": customer, "docstatus": 1, "dm_delivery_area": ["is", "set"]},
+			["dm_delivery_area as area", "dm_block_no as block_no", "dm_road_no as road_no",
+				"dm_building_no as building_no"], as_dict=True, order_by="creation desc")
+		if row:
+			return row
+	return {}
+
+
 def ensure_issue_type(issue_type: str | None) -> str | None:
 	issue_type = cstr(issue_type).strip()
 	if issue_type and not frappe.db.exists("Issue Type", issue_type):
@@ -146,18 +219,23 @@ def ensure_priority(priority: str | None) -> str:
 	return priority
 
 
-def _visit_datetime(value, *, allow_past: bool = False):
-	if not value:
-		return None
-	value = get_datetime(value)
-	if not allow_past and value < now_datetime():
-		frappe.throw(_("The visit datetime cannot be in the past."))
-	return value
+def _address(data: dict) -> dict:
+	"""The ticket's address fields from the page; all required."""
+	values = {field: cstr(data.get(key)).strip() or None for key, field in ADDRESS_PARTS}
+	labels = {"sm_area": _("Area"), "sm_block_no": _("Block"), "sm_road_no": _("Road"),
+		"sm_building_no": _("Building"), "sm_address": _("Full Address")}
+	missing = [labels[f] for f, v in values.items() if not v]
+	if missing:
+		frappe.throw(_("Please fill the address: {0}.").format(", ".join(missing)))
+	if not frappe.db.exists("Delivery Area", values["sm_area"]):
+		frappe.throw(_("Area {0} not found.").format(values["sm_area"]))
+	return values
 
 
 def create_ticket(data: dict, user: str | None = None) -> str:
-	"""Old ``create_issue_ticket``: customer by phone, report required, Issue in stage
-	Customer Service owned by the current user."""
+	"""Customer by phone, item and address required, Issue at step Customer Service."""
+	from delivery_management.control import log
+
 	user = user or frappe.session.user
 	subject = cstr(data.get("subject")).strip()
 	description = cstr(data.get("description")).strip()
@@ -170,8 +248,6 @@ def create_ticket(data: dict, user: str | None = None) -> str:
 		frappe.throw(_("Customer phone is required."))
 	if not description:
 		frappe.throw(_("Issue description is required."))
-	if not report:
-		frappe.throw(_("A customer service report is required to create an issue ticket."))
 	if email and ("@" not in email or "." not in email):
 		frappe.throw(_("Invalid email format. Must contain '@' and a domain."))
 	# A customer calls from any phone: the ticket keeps that phone, linked to a customer only
@@ -183,10 +259,12 @@ def create_ticket(data: dict, user: str | None = None) -> str:
 	sales_invoice = data.get("sales_invoice") or None
 	if sales_invoice and customer and frappe.db.get_value("Sales Invoice", sales_invoice, "customer") != customer:
 		frappe.throw(_("Sales Invoice {0} is not an invoice of this customer.").format(sales_invoice))
-	item_code = data.get("item_code") or None
-	if item_code and not frappe.db.exists("Item", item_code):
+	item_code = cstr(data.get("item_code")).strip()
+	if not item_code:
+		frappe.throw(_("Item Code is required."))
+	if not frappe.db.exists("Item", item_code):
 		frappe.throw(_("Item {0} not found.").format(item_code))
-	serial_no = data.get("serial_no") or None
+	serial_no = cstr(data.get("serial_no")).strip() or None
 	if serial_no and frappe.db.get_value("Serial No", serial_no, "item_code") != item_code:
 		frappe.throw(_("Serial No {0} is not a serial of {1}.").format(serial_no, item_code))
 
@@ -203,50 +281,41 @@ def create_ticket(data: dict, user: str | None = None) -> str:
 			or frappe.defaults.get_user_default("Company")
 			or frappe.db.get_single_value("Global Defaults", "default_company"),
 		"sm_stage": STAGE_CS,
+		"sm_step": STEP_CS,
 		"sm_customer_phone": phone,
 		"sm_cs_user": user,
-		"sm_cs_report": report,
+		"sm_cs_report": report or None,
 		"sm_sales_invoice": sales_invoice,
 		"sm_item_code": item_code,
 		"sm_serial_no": serial_no,
 		"sm_delivery_note": _delivery_note_of(sales_invoice, item_code),
-		"sm_address": cstr(data.get("address")).strip() or None,
-		"sm_visit_datetime": _visit_datetime(data.get("visit_datetime")),
+		"sm_warranty_expiry": warranty_expiry(serial_no, sales_invoice, item_code),
+		**_address(data),
 	})
 	issue.flags.ignore_permissions = True
 	issue.insert()
+	log.add("Ticket opened", support_ticket=issue.name, items=[{"item_code": item_code,
+		"item_name": frappe.db.get_value("Item", item_code, "item_name"), "qty": 1,
+		"serials": [serial_no] if serial_no else []}], note=subject)
 	return issue.name
 
 
-def update_schedule(ticket, address=None, visit_datetime=None) -> list[str]:
-	"""Old ``update_issue_ticket`` for address / visit time. Empty values are ignored (the
-	old API ignored nulls too). The technician's visit moves with it."""
+def update_address(ticket, data: dict) -> list[str]:
+	"""Customer service corrects the address before a trip is on the way."""
 	if not (is_admin() or has_role(ROLE_CS)):
 		frappe.throw(_("You do not have permission to update this ticket."), frappe.PermissionError)
-	require_open(ticket)
-	changed = []
-	address = cstr(address).strip()
-	if address and address != cstr(ticket.sm_address):
-		ticket.sm_address = address
-		changed.append("address")
-	if visit_datetime:
-		value = _visit_datetime(visit_datetime)
-		if str(value) != str(ticket.sm_visit_datetime or ""):
-			if ticket.sm_technician and ticket.sm_stage == STAGE_TECH:
-				check_technician_free(ticket.sm_technician, value, exclude=ticket.name)
-			ticket.sm_visit_datetime = value
-			changed.append("visit_datetime")
+	require_step(ticket, STEP_CS, STEP_PICKUP, STEP_TO_WORKSHOP, STEP_REPAIR, STEP_READY, STEP_RETURN, STEP_BACK)
+	values = _address(data)
+	changed = [f for f, v in values.items() if cstr(ticket.get(f)) != v]
 	if changed:
+		ticket.update(values)
 		_save(ticket)
 	return changed
 
 
 def update_cs_report(ticket, report: str) -> None:
 	report = cstr(report).strip()
-	if is_resolved(ticket):
-		frappe.throw(_("Cannot update report: Issue is already {0}.").format(_(ticket.status).lower()))
-	if ticket.sm_stage != STAGE_CS:
-		frappe.throw(_("Cannot update report: Issue has moved to stage '{0}'.").format(_(ticket.sm_stage)))
+	require_open(ticket)
 	if not report:
 		frappe.throw(_("A customer service report is required before proceeding."))
 	ticket.sm_cs_report = report
@@ -254,124 +323,39 @@ def update_cs_report(ticket, report: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Technician availability (old employee_visit_counts, now read from the tickets)
+# Technician visit report (Maintenance Visit)
 # ---------------------------------------------------------------------------
-
-
-def gap_minutes() -> int:
-	from delivery_management.slots.settings import get_settings
-
-	return get_settings().support_visit_gap_minutes
-
-
-def visits_on(day, exclude: str | None = None) -> dict[str, list]:
-	"""Visit times per technician on ``day``: every ticket assigned to him with a visit
-	time that day, whatever its stage or status (the old visit counts were never removed)."""
-	day = getdate(day)
-	rows = frappe.db.sql(
-		f"""select sm_technician, sm_visit_datetime, name from `tab{ISSUE}`
-		where ifnull(sm_technician, '') != '' and sm_visit_datetime >= %s and sm_visit_datetime < %s
-		and name != %s order by sm_visit_datetime""",
-		(day, add_to_date(day, days=1), exclude or ""),
-		as_dict=True,
-	)
-	visits: dict[str, list] = {}
-	for r in rows:
-		visits.setdefault(r.sm_technician, []).append(r)
-	return visits
-
-
-def conflicts(visit_times, when, gap: int) -> list:
-	"""Visits within ``gap`` minutes either side of ``when`` (inclusive, as the old page)."""
-	when = get_datetime(when)
-	return [v for v in visit_times if abs((get_datetime(v.sm_visit_datetime) - when).total_seconds()) <= gap * 60]
-
-
-def technician_options(visit_datetime=None, day=None, exclude: str | None = None) -> dict:
-	"""Old ``employee-visits``: every Technician with his visits that day, greyed out
-	when one is within the gap of the chosen time."""
-	when = get_datetime(visit_datetime) if visit_datetime else None
-	day = getdate(when or day or nowdate())
-	gap = gap_minutes()
-	visits = visits_on(day, exclude=exclude)
-	options = []
-	for tech in users_with_role(ROLE_TECH):
-		mine = visits.get(tech.user, [])
-		clash = conflicts(mine, when, gap) if when else []
-		options.append({
-			"user": tech.user,
-			"full_name": tech.full_name,
-			"number_of_visits": len(mine),
-			"visit_times": [get_datetime(v.sm_visit_datetime).strftime("%H:%M") for v in mine],
-			"available": not clash,
-			"reason": _("Unavailable (±{0} min)").format(gap) if clash else "",
-		})
-	return {"date": str(day), "gap_minutes": gap, "technicians": options}
-
-
-def check_technician_free(technician: str, when, exclude: str | None = None) -> None:
-	gap = gap_minutes()
-	clash = conflicts(visits_on(getdate(when), exclude=exclude).get(technician, []), when, gap)
-	if clash:
-		frappe.throw(_("This technician has another visit within {0} minutes of the selected time ({1}). "
-			"Please pick a different technician or time.").format(
-				gap, ", ".join(f"{get_datetime(v.sm_visit_datetime):%H:%M} ({v.name})" for v in clash)))
-
-
-# ---------------------------------------------------------------------------
-# Stage moves
-# ---------------------------------------------------------------------------
-
-
-def move_to_technician(ticket, technician: str) -> None:
-	"""Old ``move_to_technician_stage``."""
-	if ticket.sm_stage == STAGE_TECH:
-		frappe.throw(_("Issue is already moved to technician stage."))
-	if ticket.sm_stage != STAGE_CS:
-		frappe.throw(_("Only a ticket in the customer service stage can move to a technician."))
-	if not ticket.sm_address or not ticket.sm_visit_datetime:
-		frappe.throw(_("Cannot move to technician stage: Address and Visit Datetime must be set first."))
-	require_open(ticket, _("Can not move resolved or completed issue ticket"))
-	if not cstr(ticket.sm_cs_report).strip():
-		frappe.throw(_("A customer service report is required before proceeding."))
-	if not technician or not has_role(ROLE_TECH, technician):
-		frappe.throw(_("{0} is not a Technician.").format(technician or _("Nobody")))
-	# Two people assigning the same technician at once: the second one waits and re-checks.
-	frappe.db.sql("select name from `tabUser` where name = %s for update", technician)
-	check_technician_free(technician, ticket.sm_visit_datetime, exclude=ticket.name)
-	ticket.sm_technician = technician
-	ticket.sm_stage = STAGE_TECH
-	_save(ticket)
 
 
 def log_technician_visit(ticket, completion_status: str, report: str, user: str | None = None) -> dict:
-	"""The Maintenance Visit and the visit row. No Warranty Claim is opened."""
+	"""The Maintenance Visit and the visit row, by the Technician of the pickup trip."""
+	from delivery_management.control import log
+
 	user = user or frappe.session.user
 	report = cstr(report).strip()
 	if not report:
 		frappe.throw(_("A technician report is required."))
 	if completion_status not in COMPLETION:
 		frappe.throw(_("Choose the completion status."))
-	if ticket.sm_technician != user and not is_admin(user):
+	require_step(ticket, STEP_PICKUP)
+	if not ticket.sm_driver:
+		frappe.throw(_("No driver is assigned to this trip. The delivery office assigns one in Driver Assignment."))
+	if ticket.sm_driver != user and not is_admin(user):
 		frappe.throw(_("You are not authorized to create maintenance visit for this ticket."), frappe.PermissionError)
-	require_open(ticket, _("Can not move resolved or completed issue ticket"))
-	if ticket.sm_stage == STAGE_CS:
-		frappe.throw(_("This ticket in customer service, move it first."))
-	# Only a Maintenance Visit is made (no Warranty Claim); the item is optional.
-	technician = ticket.sm_technician or user
+	technician = ticket.sm_driver or user
 	visit = make_maintenance_visit(ticket, completion_status, report, technician)
-	claim = None
-
 	ticket.append("sm_tech_visits", {
 		"visit_on": now_datetime(),
 		"technician": technician,
 		"completion_status": completion_status,
 		"report": report,
 		"maintenance_visit": visit,
-		"warranty_claim": claim,
 	})
 	_save(ticket)
-	return {"maintenance_visit": visit, "warranty_claim": claim}
+	log.add("Visit logged", support_ticket=ticket.name, driver=technician, note=report,
+		reference=("Maintenance Visit", visit) if visit else None)
+	add_note(ticket, _("Driver visit report ({0})").format(_(completion_status)), report)
+	return {"maintenance_visit": visit}
 
 
 def update_visit_report(ticket, row_name: str, report: str, user: str | None = None) -> None:
@@ -388,86 +372,22 @@ def update_visit_report(ticket, row_name: str, report: str, user: str | None = N
 	_save(ticket)
 
 
-def move_to_maintenance(ticket, maint_technician: str, pickup: dict | None = None) -> None:
-	"""Old ``move_to_maint_tech_stage``, with the optional pickup slot booked in the same
-	transaction (the old page booked it first and leaked it when the move failed)."""
-	if ticket.sm_stage == STAGE_MAINT:
-		frappe.throw(_("Issue is already moved to maintenance technician stage."))
-	require_open(ticket, _("Can not move resolved or completed issue ticket"))
-	if ticket.sm_stage != STAGE_TECH:
-		frappe.throw(_("Only a ticket in the technician stage can move to a maintenance technician."))
-	if not _has_tech_report(ticket):
-		frappe.throw(_("A technician report is required before proceeding."))
-	if not maint_technician or not has_role(ROLE_MAINT, maint_technician):
-		frappe.throw(_("{0} is not a Maintenance Technician.").format(maint_technician or _("Nobody")))
-
-	pickup = {k: v for k, v in (pickup or {}).items() if v}
-	if pickup:
-		if not all(pickup.get(k) for k in ("area", "delivery_date", "delivery_time")):
-			frappe.throw(_("Choose the area, date and time of the pickup slot, or none of them."))
-		from delivery_management.slots import engine
-
-		engine.release(ISSUE, ticket.name)
-		engine.reserve(ISSUE, ticket.name, area=pickup["area"], delivery_date=getdate(pickup["delivery_date"]),
-			delivery_time=pickup["delivery_time"], customer=ticket.customer,
-			contact_phone=ticket.sm_customer_phone or None,
-			remarks=_("Pickup for support ticket {0}").format(ticket.name))
-		ticket.sm_pickup_area = pickup["area"]
-		ticket.sm_pickup_date = getdate(pickup["delivery_date"])
-		ticket.sm_pickup_time = pickup["delivery_time"]
-
-	ticket.sm_maint_technician = maint_technician
-	ticket.sm_stage = STAGE_MAINT
-	_save(ticket)
-
-
-def save_maint_report(ticket, report: str, user: str | None = None) -> None:
-	user = user or frappe.session.user
-	report = cstr(report).strip()
-	if not report:
-		frappe.throw(_("A maintenance technician report is required."))
-	if ticket.sm_maint_technician != user and not is_admin(user):
-		frappe.throw(_("You are not authorized to create maintenance note for this ticket."), frappe.PermissionError)
-	require_open(ticket, _("Can not create note for resolved or completed issue ticket"))
-	if ticket.sm_stage != STAGE_MAINT:
-		frappe.throw(_("This ticket is in {0} stage, it must be in maintenance technician stage.").format(
-			_(ticket.sm_stage)))
-	ticket.sm_maint_report = report
-	ticket.sm_maint_report_by = user
-	_save(ticket)
-
-
-def resolve(ticket, user: str | None = None) -> list[str]:
-	"""Old ``resolve_issue_ticket``: the current stage's report is required; the Issue is
-	Resolved and its Warranty Claims are closed."""
-	user = user or frappe.session.user
-	require_open(ticket)
-	if ticket.sm_stage == STAGE_CS and not cstr(ticket.sm_cs_report).strip():
-		frappe.throw(_("A customer service report is required before proceeding."))
-	if ticket.sm_stage == STAGE_TECH and not _has_tech_report(ticket):
-		frappe.throw(_("A technician report is required before proceeding."))
-	if ticket.sm_stage == STAGE_MAINT and not cstr(ticket.sm_maint_report).strip():
-		frappe.throw(_("A maintenance technician report is required before proceeding."))
-
-	closed = []
-	for claim in {r.warranty_claim for r in ticket.get("sm_tech_visits") or [] if r.warranty_claim}:
-		doc = frappe.get_doc("Warranty Claim", claim)
-		if doc.status not in ("Closed", "Cancelled"):
-			doc.status = "Closed"
-			doc.resolution_date = now_datetime()
-			doc.resolved_by = user
-			doc.resolution_details = doc.resolution_details or _("Closed with support ticket {0}.").format(ticket.name)
-			doc.flags.ignore_permissions = True
-			doc.save()
-			closed.append(claim)
-	ticket.status = "Resolved"
-	ticket.sm_resolved_by = user
-	_save(ticket)
-	return closed
-
-
 def _has_tech_report(ticket) -> bool:
 	return any(cstr(r.report).strip() for r in ticket.get("sm_tech_visits") or [])
+
+
+def add_note(ticket, title: str, text: str | None = None) -> None:
+	"""Every step's note on the Issue itself (its timeline), so the whole story is in one
+	place; the last one is shown in the lists."""
+	from frappe.utils import escape_html
+
+	text = cstr(text).strip()
+	who = frappe.utils.get_fullname(frappe.session.user)
+	ticket.add_comment("Comment", f"<b>{escape_html(title)}</b> · {escape_html(who)}"
+		+ (f"<br>{escape_html(text)}".replace("\n", "<br>") if text else ""))
+	if text:
+		frappe.db.set_value(ISSUE, ticket.name, "sm_last_note", f"{title}: {text}"[:1000], update_modified=False)
+		ticket.sm_last_note = f"{title}: {text}"[:1000]
 
 
 def _save(ticket) -> None:
@@ -586,34 +506,3 @@ def serial_of_ticket(ticket) -> str | None:
 	voucher_type, voucher_no = delivering_voucher(ticket.sm_sales_invoice, ticket.sm_item_code)
 	serials = delivered_serials(voucher_type, voucher_no, ticket.sm_item_code)
 	return serials[0] if serials else None
-
-
-def open_warranty_claim(ticket, report: str) -> str | None:
-	"""A Warranty Claim when the item's serial is under warranty. Never blocks the visit:
-	a missing serial, an expired warranty or an error only skip the claim."""
-	try:
-		serial = serial_of_ticket(ticket)
-		if not serial:
-			return None
-		expiry = frappe.db.get_value("Serial No", serial, "warranty_expiry_date")
-		if not expiry or getdate(expiry) < getdate(nowdate()):
-			return None
-		claim = frappe.get_doc({
-			"doctype": "Warranty Claim",
-			"status": "Work In Progress",
-			"complaint_date": nowdate(),
-			"serial_no": serial,
-			"item_code": ticket.sm_item_code,
-			"customer": ticket.customer,
-			"company": company_of(ticket),
-			"complaint": report,
-			"warranty_amc_status": "Under Warranty",
-			"warranty_expiry_date": expiry,
-		})
-		claim.flags.ignore_permissions = True
-		claim.insert()
-		return claim.name
-	except Exception:
-		frappe.log_error(title=f"Support ticket {ticket.name}: warranty claim not created")
-		frappe.clear_last_message()
-		return None

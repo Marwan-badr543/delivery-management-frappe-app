@@ -47,9 +47,9 @@ def get_stores():
 def get_to_send(search=None, work_date=None):
 	"""Draft order notes still in the store with a driver assigned, earliest first."""
 	_require_stock_keeper()
-	day = "coalesce(dn.dm_ac_installation_date, dn.dm_delivery_date)"
-	conditions = ["dn.docstatus = 0", "dn.is_return = 0", "ifnull(dn.dm_delivery_status, '') = ''",
-		"ifnull(dn.dm_driver, '') != ''"]
+	day = "dn.dm_work_date"  # indexed (drivers.delivery_note.set_work_date)
+	conditions = ["dn.docstatus = 0", "dn.is_return = 0", "(dn.dm_delivery_status is null or dn.dm_delivery_status = '')",
+		"dn.dm_driver is not null and dn.dm_driver != ''"]
 	values = {}
 	if work_date:
 		conditions.append(f"{day} = %(day)s")
@@ -134,13 +134,31 @@ def get_transit(search=None, driver=None, status=None, coming_back_only=0):
 		q = f"%{search.strip()}%"
 		or_filters = {"name": ["like", q], "customer_name": ["like", q], "mobile_no": ["like", q],
 			"driver_name": ["like", q]}
-	names = frappe.get_all(transit.TRANSIT, filters=filters, or_filters=or_filters, pluck="name",
+	docs = frappe.get_all(transit.TRANSIT, filters=filters, or_filters=or_filters, fields=["*"],
 		order_by="out_at asc", limit=500)
+	# Everything the page needs in a few queries for all the transits, not 2 documents each.
+	names = [d.name for d in docs] or [""]
+	notes = [d.delivery_note for d in docs] or [""]
+	children = lambda doctype, parenttype, parents, fields: frappe.get_all(doctype, filters={"parent": ["in", parents],
+		"parenttype": parenttype}, fields=["parent", *fields], order_by="idx asc")
+	lines = _group(children("Delivery Transit Item", transit.TRANSIT, names, ["name", "item_code", "item_name",
+		"stock_uom", "qty", "delivered_qty", "received_qty", "serial_no", "delivered_serials", "received_serials",
+		"dn_detail", "packed_item", "bundle_item"]))
+	dns = {d.name: d for d in frappe.get_all(DN, filters={"name": ["in", notes]},
+		fields=["name", "docstatus", "dm_delivery_status"])}
+	dn_items = _group(children("Delivery Note Item", DN, notes, ["name", "item_code", "qty", "stock_qty",
+		"conversion_factor", "serial_no", "warehouse"]))
+	packed = _group(children("Packed Item", DN, notes, ["name", "item_code", "qty", "parent_item",
+		"parent_detail_docname", "serial_no", "warehouse"]))
+	codes = {r.item_code for rows in (*dn_items.values(), *packed.values()) for r in rows}
+	items = {i.name: i for i in frappe.get_all("Item", filters={"name": ["in", list(codes) or [""]]},
+		fields=transit.ITEM_FIELDS)}
 	out = []
-	for name in names:
-		doc = frappe.get_doc(transit.TRANSIT, name)
-		dn = frappe.get_doc(DN, doc.delivery_note)
-		waiting = transit.pending(doc, dn)
+	for doc in docs:
+		doc = _Doc(doc, items=lines.get(doc.name, []))
+		dn = _Doc(dns.get(doc.delivery_note) or {"docstatus": 2})
+		dn.update(items=dn_items.get(dn.name, []), packed_items=packed.get(dn.name, []))
+		waiting = transit.pending(doc, dn, items)
 		if frappe.utils.cint(coming_back_only) and not waiting:
 			continue
 		out.append({
@@ -156,6 +174,19 @@ def get_transit(search=None, driver=None, status=None, coming_back_only=0):
 				"coming_back_serials": waiting[r.name].serials if r.name in waiting else [],
 				"has_serial_no": frappe.get_cached_value("Item", r.item_code, "has_serial_no")} for r in doc.items],
 		})
+	return out
+
+
+class _Doc(frappe._dict):
+	"""A document read with get_all, with child rows: ``.items`` is the rows, not dict.items."""
+
+	items = property(lambda self: self["items"])
+
+
+def _group(rows) -> dict[str, list]:
+	out: dict[str, list] = {}
+	for r in rows:
+		out.setdefault(r.parent, []).append(r)
 	return out
 
 

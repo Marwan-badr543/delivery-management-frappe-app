@@ -41,6 +41,7 @@ class SalesStatisticsPage {
 				</section>
 				<div class="ss-state"></div>
 				<div class="ss-cards"></div>
+				<section class="ss-branches hidden"></section>
 				<section class="ss-panel ss-table-panel hidden">
 					<header class="ss-panel-head">
 						<div>
@@ -60,6 +61,15 @@ class SalesStatisticsPage {
 
 		frappe.call({ method: SS_API + "get_setup" }).then((r) => {
 			this.setup = r.message;
+			// A salesman with no branch sees nothing (System Manager always sees everything).
+			if (!this.setup.is_manager && !(this.setup.branches || []).length) {
+				page.clear_primary_action();
+				this.$body.find(".ss-state").html(`<div class="ss-banner ss-banner-info">
+					${frappe.utils.icon("es-line-alert-circle", "md")}
+					<div><b>${__("No branch")}</b><span>${__("You are not on a POS Profile of any branch. Ask your manager to add you.")}</span></div>
+				</div>`);
+				return;
+			}
 			// Controls apply their values asynchronously; run once they are all set.
 			Promise.all(this.make_filters()).then(() => this.run());
 		});
@@ -94,6 +104,9 @@ class SalesStatisticsPage {
 		}
 		this.company = make({ fieldtype: "Link", options: "Company", label: __("Company"), fieldname: "company",
 			default: this.setup.company });
+		this.branch = make({ fieldtype: "Select", label: __("Branch"), fieldname: "branch",
+			options: [{ value: "", label: this.setup.is_manager ? __("All branches") : __("My branches") }]
+				.concat((this.setup.branches || []).map((b) => ({ value: b, label: b }))) });
 		this.pos_profile = make({ fieldtype: "Link", options: "POS Profile", label: __("POS Profile"), fieldname: "pos_profile",
 			placeholder: __("All POS Profiles") });
 		this.exclude_services = make({ fieldtype: "Check", label: __("Exclude services"), fieldname: "exclude_services",
@@ -138,6 +151,7 @@ class SalesStatisticsPage {
 			user: this.user ? this.user.get_value() : null,
 			exclude_services: this.exclude_services.get_value() ? 1 : 0,
 			pos_profile: this.pos_profile.get_value() || null,
+			branch: this.branch.get_value() || null,
 		};
 	}
 
@@ -269,6 +283,22 @@ class SalesStatisticsPage {
 		</div>`;
 	}
 
+	// Whole-branch sales (every salesman) against each branch's Sales Target.
+	render_branches() {
+		const list = this.result.branches || [];
+		const $b = this.$body.find(".ss-branches").toggleClass("hidden", !list.length);
+		if (!list.length) return;
+		const basis = this.basis_key();
+		$b.html(`<h4 class="ss-branches-title">${__("Branch sales")}</h4><div class="ss-branch-grid">${list.map((b) => `
+			<div class="ss-card ss-branch">
+				<div class="ss-card-top"><span class="ss-card-label">${frappe.utils.escape_html(b.branch)}</span>
+					<span class="ss-card-icon">${frappe.utils.icon("branch", "sm")}</span></div>
+				<b>${this.money(b[basis])}</b>
+				<small>${__("{0} invoices · all salesmen", [b.invoices])}</small>
+				${this.progress(b[basis], b.target, (v) => this.money(v))}
+			</div>`).join("")}</div>`);
+	}
+
 	evaluation_cell(row) {
 		const ev = row.evaluation;
 		if (ev) {
@@ -290,7 +320,6 @@ class SalesStatisticsPage {
 		const rows = this.result.rows;
 		const t = this.result.totals;
 		const basis = this.basis_key();
-		const range = this.result.commission_range;
 
 		const card = (label, value, icon, cls = "", hint = "") =>
 			`<div class="ss-card ${cls}">
@@ -315,11 +344,9 @@ class SalesStatisticsPage {
 				card(__("Other units"), t.non_ac_units, "package", "ss-card-purple")
 		);
 
-		this.$body.find(".ss-range").html(flt(range.max)
-			? __("Commission from {0} to {1} by small items sold against the target. Click a salesman to see how it was calculated and their invoices.",
-				[`<b>${this.pct(range.min)}</b>`, `<b>${this.pct(range.max)}</b>`])
-			: `<span class="ss-warn">${frappe.utils.icon("es-line-alert-circle", "xs")} ${__("No commission range yet: set Min and Max Commission % in {0}.",
-				[`<a href="/desk/delivery-settings" target="_blank">${__("Delivery Settings")}</a>`])}</span>`);
+		this.render_branches();
+		this.$body.find(".ss-range").html(
+			__("Commission is worked out month by month with each salesman's Commission Rules (on the User). Click a salesman to see how it was calculated and their invoices."));
 
 		this.$body.find(".ss-table-panel").removeClass("hidden");
 		const $t = this.$body.find(".ss-table").empty();
@@ -395,37 +422,52 @@ class SalesStatisticsPage {
 		}
 		const esc = frappe.utils.escape_html;
 		const basis = this.basis_key();
-		const range = this.result.commission_range;
 		const f = this.result.filters;
 		const c = r.commission[basis];
-		const sales = this.money(r[basis]);
-		const reached = r.small_items_target ? Math.min(Math.max(flt(r.small_units), 0) / r.small_items_target, 1) : 1;
 		const ev = r.evaluation;
-		const step = (n, title, formula, result, cls = "") => `<li class="ss-step ${cls}">
-			<span class="ss-step-n">${n}</span>
-			<div class="ss-step-text"><b>${title}</b><span class="ss-formula">${formula}</span></div>
-			<span class="ss-step-result">${result}</span></li>`;
+		const month_rows = r.months.map((m) => {
+			const rule = m.rule;
+			const target = rule ? rule.small_items_target : 0;
+			const reached = target ? Math.min(Math.max(flt(m.small_units), 0) / target, 1) : 1;
+			const mc = m.commission[basis];
+			const rule_note = !rule ? `<span class="ss-warn">${__("No rule")}</span>`
+				: `${this.pct(rule.min_percent)} + ${this.pct(reached * 100)} × (${this.pct(rule.max_percent)} − ${this.pct(rule.min_percent)})`
+					+ (rule.exact ? "" : `<small class="ss-sub">${__("closest rule: {0}", [moment(rule.month).format("MMM YYYY")])}</small>`);
+			const ev_note = m.evaluation
+				? `<a href="${frappe.utils.get_form_link("Sales Evaluation", m.evaluation.name)}" target="_blank">${this.pct(m.score)}</a>`
+					+ (m.evaluation.overlaps ? "" : `<small class="ss-sub">${__("closest")}</small>`)
+				: `<span class="ss-warn">${__("none")}</span>`;
+			return `<tr>
+				<td><b>${moment(m.month).format("MMM YYYY")}</b><small class="ss-sub">${frappe.datetime.str_to_user(m.from_date)} – ${frappe.datetime.str_to_user(m.to_date)}</small></td>
+				<td class="text-right">${this.money(m[basis])}</td>
+				<td class="text-right">${m.small_units} / ${target || "—"}</td>
+				<td>${rule_note}</td>
+				<td class="text-right"><b>${this.pct(m.percent)}</b></td>
+				<td class="text-right">${ev_note}</td>
+				<td class="text-right"><b>${this.money(mc.amount)}</b><small class="ss-sub">${this.money(mc.items)} + ${this.money(mc.evaluation)}</small></td>
+			</tr>`;
+		}).join("");
 		$b.removeClass("hidden").html(`
 			<header class="ss-panel-head">
 				<div><h4>${__("Commission of {0}", [esc(r.full_name)])}</h4>
-					<p>${__("On {0}, from {1} to {2}.", [this.basis_labels[basis], frappe.datetime.str_to_user(f.from_date),
-						frappe.datetime.str_to_user(f.to_date)])}</p></div>
+					<p>${__("On {0}, from {1} to {2}. Each month uses its own rule; the months are added together.", [this.basis_labels[basis],
+						frappe.datetime.str_to_user(f.from_date), frappe.datetime.str_to_user(f.to_date)])}</p></div>
 				<button class="btn btn-default btn-sm ss-close">${frappe.utils.icon("close", "xs")} ${__("Close")}</button>
 			</header>
+			<div class="ss-scroll"><table class="ss-grid">
+				<thead><tr><th>${__("Month")}</th><th class="text-right">${__("Sales")}</th>
+					<th class="text-right">${__("Small items / target")}</th><th>${__("Commission % = Min + reached × (Max − Min)")}</th>
+					<th class="text-right">${__("Commission %")}</th><th class="text-right">${__("Evaluation")}</th>
+					<th class="text-right">${__("Commission (75% + 25%)")}</th></tr></thead>
+				<tbody>${month_rows}</tbody>
+				<tfoot><tr><th>${__("Total")}</th><th class="text-right">${this.money(r[basis])}</th><th class="text-right">${r.small_units}</th>
+					<th></th><th></th><th></th><th class="text-right">${this.money(c.amount)}</th></tr></tfoot>
+			</table></div>
 			<ol class="ss-steps">
-				${step(1, __("Small items target reached"), r.small_items_target
-					? __("{0} sold of a target of {1}", [r.small_units, r.small_items_target]) + (reached >= 1 ? ` · ${__("at most 100%")}` : "")
-					: __("No Small Items Target on the user, so the Max % applies"), this.pct(reached * 100))}
-				${step(2, __("Commission %"), __("{0} + {1} × ({2} − {0})", [this.pct(range.min), this.pct(reached * 100), this.pct(range.max)]),
-					this.pct(r.commission_percent))}
-				${step(3, __("Sales part (75%)"), __("{0} × {1} × 75%", [sales, this.pct(r.commission_percent)]), this.money(c.items))}
-				${step(4, __("Evaluation part (25%)"), ev
-					? __("{0} × {1} × 25% × score {2}", [sales, this.pct(r.commission_percent), this.pct(ev.score)]) +
-						` · <a href="${frappe.utils.get_form_link("Sales Evaluation", ev.name)}" target="_blank">${esc(ev.name)}</a>` +
-						(ev.overlaps ? "" : ` · ${__("none in this period: the latest one ({0} to {1}) is used", [
-							frappe.datetime.str_to_user(ev.from_date), frappe.datetime.str_to_user(ev.to_date)])}`)
-					: __("This salesman has no Sales Evaluation, so this part is 0."), this.money(c.evaluation), ev ? "" : "ss-step-missing")}
-				${step("=", __("Commission"), __("Sales part + evaluation part"), this.money(c.amount), "ss-step-total")}
+				<li class="ss-step ${ev ? "" : "ss-step-missing"}"><span class="ss-step-n">i</span>
+					<div class="ss-step-text"><b>${__("Evaluation part (25%)")}</b><span class="ss-formula">${ev
+						? __("Each month uses the evaluation overlapping it (the latest), or else the closest one.")
+						: __("This salesman has no Sales Evaluation, so this part is 0.")}</span></div></li>
 			</ol>`);
 		$b.find(".ss-close").on("click", () => {
 			this.invoice_user = null;
@@ -443,7 +485,7 @@ class SalesStatisticsPage {
 	invoice_args(extra = {}) {
 		const f = this.result.filters;
 		return { from_date: f.from_date, to_date: f.to_date, company: f.company, exclude_services: f.exclude_services,
-			pos_profile: f.pos_profile,
+			pos_profile: f.pos_profile, branch: f.branch,
 			user: this.invoice_user || f.user, search: this.invoice_search, ...extra };
 	}
 

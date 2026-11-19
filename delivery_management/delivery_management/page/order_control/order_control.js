@@ -35,6 +35,24 @@ const OC_EVENTS = {
 	"Cash handed over": ["money-coins-1", "green"],
 	"Delivery split": ["calendar", "blue"],
 	"Delivery merged back": ["calendar", "gray"],
+	// Support tickets
+	"Ticket opened": ["support", "gray"],
+	"Visit booked": ["calendar", "blue"],
+	"Return booked": ["calendar", "blue"],
+	"Ticket driver assigned": ["users", "blue"],
+	"Ticket driver changed": ["users", "orange"],
+	"Visit logged": ["tool", "blue"],
+	"Resolved at the customer": ["check", "green"],
+	"Customer not home": ["calendar", "orange"],
+	"Item picked up": ["package", "blue"],
+	"Received in workshop": ["package", "blue"],
+	"Repaired": ["check", "green"],
+	"Not repairable": ["close", "orange"],
+	"Sent out from workshop": ["truck", "blue"],
+	"Sent out from store": ["truck", "blue"],
+	"Received back in store": ["arrow-down-left", "orange"],
+	"Returned to customer": ["check", "green"],
+	"Ticket resolved": ["check", "green"],
 };
 
 class OrderControlPage {
@@ -65,7 +83,7 @@ class OrderControlPage {
 	async renderFilters() {
 		const D = this.D;
 		const users = await frappe.xcall(OC_API + "get_users");
-		const periods = [["1", __("Today")], ["7", __("7 days")], ["30", __("30 days")], ["", __("All")]];
+		const periods = [["1", __("Today")], ["7", __("7 days")], ["30", __("30 days")], ["90", __("90 days")]];
 		const $p = this.$root.find(".dd-filter-panel").html(`
 			<div class="dd-filters">
 				<div class="dd-field dd-search"><label for="oc-q">${__("Find an order")}</label>
@@ -73,7 +91,8 @@ class OrderControlPage {
 					<input id="oc-q" class="form-control" data-f="search" placeholder="${__("Order, invoice, delivery note, customer or phone")}"></div>
 				<div class="dd-field"><label>${__("Type")}</label>
 					<select class="form-control" data-f="kind">${D.select([{ value: "", label: __("Orders and store sales") },
-						{ value: "order", label: __("Delivery orders") }, { value: "sale", label: __("Store sales") }], "")}</select></div>
+						{ value: "order", label: __("Delivery orders") }, { value: "sale", label: __("Store sales") },
+						{ value: "ticket", label: __("Support tickets") }], "")}</select></div>
 				<div class="dd-field"><label>${__("Step")}</label>
 					<select class="form-control" data-f="event">${D.select(
 						[{ value: "", label: __("All steps") }, ...Object.keys(OC_EVENTS).map((e) => ({ value: e, label: __(e) }))], "")}</select></div>
@@ -83,6 +102,9 @@ class OrderControlPage {
 			<div class="dd-filter-foot">
 				<div class="oc-periods" role="group" aria-label="${__("Period")}">${periods.map(([v, l]) =>
 					`<button type="button" class="oc-chip ${v === this.f.period ? "on" : ""}" data-period="${v}">${l}</button>`).join("")}</div>
+				<div class="oc-range" role="group" aria-label="${__("Dates")}">
+					<label>${__("From")} <input type="date" class="form-control input-xs" data-range="from_date"></label>
+					<label>${__("To")} <input type="date" class="form-control input-xs" data-range="to_date"></label></div>
 				<span class="dd-count" data-count-label>–</span></div>`);
 		const reload = frappe.utils.debounce(() => this.loadList(), 300);
 		$p.find("[data-f]").on("input change", (e) => {
@@ -91,9 +113,19 @@ class OrderControlPage {
 		});
 		$p.find("[data-period]").on("click", (e) => {
 			this.f.period = e.currentTarget.dataset.period;
+			this.f.from_date = this.f.to_date = "";
+			$p.find("[data-range]").val("");
 			$p.find("[data-period]").removeClass("on");
 			$(e.currentTarget).addClass("on");
 			this.loadList();
+		});
+		// Any dates: they replace the period buttons.
+		$p.find("[data-range]").on("change", (e) => {
+			this.f[e.currentTarget.dataset.range] = $(e.currentTarget).val();
+			this.f.period = "";
+			$p.find("[data-period]").removeClass("on");
+			if (!this.f.from_date && !this.f.to_date) $p.find('[data-period="7"]').trigger("click");
+			else this.loadList();
 		});
 	}
 
@@ -102,11 +134,13 @@ class OrderControlPage {
 		const $list = this.$root.find(".oc-list").html(`<div class="oc-loading">${__("Loading…")}</div>`);
 		const { period, ...f } = this.f;
 		if (period) f.from_date = frappe.datetime.add_days(frappe.datetime.get_today(), 1 - Number(period));
+		if (!f.from_date) delete f.from_date;
+		if (!f.to_date) delete f.to_date;
 		const rows = await frappe.xcall(OC_API + "get_orders", f);
 		this.$root.find("[data-count-label]").text(__("{0} orders", [rows.length]));
 		if (!rows.length) {
 			$list.html(`<div class="oc-empty">${frappe.utils.icon("search", "lg")}<b>${__("No orders found")}</b>
-				<span>${__("Try another period or clear the filters.")}</span></div>`);
+				<span>${__("Try another period (or older dates in From / To) or clear the filters.")}</span></div>`);
 			return;
 		}
 		$list.html(rows.map((r) => {
@@ -135,6 +169,7 @@ class OrderControlPage {
 		const money = (v) => format_currency(v, o.currency);
 		const link = (dt, dn) => dn ? `<a href="/desk/${frappe.router.slug(dt)}/${encodeURIComponent(dn)}">${D.esc(dn)}</a>` : "";
 		const tile = (label, value, tone = "") => `<div class="oc-tile ${tone}"><span>${label}</span><b>${value}</b></div>`;
+		if (o.kind === "ticket") return this.renderTicket($d, o, link);
 		const notes = o.notes.map((n) => `<div class="oc-note">
 			<div>${link("Delivery Note", n.name)} ${D.typePill(n.order_type)}</div>
 			<div class="oc-where">${D.esc(n.where)}</div>
@@ -159,6 +194,37 @@ class OrderControlPage {
 			${notes ? `<h5 class="oc-h">${__("Where the goods are")}</h5><div class="oc-notes">${notes}</div>` : ""}
 			<h5 class="oc-h">${__("What happened")}</h5>
 			${o.steps.length ? this.timeline(o.steps, money, link) : `<div class="dd-muted">${__("No steps logged yet.")}</div>`}`);
+	}
+
+	/** A support ticket: where the customer's item is now, and every step. */
+	renderTicket($d, o, link) {
+		const D = this.D;
+		const S = window.dm_support;
+		const tile = (label, value) => `<div class="oc-tile"><span>${label}</span><b>${value || "—"}</b></div>`;
+		$d.html(`
+			<button type="button" class="btn btn-default btn-sm oc-back" data-back>${frappe.utils.icon("left", "xs")} ${__("Orders")}</button>
+			<div class="oc-head">
+				<div><h4><a href="#" data-ticket="${D.esc(o.name)}">${D.esc(o.name)}</a> · ${D.esc(o.subject)}</h4>
+					<div class="dd-muted">${__("Support ticket")} · ${__("made {0} by {1}",
+						[frappe.datetime.str_to_user(o.created), D.esc(o.created_by)])}</div></div>
+				${S.stepPill(o.status)}
+			</div>
+			<div class="oc-customer"><b>${D.esc(o.customer_name || "")}</b>${o.mobile ? ` · ${D.phoneLink(o.mobile)}` : ""}
+				${o.address ? `<div class="dd-muted">${D.esc(o.address)}</div>` : ""}</div>
+			<div class="oc-tiles">
+				${tile(__("Item"), D.esc(o.item_code))}
+				${tile(__("Serial"), D.esc(o.serial_no))}
+				${tile(__("Item is in"), D.esc(o.where || __("With the customer")))}
+				${tile(__("Warranty"), S.warrantyPill(o))}
+			</div>
+			${o.trip.date ? `<div class="dd-muted small">${__("Trip")}: ${D.date(o.trip.date)} ${D.esc(o.trip.time || "")}
+				· ${D.esc(o.trip.driver_name || __("No driver yet"))}</div>` : ""}
+			<h5 class="oc-h">${__("What happened")}</h5>
+			${o.steps.length ? this.timeline(o.steps, (v) => v, link) : `<div class="dd-muted">${__("No steps logged yet.")}</div>`}`);
+		$d.find("[data-ticket]").on("click", (e) => {
+			e.preventDefault();
+			S.openTicket(o.name, () => this.open(o.name));
+		});
 	}
 
 	timeline(steps, money, link) {

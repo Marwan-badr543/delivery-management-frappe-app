@@ -57,7 +57,7 @@ class SalesStatsCase(OrdersTestCase):
 
 	def set_owner(self, name, owner):
 		"""``owner`` placed the sale, on ``self.today``: logged in and verified as the POS cashier."""
-		frappe.db.set_value("Sales Invoice", name, {"owner": owner, "posa_cashier": owner,
+		frappe.db.set_value("Sales Invoice", name, {"owner": owner, "posa_cashier": owner, "dm_salesman": owner,
 			"creation": get_datetime(f"{self.today} 12:00:00")}, update_modified=False)
 
 	def set_created(self, name, when):
@@ -78,13 +78,37 @@ class SalesStatsCase(OrdersTestCase):
 	def stats(self, from_date=None, to_date=None, user=None, company=None):
 		return sales.compute(from_date or self.today, to_date or self.today, company or self.company, user)
 
+	def branch(self, name="_DM Branch A", profiles=None, target=1000):
+		"""A Branch owning the test POS Profile, with ``SECOND`` allowed on that profile."""
+		profiles = [self.w.pos_profile] if profiles is None else profiles
+		for p in profiles:
+			if not frappe.db.exists("POS Profile User", {"parent": p, "user": SECOND}):
+				frappe.get_doc("POS Profile", p).append("applicable_for_users", {"user": SECOND}).save()
+		doc = frappe.get_doc("Branch", name) if frappe.db.exists("Branch", name) else \
+			frappe.get_doc({"doctype": "Branch", "branch": name})
+		doc.dm_sales_target = target
+		doc.set("dm_pos_profiles", [{"pos_profile": p} for p in profiles])
+		doc.save()
+		return doc.name
+
+	def rule(self, user, month, small_items_target=10, min_percent=1, max_percent=3, sales_target=1000):
+		"""A Commission Rule on the user for ``month`` (any day of it)."""
+		doc = frappe.get_doc("User", user)
+		doc.set("dm_commission_rules", [r for r in doc.get("dm_commission_rules") or []
+			if sales.month_start(r.month) != sales.month_start(month)])
+		doc.append("dm_commission_rules", {"month": month, "sales_target": sales_target,
+			"small_items_target": small_items_target, "min_percent": min_percent, "max_percent": max_percent})
+		doc.flags.ignore_permissions = True
+		doc.save()
+		return doc
+
 	def row(self, result, user):
 		return next((r for r in result["rows"] if r["user"] == user), None)
 
 	def invoices(self, result, user=None, **kw):
 		f = result["filters"]
 		return sales.invoices(f["from_date"], f["to_date"], f["company"], user or f["user"], page_len=None,
-			pos_profile=f.get("pos_profile"), **kw)["invoices"]
+			pos_profile=f.get("pos_profile"), branch=f.get("branch"), **kw)["invoices"]
 
 	def names(self, result, user=None):
 		return sorted(i["name"] for i in self.invoices(result, user))
@@ -116,10 +140,13 @@ class TestSalesStatistics(SalesStatsCase):
 	def test_salesman_is_the_pos_cashier_on_a_shared_login(self):
 		# One login (Administrator), the sale made by the cashier who verified a PIN (SECOND).
 		shared = self.sell([(self.w.tv, 1, 100)])
-		frappe.db.set_value("Sales Invoice", shared, "posa_cashier", SECOND, update_modified=False)
+		# Submit froze the salesman (the cashier, else the owner) for the commission index.
+		self.assertEqual(frappe.db.get_value("Sales Invoice", shared, "dm_salesman"), "Administrator")
+		# Invoices from before that field: the cashier, else the owner.
+		frappe.db.set_value("Sales Invoice", shared, {"posa_cashier": SECOND, "dm_salesman": None}, update_modified=False)
 		# A credit note made in the desk has no POS cashier: it goes to whoever created it.
 		desk = self.sell([(self.w.tv, 1, 120)])
-		frappe.db.set_value("Sales Invoice", desk, "posa_cashier", None, update_modified=False)
+		frappe.db.set_value("Sales Invoice", desk, {"posa_cashier": None, "dm_salesman": None}, update_modified=False)
 
 		result = self.stats()
 		self.assertEqual(self.names(result, SECOND), [shared])
@@ -290,6 +317,7 @@ class TestSalesStatisticsApi(SalesStatsCase):
 		self.assertEqual(api.status(second["key"])["status"], "done")
 
 	def test_salesman_sees_only_own_numbers(self):
+		self.branch()
 		self.sell([(self.w.tv, 1, 100)])
 		mine = self.sell([(self.w.pipe, 1, 2)], owner=SECOND)
 		admins_run = api.start(str(self.today), str(self.today), self.company)["key"]
@@ -301,6 +329,47 @@ class TestSalesStatisticsApi(SalesStatsCase):
 			self.assertRaises(frappe.PermissionError, api.status, admins_run)
 		finally:
 			frappe.set_user("Administrator")
+
+	def test_salesman_sees_own_sales_and_whole_branch(self):
+		branch = self.branch(target=500)
+		self.sell([(self.w.tv, 1, 100)])  # Administrator, same branch
+		mine = self.sell([(self.w.pipe, 1, 2)], owner=SECOND)
+		frappe.set_user(SECOND)
+		try:
+			self.assertEqual(api.get_setup()["branches"], [branch])
+			result = api.start(str(self.today), str(self.today), self.company)["result"]
+			self.assertEqual([r["user"] for r in result["rows"]], [SECOND])
+			self.assertEqual(self.names(result), [mine])
+			[card] = result["branches"]
+			self.assertEqual((card["branch"], card["total"], card["target"], card["invoices"]), (branch, 102, 500, 2))
+			self.assertRaises(frappe.PermissionError, api.start, str(self.today), str(self.today), self.company,
+				branch="_DM Other Branch")
+		finally:
+			frappe.set_user("Administrator")
+
+	def test_salesman_without_branch_sees_nothing(self):
+		frappe.db.delete("POS Profile User", {"user": SECOND})
+		frappe.set_user(SECOND)
+		try:
+			self.assertEqual(api.get_setup()["branches"], [])
+			self.assertRaises(frappe.ValidationError, api.start, str(self.today), str(self.today), self.company)
+		finally:
+			frappe.set_user("Administrator")
+
+	def test_manager_branch_filter(self):
+		branch = self.branch()
+		inside = self.sell([(self.w.tv, 1, 100)])
+		result = api.start(str(self.today), str(self.today), self.company, branch=branch)["result"]
+		self.assertIn(inside, self.names(result))
+		self.assertEqual([b["branch"] for b in result["branches"]], [branch])
+		self.assertEqual(result["branches"][0]["total"], 100)
+		self.branch(profiles=[])  # the branch loses its profile: nothing counts for it
+		empty = api.start(str(self.today), str(self.today), self.company, branch=branch)["result"]
+		self.assertEqual(self.names(empty), [])
+
+	def test_profile_belongs_to_one_branch(self):
+		self.branch("_DM Branch A")
+		self.assertRaises(frappe.ValidationError, self.branch, "_DM Branch B")
 
 	def test_bad_dates_refused(self):
 		self.assertRaises(frappe.ValidationError, api.start, str(self.today), str(add_days(self.today, -1)), self.company)
@@ -331,8 +400,7 @@ class TestSalesTargetsAndCommission(SalesStatsCase):
 	def setUp(self):
 		super().setUp()
 		frappe.db.set_value("Item", self.w.pipe, "dm_small_item", 1)
-		frappe.db.set_single_value("Delivery Settings", {"commission_min_percent": 1, "commission_max_percent": 3})
-		frappe.db.set_value("User", SECOND, {"dm_sales_target": 1000, "dm_small_items_target": 10})
+		self.rule(SECOND, self.today)
 
 	def evaluate(self, points, from_date=None, to_date=None):
 		doc = frappe.get_doc({"doctype": "Sales Evaluation", "salesman": SECOND,
@@ -357,7 +425,7 @@ class TestSalesTargetsAndCommission(SalesStatsCase):
 		self.assertEqual((row["small_units"], row["commission_percent"]), (0, 1))
 
 	def test_no_evaluation_pays_only_the_75_percent(self):
-		frappe.db.set_value("User", SECOND, "dm_small_items_target", 4)
+		self.rule(SECOND, self.today, small_items_target=4)
 		self.sell([(self.w.pipe, 4, 25)], owner=SECOND)  # 100, target reached: Max 3%
 		row = self.row(self.stats(), SECOND)
 		self.assertIsNone(row["evaluation"])
@@ -391,9 +459,37 @@ class TestSalesTargetsAndCommission(SalesStatsCase):
 		self.assertRaises(frappe.ValidationError, self.evaluate, 5, self.today, add_days(self.today, -1))
 
 	def test_min_cannot_exceed_max(self):
-		settings = frappe.get_single("Delivery Settings")
-		settings.commission_min_percent, settings.commission_max_percent = 4, 2
-		self.assertRaises(frappe.ValidationError, settings.validate_commission)
+		self.assertRaises(frappe.ValidationError, self.rule, SECOND, self.today, min_percent=4, max_percent=2)
+
+	def test_one_rule_per_month(self):
+		doc = frappe.get_doc("User", SECOND)
+		doc.append("dm_commission_rules", {"month": add_days(sales.month_start(self.today), 5), "min_percent": 1,
+			"max_percent": 2})
+		doc.flags.ignore_permissions = True
+		self.assertRaises(frappe.ValidationError, doc.save)
+
+	def test_month_without_a_rule_uses_the_closest_even_years_old(self):
+		frappe.db.delete("Sales Commission Rule", {"parent": SECOND})
+		self.rule(SECOND, add_days(self.today, -3650), small_items_target=4, min_percent=2, max_percent=6)
+		self.sell([(self.w.pipe, 2, 25)], owner=SECOND)  # 50; 2 of 4 small items
+		[month] = self.row(self.stats(), SECOND)["months"]
+		self.assertFalse(month["rule"]["exact"])
+		self.assertAlmostEqual(month["percent"], 4)  # 2 + 0.5 × (6 − 2)
+
+	def test_each_month_uses_its_own_rule_then_they_add_up(self):
+		first = sales.month_start(self.today)
+		second = sales.month_start(add_days(sales.month_end(self.today), 1))
+		self.rule(SECOND, first, small_items_target=4, min_percent=1, max_percent=3)
+		self.rule(SECOND, second, small_items_target=2, min_percent=10, max_percent=10)
+		a = self.sell([(self.w.pipe, 4, 25)], owner=SECOND)  # 100, target reached: 3%
+		b = self.sell([(self.w.pipe, 1, 50)], owner=SECOND)  # 50 next month: 10%
+		self.set_created(b, f"{second} 10:00:00")
+		result = sales.compute(first, sales.month_end(second), self.company, SECOND)
+		row = self.row(result, SECOND)
+		self.assertEqual([m["percent"] for m in row["months"]], [3, 10])
+		# 100 × 3% = 3 and 50 × 10% = 5, each × 75% (no evaluation): 2.25 + 3.75
+		self.assertEqual(row["commission"]["total"]["amount"], 6.0)
+		self.assertEqual(sorted(self.names(result)), sorted([a, b]))
 
 
 class TestLineUnits(SalesStatsCase):
@@ -452,7 +548,7 @@ class TestServices(SalesStatsCase):
 		frappe.db.set_value("Item", self.w.service, "item_group", item_group("_DM Fees", root))
 		frappe.get_doc({"doctype": "Delivery Service Item Group", "parent": "Delivery Settings",
 			"parenttype": "Delivery Settings", "parentfield": "service_item_groups", "item_group": root}).db_insert()
-		frappe.db.set_single_value("Delivery Settings", {"commission_min_percent": 10, "commission_max_percent": 10})
+		self.rule("Administrator", self.today, min_percent=10, max_percent=10)
 
 	def test_services_are_left_out_by_default(self):
 		self.assertIn("_DM Fees", sales.service_groups())
