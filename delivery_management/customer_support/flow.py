@@ -171,7 +171,7 @@ def assign_driver(name: str, driver: str | None) -> None:
 
 def customer_not_home(name: str, note: str | None = None) -> None:
 	"""The customer was not there. At a pickup customer service books again. On a return the
-	driver brings the item back: the stock keeper scans it into the main store
+	driver brings the item back: the stock keeper scans it into the Customer Items Store
 	(``receive_back``), then customer service books again."""
 	ticket = _lock(name)
 	t.require_step(ticket, t.STEP_PICKUP, t.STEP_OUT)
@@ -193,7 +193,7 @@ def customer_not_home(name: str, note: str | None = None) -> None:
 	t._save(ticket)
 	log.add("Customer not home", support_ticket=ticket.name, driver=driver, note=note)
 	t.add_note(ticket, _("Customer not home ({0})").format(_("pickup") if pickup else _("return")),
-		note if pickup else _("{0}. The driver brings the item back to the main store.").format(note))
+		note if pickup else _("{0}. The driver brings the item back to the Customer Items Store.").format(note))
 
 
 def receive_back(name: str, serial: str | None = None) -> str | None:
@@ -221,11 +221,16 @@ def receive_back(name: str, serial: str | None = None) -> str | None:
 # ---------------------------------------------------------------------------
 
 
-def _transit() -> str:
-	store = get_settings().transit_warehouse
+def _store(field: str, label: str) -> str:
+	store = frappe.db.get_single_value("Delivery Settings", field)
 	if not store:
-		frappe.throw(_("Set the Transit Store in Delivery Settings first."))
+		frappe.throw(_("Set the {0} in Delivery Settings (Support tab) first.").format(_(label)))
 	return store
+
+
+def _transit() -> str:
+	"""Customer items with a driver: their own transit store, never mixed with our goods."""
+	return _store("support_transit_warehouse", "Customer Items Transit Store")
 
 
 def _workshop() -> str:
@@ -236,10 +241,8 @@ def _workshop() -> str:
 
 
 def main_store() -> str:
-	store = get_settings().main_warehouse
-	if not store:
-		frappe.throw(_("Set the Main Store in Delivery Settings first."))
-	return store
+	"""Where the stock keeper keeps a customer item brought back (customer not home)."""
+	return _store("support_store_warehouse", "Customer Items Store")
 
 
 def in_workshop(ticket) -> bool:
@@ -248,7 +251,7 @@ def in_workshop(ticket) -> bool:
 
 def require_sender(ticket) -> None:
 	"""Who hands the item to the return driver: the workshop from its store, the stock keeper
-	from the main store."""
+	from the Customer Items Store."""
 	if in_workshop(ticket):
 		_require_workshop()
 	elif not is_stock_keeper():
@@ -298,16 +301,11 @@ def _serial_to_move(ticket, serial: str | None, source: str | None, can_change: 
 
 
 def _move(ticket, purpose: str, source: str | None, target: str | None, serial: str | None) -> str | None:
-	"""One unit of the ticket's item, at zero value, as a submitted Stock Entry.
-
-	Only a serialised item moves in stock: ERPNext values each serial on its own, so the
-	customer's unit costs nothing. An item without serial would be averaged with our own
-	stock of it and change its value, so only the ticket says where it is."""
+	"""One unit of the ticket's item, at zero value, as a submitted Stock Entry: every unit
+	shows in the stock reports. The customer stores hold only customer items, so a zero
+	value never changes the value of our own stock."""
 	from delivery_management.api.drivers import _with_full_rights
 
-	if not serial:
-		ticket.sm_warehouse = target
-		return None
 	company = frappe.db.get_value("Warehouse", source or target, "company")
 	se = frappe.get_doc({
 		"doctype": "Stock Entry",
@@ -376,8 +374,8 @@ def can_resolve(ticket, view: str, user: str | None = None) -> bool:
 	if view == "technician":
 		return (ticket.sm_step == t.STEP_PICKUP and bool(ticket.sm_driver)
 			and (ticket.sm_driver == user or t.is_admin(user)))
-	if view == "maintenance":  # while the item is with the workshop
-		return (ticket.sm_step == t.STEP_TO_WORKSHOP or (ticket.sm_step in t.WORKSHOP_STEPS and in_workshop(ticket))) and (t.is_admin(user) or t.has_role(t.ROLE_MAINT, user))
+	if view == "maintenance":  # in the workshop it must be repaired: no resolve there
+		return False
 	return False
 
 

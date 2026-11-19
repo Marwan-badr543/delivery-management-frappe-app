@@ -54,7 +54,7 @@
 			case "Return": return t.driver ? __("Driver {0}: collect the item from {1}.", [drv, `<b>${from || "—"}</b>`])
 				: __("Delivery office: assign a driver in Driver Assignment.");
 			case "Out for Return": return __("Driver {0}: hand it over (signature + photo), or Customer not home.", [drv]);
-			case "Back to Store": return __("Driver {0} brings the item back. Stock keeper: scan it into the main store (Stock Keeper page).", [drv]);
+			case "Back to Store": return __("Driver {0} brings the item back. Stock keeper: scan it into the Customer Items Store (Stock Keeper page).", [drv]);
 			default: return __("Done. Nothing more to do.");
 		}
 	}
@@ -266,6 +266,16 @@
 			actions += `<div class="dd-box"><h5>${__("Send out to {0}", [t.driver_name || t.driver])}</h5>
 				${serialField(__("Scan the serial of the item you hand over"))}
 				<div><button class="btn btn-primary btn-sm" data-act="send-out">${frappe.utils.icon("truck", "xs")} ${__("Send Out")}</button></div></div>`;
+		if (can.receive_back)
+			actions += `<div class="dd-box"><h5>${__("Receive into the Customer Items Store")}</h5>
+				<p class="small dd-muted">${__("The customer was not home. Scan the serial of the item the driver brought back.")}</p>
+				${t.has_serial ? `<div class="dd-field"><label>${__("Scan serial number")} *</label><input class="form-control" data-k="store_serial"></div>` : ""}
+				<div><button class="btn btn-warning btn-sm" data-act="receive-back">${frappe.utils.icon("arrow-down-left", "xs")} ${__("Receive")}</button></div></div>`;
+		if (can.store_send)
+			actions += `<div class="dd-box"><h5>${__("Hand to {0}", [esc(t.driver_name || t.driver)])}</h5>
+				<p class="small dd-muted">${__("Scan the serial of the item you hand to the driver. It moves to Goods in Transit.")}</p>
+				${t.has_serial ? `<div class="dd-field"><label>${__("Scan serial number")} *</label><input class="form-control" data-k="store_serial"></div>` : ""}
+				<div><button class="btn btn-primary btn-sm" data-act="store-send">${frappe.utils.icon("arrow-up-right", "xs")} ${__("Hand to driver")}</button></div></div>`;
 		if (can.complete)
 			actions += `<div class="dd-box"><h5>${__("Hand-over to the customer")}</h5>
 				<div class="dd-btn-row"><input type="file" class="hidden" data-file="customer" accept="image/*,video/*" capture="environment">
@@ -331,6 +341,15 @@
 			if (!(await sure(__("Hand the item to {0}? It leaves {1}.", [esc(t.driver_name || t.driver), esc(t.warehouse)])))) return;
 			post("send_out", { serial_no: val("serial") }, __("Sent out to the driver"), false);
 		});
+		const storeMove = async (method, question, msg) => {
+			if (t.has_serial && !val("store_serial")) return frappe.msgprint(__("Scan the serial first."));
+			if (t.has_serial && t.serial_no && val("store_serial") !== t.serial_no)
+				return frappe.msgprint(__("This is not the serial of the ticket ({0}).", [esc(t.serial_no)]));
+			if (!(await sure(question))) return;
+			post(method, { serial_no: val("store_serial") }, msg, false);
+		};
+		act("receive-back", () => storeMove("receive_back", __("Receive the item into the store?"), __("Received into the store")));
+		act("store-send", () => storeMove("store_send_out", __("Hand the item to {0}?", [esc(t.driver_name || t.driver)]), __("Handed to the driver")));
 		act("complete", async () => {
 			if (!count("customer") || !count("signature"))
 				return frappe.msgprint(__("Upload a photo or video and save the customer's signature first."));
@@ -340,9 +359,9 @@
 		act("not-home", async () => {
 			if (needNote(__("Write your visit note first."))) return;
 			if (!(await sure(t.step === "Out for Return"
-				? __("The customer is not home? Bring the item back to the main store.") : __("The customer is not home?")))) return;
+				? __("The customer is not home? Bring the item back to the Customer Items Store.") : __("The customer is not home?")))) return;
 			post("customer_not_home", { note: val("note") }, t.step === "Out for Return"
-				? __("Bring the item back to the main store: the stock keeper scans it in") : __("Back to customer service to book again"), false);
+				? __("Bring the item back to the Customer Items Store: the stock keeper scans it in") : __("Back to customer service to book again"), false);
 		});
 		act("resolve", async () => {
 			const note = can.resolve_note ? val("resolve_note") : val("note");
@@ -579,7 +598,7 @@
 			const fillAddress = (a) => {
 				if (!a) return;
 				if (a.area) $b.find("[data-k=area]").val(a.area);
-				["block_no", "road_no", "building_no"].forEach((k) => a[k] && $b.find(`[data-k=${k}]`).val(a[k]));
+				["block_no", "road_no", "building_no", "address"].forEach((k) => a[k] && $b.find(`[data-k=${k}]`).val(a[k]));
 			};
 
 			let timer;

@@ -146,7 +146,7 @@ class StockKeeperPage {
 			</tr>`).join(""));
 		$tbody.find("tr[data-i]").on("click", (e) => {
 			const x = rows[$(e.currentTarget).data("i")];
-			if (!$(e.target).closest("[data-do]").length) return S.openTicket(x.name, () => this.load());
+			if (!$(e.target).closest("[data-do]").length) return S.openTicket(x.name, () => this.load(), "store");
 			this.supportMove(x, r.main);
 		});
 	}

@@ -141,7 +141,7 @@ class GoodsInTransitPage {
 						<span class="dd-sub">${S.warrantyPill(r)}</span></td>
 					<td data-label="${__("Status")}">${r.step === "To Workshop"
 						? `<span class="dd-pill dd-pill-blue">${__("To the workshop")}</span>`
-						: r.step === "Back to Store" ? `<span class="dd-pill dd-pill-red">${__("Customer not home: back to the main store")}</span>`
+						: r.step === "Back to Store" ? `<span class="dd-pill dd-pill-red">${__("Customer not home: back to the Customer Items Store")}</span>`
 						: `<span class="dd-pill dd-pill-orange">${__("Back to the customer")}</span>`}</td>
 					<td data-label="${__("Driver")}">${D.esc(r.driver_name || r.technician_name || "")}</td>
 				</tr>`).join("")}</tbody></table></div></div>`);

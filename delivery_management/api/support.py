@@ -165,6 +165,7 @@ def get_ticket_detail(name, view=None):
 	driver = bool(ticket.sm_driver) and (ticket.sm_driver == user or t.is_admin())
 	on_visit = view == "technician" and driver
 	on_return = view == "schedule" and driver
+	store = view == "store" and flow.is_stock_keeper()
 	row.update({
 		"description": strip_html(cstr(ticket.description)).strip(),
 		# ERPNext fills raised_by with the creating user when no customer email is given.
@@ -197,6 +198,9 @@ def get_ticket_detail(name, view=None):
 			"repair": workshop and step == t.STEP_REPAIR,
 			"send_out": workshop and step == t.STEP_RETURN and bool(ticket.sm_driver) and flow.in_workshop(ticket),
 			"complete": on_return and step == t.STEP_OUT,
+			"receive_back": store and step == t.STEP_BACK,
+			"store_send": store and step == t.STEP_RETURN and bool(ticket.sm_driver)
+				and ticket.sm_warehouse == frappe.db.get_single_value("Delivery Settings", "support_store_warehouse"),
 			"resolve": bool(view) and flow.can_resolve(ticket, view),
 		},
 		"waiting_driver": view in ("technician", "maintenance", "cs") and step in (t.STEP_PICKUP, t.STEP_RETURN)
@@ -475,7 +479,7 @@ def get_store_items(search=None):
 	_require_stock_keeper()
 	back, bv = ["sm_step = %(back)s"], {"back": t.STEP_BACK}
 	send, sv = ["sm_step = %(ret)s", "sm_driver is not null", "sm_warehouse = %(main)s"], \
-		{"ret": t.STEP_RETURN, "main": flow.get_settings().main_warehouse or ""}
+{"ret": t.STEP_RETURN, "main": frappe.db.get_single_value("Delivery Settings", "support_store_warehouse") or ""}
 	_search(back, bv, search)
 	_search(send, sv, search)
 	return {"back": _rows(back, bv, "modified", 200),

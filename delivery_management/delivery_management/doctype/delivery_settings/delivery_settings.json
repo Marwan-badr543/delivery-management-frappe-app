@@ -38,6 +38,8 @@
   "support_tab",
   "support_section",
   "support_workshop_warehouse",
+  "support_transit_warehouse",
+  "support_store_warehouse",
   "column_break_5",
   "support_maint_service_person",
   "tv_tab",
@@ -268,7 +270,21 @@
    "fieldtype": "Link",
    "options": "Warehouse",
    "label": "Workshop Store",
-   "description": "Customer items being repaired are kept here (with their serials). They come to it from the Transit Store (Drivers tab) and leave it to the Transit Store again, at zero value."
+   "description": "Customer items being repaired are kept here. Only customer items, never our own stock."
+  },
+  {
+   "fieldname": "support_transit_warehouse",
+   "fieldtype": "Link",
+   "options": "Warehouse",
+   "label": "Customer Items Transit Store",
+   "description": "Customer items with a driver (to the workshop, or back to the customer). Only customer items, never our own stock: they move at zero value, so they must not share a store with our goods."
+  },
+  {
+   "fieldname": "support_store_warehouse",
+   "fieldtype": "Link",
+   "options": "Warehouse",
+   "label": "Customer Items Store",
+   "description": "Where the stock keeper keeps a customer item the driver brought back (customer not home). Only customer items."
   },
   {
    "fieldname": "column_break_5",
@@ -392,7 +408,7 @@
  "index_web_pages_for_search": 0,
  "issingle": 1,
  "links": [],
- "modified": "2026-11-17 12:00:00.000000",
+ "modified": "2026-11-19 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Delivery Management",
  "name": "Delivery Settings",

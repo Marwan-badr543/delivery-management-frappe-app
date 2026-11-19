@@ -20,6 +20,17 @@ class DeliverySettings(Document):
 		self.validate_delivery_charge_item()
 		self.validate_day_limits()
 		self.validate_sales_taxes()
+		self.validate_customer_stores()
+
+	def validate_customer_stores(self):
+		"""Customer items move at zero value: their stores must never hold our own goods."""
+		ours = {self.main_warehouse, self.transit_warehouse} - {None, ""}
+		mine = [self.support_workshop_warehouse, self.support_transit_warehouse, self.support_store_warehouse]
+		for store in mine:
+			if store and store in ours:
+				frappe.throw(_("{0} holds our own goods: choose a store only for customer items.").format(store))
+		if len([s for s in mine if s]) != len({s for s in mine if s}):
+			frappe.throw(_("The Workshop, Customer Items Transit and Customer Items stores must be three different stores."))
 
 	def validate_sales_taxes(self):
 		template = self.get("sales_taxes_template")

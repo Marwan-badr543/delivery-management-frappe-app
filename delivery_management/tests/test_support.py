@@ -41,9 +41,12 @@ class SupportTestCase(OrdersTestCase):
 		if not frappe.db.exists("Sales Person", "_DM Service"):
 			frappe.get_doc({"doctype": "Sales Person", "sales_person_name": "_DM Service",
 				"parent_sales_person": frappe.db.get_value("Sales Person", {"is_group": 1}, "name")}).insert()
-		self.transit = frappe.db.get_single_value("Delivery Settings", "transit_warehouse")
+		self.our_transit = frappe.db.get_single_value("Delivery Settings", "transit_warehouse")
+		self.transit = warehouse("_DM Customer Transit")
 		self.workshop = warehouse("_DM Workshop")
-		self.settings(support_maint_service_person="_DM Service", support_workshop_warehouse=self.workshop)
+		self.cstore = warehouse("_DM Customer Store")
+		self.settings(support_maint_service_person="_DM Service", support_workshop_warehouse=self.workshop,
+			support_transit_warehouse=self.transit, support_store_warehouse=self.cstore)
 
 	def tearDown(self):
 		frappe.set_user("Administrator")
@@ -322,18 +325,34 @@ class TestWorkshopAndReturn(SupportTestCase):
 			"Returned to customer"])
 		self.assertIn(name, [o.name for o in control.get_orders(kind="ticket")])
 
-	def test_item_without_serial_never_touches_our_stock(self):
-		"""Averaged with our own stock it would change its value: it is followed on the ticket only."""
-		receive(self.w.pipe, self.transit, 4, rate=10)
-		before = self.stock_value(self.w.pipe, self.transit)
+	def test_item_without_serial_moves_in_stock_without_changing_our_value(self):
+		"""Every unit shows in the stock; our own stock keeps its value (separate stores)."""
+		receive(self.w.pipe, self.our_transit, 4, rate=10)
+		before = self.stock_value(self.w.pipe, self.our_transit)
+		qty = lambda wh: flt(frappe.db.get_value("Bin", {"item_code": self.w.pipe, "warehouse": wh}, "actual_qty"))
 		name = self.at_pickup(item_code=self.w.pipe)
-		self.out_for_return(name)
+		self.as_(self.tech1, api.fetch_item, name, None, "Took it")
+		self.assertEqual(qty(self.transit), 1)
+		self.as_(self.maint, api.receive_in_workshop, name, None)
+		self.assertEqual((qty(self.transit), qty(self.workshop)), (0, 1))
+		self.proof(name, "repair", self.maint)
+		self.as_(self.maint, api.finish_repair, name, "Repaired", "Fixed")
+		self.book(name, "16:00")
+		self.as_(self.office, api.assign_driver, name, self.tech2)
+		self.as_(self.maint, api.send_out, name, None)
+		self.assertEqual((qty(self.transit), qty(self.workshop)), (1, 0))
 		self.assertEqual(frappe.db.get_value("Issue", name, "sm_warehouse"), self.transit)
 		self.proof(name, "customer", self.tech2)
 		self.proof(name, "signature", self.tech2, "sign.png")
 		self.as_(self.tech2, api.complete_return, name)
-		self.assertEqual(self.stock_value(self.w.pipe, self.transit), before)
-		self.assertFalse(frappe.get_all("Stock Entry", filters={"remarks": ["like", f"%{name}%"]}))
+		self.assertEqual(qty(self.transit), 0)
+		self.assertEqual(self.stock_value(self.w.pipe, self.our_transit), before)
+		self.assertEqual(len(frappe.get_all("Stock Entry", filters={"remarks": ["like", f"%{name}%"], "docstatus": 1})), 4)
+
+	def test_customer_stores_never_hold_our_goods(self):
+		doc = frappe.get_single("Delivery Settings")
+		doc.support_transit_warehouse = doc.transit_warehouse
+		self.assertRaises(frappe.ValidationError, doc.save)
 
 	def test_serialised_item_moves_at_zero_value(self):
 		invoice, serial = self.sold_tv()
@@ -363,7 +382,7 @@ class TestWorkshopAndReturn(SupportTestCase):
 		self.assertRaises(frappe.PermissionError, self.as_, self.maint, api.receive_back, name, serial)
 		self.assertRaises(frappe.ValidationError, self.as_, keeper, api.receive_back, name, None)  # serial required
 		self.as_(keeper, api.receive_back, name, serial)
-		main = frappe.db.get_single_value("Delivery Settings", "main_warehouse")
+		main = self.cstore
 		self.assertEqual(frappe.db.get_value("Issue", name, ["sm_step", "sm_warehouse", "sm_driver"]), ("Ready for Return", main, None))
 		self.assertEqual(frappe.db.get_value("Serial No", serial, "warehouse"), main)
 		self.assertNotIn(name, [r["name"] for r in self.as_(self.maint, api.get_tickets, "maintenance")["rows"]])
@@ -386,15 +405,28 @@ class TestWorkshopAndReturn(SupportTestCase):
 		self.assertEqual(frappe.db.get_value("Issue", name, ["sm_step", "sm_repair_result"]),
 			("Ready for Return", "Not repairable"))
 
-	def test_workshop_resolves_with_the_item_inside(self):
+	def test_workshop_cannot_resolve_it_must_repair(self):
 		invoice, serial = self.sold_tv()
 		name = self.at_pickup(sales_invoice=invoice)
 		self.to_workshop(name, serial)
-		self.assertRaises(frappe.PermissionError, self.as_, self.tech1, api.resolve_ticket, name, "technician", "x")
-		# The item leaves the workshop store with the ticket's serial (not typed again).
-		self.as_(self.maint, api.resolve_ticket, name, "maintenance", "Customer took it as it is")
-		self.assertEqual(frappe.db.get_value("Issue", name, "sm_step"), "Closed")
-		self.assertIsNone(frappe.db.get_value("Serial No", serial, "warehouse"))
+		self.assertFalse(self.as_(self.maint, api.get_ticket_detail, name, "maintenance")["can"]["resolve"])
+		self.assertRaises(frappe.PermissionError, self.as_, self.maint, api.resolve_ticket, name, "maintenance", "x")
+		self.assertEqual(frappe.db.get_value("Issue", name, "sm_step"), "Under Repair")
+
+	def test_stock_keeper_buttons_inside_the_ticket(self):
+		invoice, serial = self.sold_tv()
+		name = self.at_pickup(sales_invoice=invoice)
+		self.out_for_return(name, serial)
+		self.as_(self.tech2, api.customer_not_home, name, "No answer")
+		keeper = user("_dm_keeper@example.com", "Stock User")
+		self.assertTrue(self.as_(keeper, api.get_ticket_detail, name, "store")["can"]["receive_back"])
+		self.as_(keeper, api.receive_back, name, serial)
+		self.book(name, "16:00")
+		self.as_(self.office, api.assign_driver, name, self.tech1)
+		self.assertTrue(self.as_(keeper, api.get_ticket_detail, name, "store")["can"]["store_send"])
+
+	def test_full_address_from_the_erp(self):
+		self.assertIn("address", t.last_address(self.w.customer))
 
 	def stock_value(self, item_code, wh):
 		return flt(frappe.db.sql("""select stock_value from `tabStock Ledger Entry` where item_code = %s and warehouse = %s

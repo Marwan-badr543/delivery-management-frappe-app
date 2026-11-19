@@ -192,13 +192,34 @@ def last_address(customer: str | None) -> dict:
 	"""Area, block, road and building of the customer's last order that has them."""
 	if not customer:
 		return {}
+	row = {}
 	for doctype in ("Sales Invoice", "Sales Order"):
 		row = frappe.db.get_value(doctype, {"customer": customer, "docstatus": 1, "dm_delivery_area": ["is", "set"]},
 			["dm_delivery_area as area", "dm_block_no as block_no", "dm_road_no as road_no",
-				"dm_building_no as building_no"], as_dict=True, order_by="creation desc")
+				"dm_building_no as building_no"], as_dict=True, order_by="creation desc") or {}
 		if row:
-			return row
-	return {}
+			break
+	row = dict(row)
+	row["address"] = full_address_line(customer)
+	return row
+
+
+def full_address_line(customer: str) -> str:
+	"""The customer's full address as stored in the ERP: his address record (primary, else the
+	latest), else the address of his last ticket."""
+	name = frappe.db.get_value("Customer", customer, "customer_primary_address") or frappe.db.sql(
+		"""select a.name from `tabAddress` a join `tabDynamic Link` l on l.parent = a.name and l.parenttype = 'Address'
+		where l.link_doctype = 'Customer' and l.link_name = %s and a.disabled = 0
+		order by a.is_primary_address desc, a.modified desc limit 1""", customer)
+	name = name[0][0] if isinstance(name, (list, tuple)) and name else name
+	if name:
+		a = frappe.db.get_value("Address", name, ["address_line1", "address_line2", "city"], as_dict=True)
+		if a:
+			text = ", ".join(cstr(p).strip() for p in (a.address_line1, a.address_line2, a.city) if cstr(p).strip())
+			if text:
+				return text
+	return cstr(frappe.db.get_value(ISSUE, {"customer": customer, "sm_address": ["is", "set"]}, "sm_address",
+		order_by="creation desc"))
 
 
 def ensure_issue_type(issue_type: str | None) -> str | None:
