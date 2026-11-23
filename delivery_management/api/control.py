@@ -22,7 +22,7 @@ def _require_office():
 def get_orders(search=None, event=None, user=None, from_date=None, to_date=None, kind=None):
 	"""Orders with log rows in the filters, latest activity first. ``kind``: ``order`` (a
 	delivery order, its Sales Order), ``sale`` (a store sale, its Sales Invoice) or ``ticket``
-	(a support ticket, its Issue)."""
+	(a support ticket, its Issue); ``orders``: orders and store sales, without tickets."""
 	_require_office()
 	conditions, values = [], {}
 	if kind == "order":
@@ -31,6 +31,8 @@ def get_orders(search=None, event=None, user=None, from_date=None, to_date=None,
 		conditions.append("l.sales_order is null and l.sales_invoice is not null")
 	elif kind == "ticket":
 		conditions.append("l.support_ticket is not null")
+	elif kind == "orders":  # the Orders tab: delivery orders and store sales, never tickets
+		conditions.append("l.support_ticket is null")
 	if event:
 		conditions.append("l.event = %(event)s")
 		values["event"] = event

@@ -28,6 +28,7 @@ app_include_js = [
 	"header_search.bundle.js",
 	"drivers_common.bundle.js",
 	"support_pages.bundle.js",
+	"spare_parts.bundle.js",
 	"pos_reload_qty.bundle.js",
 	"pos_returns.bundle.js",
 	"slot_move.bundle.js",
@@ -137,6 +138,12 @@ jinja = {
 # Hook on document methods and events
 
 doc_events = {
+	# Workshop spare parts leave their store only by an approved Spare Part Request.
+	"Stock Entry": {
+		"validate": "delivery_management.customer_support.spare_parts.guard_stock_entry",
+		"before_cancel": "delivery_management.customer_support.spare_parts.guard_cancel",
+	},
+	"POS Invoice": {"validate": "delivery_management.customer_support.spare_parts.guard_selling"},
 	"Sales Order": {
 		"before_validate": "delivery_management.orders.taxes.apply_default",
 		"validate": "delivery_management.orders.sales_order.validate",
@@ -165,6 +172,7 @@ doc_events = {
 		],
 		"validate": [
 			"delivery_management.transit.service.check_locked",
+			"delivery_management.customer_support.spare_parts.guard_selling",
 			"delivery_management.drivers.delivery_note.validate",
 			"delivery_management.orders.serial_choice.restore_scanned",
 			"delivery_management.drivers.delivery_note.set_work_date",  # last: the order type is set above
@@ -209,6 +217,7 @@ doc_events = {
 		"before_validate": "delivery_management.orders.taxes.apply_default",
 		"before_submit": "delivery_management.stats.sales.set_salesman",
 		"validate": [
+			"delivery_management.customer_support.spare_parts.guard_selling",
 			"delivery_management.orders.serial_choice.apply_to_packed_items",
 			"delivery_management.stats.units.set_line_units",
 		],

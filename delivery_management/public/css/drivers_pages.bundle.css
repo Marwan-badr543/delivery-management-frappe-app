@@ -335,3 +335,48 @@
 .dm-work textarea, .dm-work input.form-control { font-size: 14px; }
 .dm-work .dm-sup-foot { margin-top: 0; }
 @media (max-width: 576px) { .dm-journey .lbl { display: none; } .dm-journey li.now .lbl { display: block; } }
+
+/* Workshop spare parts (spare_parts.bundle.js, Spare Parts page) */
+.dm-parts-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.dm-parts-head h5 { margin: 0; display: flex; align-items: center; gap: 6px; }
+.dm-cost { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.dm-cost-cell { border: 1px solid var(--border-color); border-radius: 8px; padding: 8px 10px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.dm-cost-cell > span { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); }
+.dm-cost-cell strong { font-size: 15px; font-variant-numeric: tabular-nums; }
+.dm-cost-total { background: var(--subtle-fg, var(--control-bg)); }
+.dm-cost-edit { display: flex; gap: 4px; }
+.dm-cost-edit input { min-width: 0; }
+.dm-part { border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+.dm-part[data-status="Approved"] { border-color: var(--blue-300, var(--primary)); background: var(--blue-50, var(--bg-blue)); }
+.dm-part[data-status="Pending"] { border-style: dashed; }
+.dm-part[data-status="Rejected"], .dm-part[data-status="Cancelled"] { opacity: .75; }
+.dm-part-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.dm-part-line { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: 13px; }
+.dm-part-line > span:first-child { display: flex; flex-direction: column; min-width: 0; }
+.dm-part-serials { font-family: var(--font-stack-monospace, monospace); font-size: 11px; color: var(--text-muted); word-break: break-all; }
+.dm-part-amt { font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 600; }
+.dm-part-note { font-size: 12px; }
+.dm-part-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.dm-part-actions .dm-part-cancel { margin-right: auto; }
+.dm-sp-search { position: relative; }
+.dm-sp-search > span { position: absolute; left: 10px; top: 8px; color: var(--text-muted); }
+.dm-sp-search input { padding-left: 32px; font-size: 14px; }
+.dm-sp-results { display: flex; flex-direction: column; gap: 4px; max-height: 220px; overflow: auto; margin: 8px 0 12px; }
+.dm-sp-hit { display: flex; justify-content: space-between; align-items: center; gap: 10px; text-align: left; width: 100%;
+	padding: 8px 10px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--card-bg, var(--fg-color)); color: var(--text-color); }
+.dm-sp-hit:hover:not([disabled]), .dm-sp-hit:focus-visible { border-color: var(--primary); }
+.dm-sp-hit[disabled] { opacity: .55; cursor: not-allowed; }
+.dm-sp-title { margin: 4px 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); }
+.dm-sp-cart { margin-bottom: 12px; }
+.dm-sp-table { width: 100%; font-size: 13px; }
+.dm-sp-table th { font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; padding: 4px 6px; }
+.dm-sp-table td { padding: 6px; border-top: 1px solid var(--border-color); vertical-align: middle; }
+.dm-sp-qty { width: 72px; display: inline-block; text-align: right; }
+.dm-sp-take { display: flex; flex-direction: column; gap: 6px; padding: 8px 0; border-top: 1px solid var(--border-color); }
+.dm-sp-serials { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 6px; }
+.dm-sp-serials .dd-muted { grid-column: 1 / -1; }
+.dm-sp-who { margin-bottom: 10px; display: flex; flex-direction: column; gap: 4px; }
+.dm-sp-month { display: flex; gap: 8px; flex-wrap: wrap; }
+.dm-sp-month > div { border: 1px solid var(--border-color); border-radius: 8px; padding: 6px 10px; font-size: 12px; }
+.dm-sp-month b { font-variant-numeric: tabular-nums; }
+@media (max-width: 520px) { .dm-cost { grid-template-columns: 1fr; } }

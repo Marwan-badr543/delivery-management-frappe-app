@@ -439,6 +439,9 @@ def finish_repair(name: str, result: str, report: str) -> None:
 	report = cstr(report).strip()
 	if not report:
 		frappe.throw(_("A workshop report is required."))
+	from delivery_management.customer_support import spare_parts
+
+	spare_parts.require_none_open(ticket.name)
 	if not _has_media(ticket.name, REPAIR_PREFIX):
 		frappe.throw(_("Upload a photo or video that proves the repair first."), title=_("Proof required"))
 	ticket.sm_repair_result = result

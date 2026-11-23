@@ -31,6 +31,9 @@ class DeliverySettings(Document):
 				frappe.throw(_("{0} holds our own goods: choose a store only for customer items.").format(store))
 		if len([s for s in mine if s]) != len({s for s in mine if s}):
 			frappe.throw(_("The Workshop, Customer Items Transit and Customer Items stores must be three different stores."))
+		spare = self.get("spare_parts_warehouse")
+		if spare and spare in ours | set(mine):
+			frappe.throw(_("The Spare Parts Store must be its own store, not {0}.").format(spare))
 
 	def validate_sales_taxes(self):
 		template = self.get("sales_taxes_template")

@@ -32,7 +32,7 @@
    "fieldtype": "Select",
    "label": "Event",
    "read_only": 1,
-   "options": "Order created\nOrder cancelled\nStore sale\nInvoice cancelled\nDriver assigned\nDriver changed\nDriver removed\nSent out\nDelivered\nNot delivered items\nCustomer not available\nReceived back\nPOS return\nPayment\nRefund\nCredit note\nPayment cancelled\nCash handed over\nDelivery split\nDelivery merged back\nTicket opened\nVisit booked\nTicket driver assigned\nTicket driver changed\nVisit logged\nResolved at the customer\nCustomer not home\nItem picked up\nReceived in workshop\nRepaired\nNot repairable\nReturn booked\nSent out from workshop\nReturned to customer\nTicket resolved\nReceived back in store\nSent out from store",
+   "options": "Order created\nOrder cancelled\nStore sale\nInvoice cancelled\nDriver assigned\nDriver changed\nDriver removed\nSent out\nDelivered\nNot delivered items\nCustomer not available\nReceived back\nPOS return\nPayment\nRefund\nCredit note\nPayment cancelled\nCash handed over\nDelivery split\nDelivery merged back\nTicket opened\nVisit booked\nTicket driver assigned\nTicket driver changed\nVisit logged\nResolved at the customer\nCustomer not home\nItem picked up\nReceived in workshop\nRepaired\nNot repairable\nReturn booked\nSent out from workshop\nReturned to customer\nTicket resolved\nReceived back in store\nSent out from store\nParts requested\nParts approved\nParts rejected\nParts request cancelled\nParts taken\nParts returned",
    "in_list_view": 1,
    "in_standard_filter": 1,
    "reqd": 1,
@@ -168,7 +168,7 @@
   }
  ],
  "in_create": 1,
- "modified": "2026-11-18 18:00:00.000000",
+ "modified": "2026-11-23 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Delivery Management",
  "name": "Order Log",

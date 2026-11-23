@@ -40,6 +40,8 @@
   "support_workshop_warehouse",
   "support_transit_warehouse",
   "support_store_warehouse",
+  "spare_parts_warehouse",
+  "spare_parts_expense_account",
   "column_break_5",
   "support_maint_service_person",
   "tv_tab",
@@ -287,6 +289,20 @@
    "description": "Where the stock keeper keeps a customer item the driver brought back (customer not home). Only customer items."
   },
   {
+   "fieldname": "spare_parts_warehouse",
+   "fieldtype": "Link",
+   "options": "Warehouse",
+   "label": "Spare Parts Store",
+   "description": "The workshop's spare parts. Nothing leaves it without a Spare Part Request approved by a System Manager."
+  },
+  {
+   "fieldname": "spare_parts_expense_account",
+   "fieldtype": "Link",
+   "options": "Account",
+   "label": "Spare Parts Expense Account",
+   "description": "Optional. Where the cost of the parts used in repairs goes. Empty = the company's default."
+  },
+  {
    "fieldname": "column_break_5",
    "fieldtype": "Column Break"
   },
@@ -402,13 +418,13 @@
    "fieldname": "commission_rule_note",
    "fieldtype": "HTML",
    "label": "Commission Rule",
-   "options": "<div class='text-muted small'><p>Commission is worked out <b>month by month</b>, with the salesman's Commission Rule of that month (on the User), or the closest one.</p><p><b>Commission %</b> = Min + (Small items sold in the month ÷ Small Items Target) × (Max − Min), at most Max. With no target, it is Max.</p><p><b>Commission</b> = Sales × Commission % × (75% + 25% × the Sales Evaluation overlapping the month, or else the closest one). With no evaluation at all, the 25% part is 0.</p></div>"
+   "options": "<div class='text-muted small'><p>Commission is worked out <b>month by month</b>, with the salesman's Commission Rule of that month (on the User), or the closest one.</p><p><b>Commission %</b> = Min + (Small items sold in the month \u00f7 Small Items Target) \u00d7 (Max \u2212 Min), at most Max. With no target, it is Max.</p><p><b>Commission</b> = Sales \u00d7 Commission % \u00d7 (75% + 25% \u00d7 the Sales Evaluation overlapping the month, or else the closest one). With no evaluation at all, the 25% part is 0.</p></div>"
   }
  ],
  "index_web_pages_for_search": 0,
  "issingle": 1,
  "links": [],
- "modified": "2026-11-19 10:00:00.000000",
+ "modified": "2026-11-23 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Delivery Management",
  "name": "Delivery Settings",

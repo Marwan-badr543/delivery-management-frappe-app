@@ -51,9 +51,18 @@ const OC_EVENTS = {
 	"Sent out from workshop": ["truck", "blue"],
 	"Sent out from store": ["truck", "blue"],
 	"Received back in store": ["arrow-down-left", "orange"],
+	"Parts requested": ["tool", "orange"],
+	"Parts approved": ["check", "blue"],
+	"Parts rejected": ["close", "red"],
+	"Parts request cancelled": ["close", "gray"],
+	"Parts taken": ["package", "green"],
+	"Parts returned": ["arrow-down-left", "orange"],
 	"Returned to customer": ["check", "green"],
 	"Ticket resolved": ["check", "green"],
 };
+
+// The events of the Support tickets tab: every event from "Ticket opened" on.
+const OC_TICKET_EVENTS = new Set(Object.keys(OC_EVENTS).slice(Object.keys(OC_EVENTS).indexOf("Ticket opened")));
 
 class OrderControlPage {
 	constructor(page) {
@@ -61,7 +70,13 @@ class OrderControlPage {
 		this.page = page;
 		this.f = { search: "", kind: "", event: "", user: "", period: "7" };
 		this.current = null;
+		const saved = this.D.prefs("order_control").tab;
+		this.tab = saved === "tickets" ? "tickets" : "orders";
 		this.$root = $(`<div class="dd-page oc-page">
+			${this.D.tabs([
+				{ key: "orders", label: __("Orders"), icon: "file" },
+				{ key: "tickets", label: __("Support tickets"), icon: "support" },
+			], this.tab)}
 			<div class="dd-panel dd-filter-panel"></div>
 			<div class="oc-split">
 				<div class="dd-panel oc-list" aria-label="${__("Orders")}"></div>
@@ -71,6 +86,20 @@ class OrderControlPage {
 		page.set_secondary_action(__("Refresh"), () => this.refresh(), "refresh");
 		this.$root.on("click", "[data-order]", (e) => this.open(e.currentTarget.dataset.order));
 		this.$root.on("click", "[data-back]", () => this.$root.removeClass("oc-show-detail"));
+		this.$root.on("click", ".dd-tab-btn", (e) => {
+			const tab = e.currentTarget.dataset.tab;
+			if (tab === this.tab) return;
+			this.tab = tab;
+			this.D.prefs("order_control", { tab });
+			this.$root.find(".dd-tab-btn").removeClass("active");
+			$(e.currentTarget).addClass("active");
+			// Each tab has its own steps and types: start its filters clean.
+			Object.assign(this.f, { search: "", kind: "", event: "" });
+			this.current = null;
+			this.$root.removeClass("oc-show-detail");
+			this.renderEmptyDetail();
+			this.renderFilters().then(() => this.loadList());
+		});
 		this.renderFilters();
 		this.renderEmptyDetail();
 	}
@@ -82,20 +111,22 @@ class OrderControlPage {
 
 	async renderFilters() {
 		const D = this.D;
-		const users = await frappe.xcall(OC_API + "get_users");
+		const users = this.users || (this.users = await frappe.xcall(OC_API + "get_users"));
+		const tickets = this.tab === "tickets";
+		const events = Object.keys(OC_EVENTS).filter((e) => OC_TICKET_EVENTS.has(e) === tickets);
 		const periods = [["1", __("Today")], ["7", __("7 days")], ["30", __("30 days")], ["90", __("90 days")]];
 		const $p = this.$root.find(".dd-filter-panel").html(`
 			<div class="dd-filters">
-				<div class="dd-field dd-search"><label for="oc-q">${__("Find an order")}</label>
+				<div class="dd-field dd-search"><label for="oc-q">${tickets ? __("Find a ticket") : __("Find an order")}</label>
 					<span class="dd-search-icon">${frappe.utils.icon("search", "sm")}</span>
-					<input id="oc-q" class="form-control" data-f="search" placeholder="${__("Order, invoice, delivery note, customer or phone")}"></div>
-				<div class="dd-field"><label>${__("Type")}</label>
+					<input id="oc-q" class="form-control" data-f="search" placeholder="${tickets
+						? __("Ticket, customer or phone") : __("Order, invoice, delivery note, customer or phone")}"></div>
+				${tickets ? "" : `<div class="dd-field"><label>${__("Type")}</label>
 					<select class="form-control" data-f="kind">${D.select([{ value: "", label: __("Orders and store sales") },
-						{ value: "order", label: __("Delivery orders") }, { value: "sale", label: __("Store sales") },
-						{ value: "ticket", label: __("Support tickets") }], "")}</select></div>
+						{ value: "order", label: __("Delivery orders") }, { value: "sale", label: __("Store sales") }], "")}</select></div>`}
 				<div class="dd-field"><label>${__("Step")}</label>
 					<select class="form-control" data-f="event">${D.select(
-						[{ value: "", label: __("All steps") }, ...Object.keys(OC_EVENTS).map((e) => ({ value: e, label: __(e) }))], "")}</select></div>
+						[{ value: "", label: __("All steps") }, ...events.map((e) => ({ value: e, label: __(e) }))], "")}</select></div>
 				<div class="dd-field"><label>${__("Done by")}</label>
 					<select class="form-control" data-f="user">${D.select([{ value: "", label: __("Anyone") }, ...users], "")}</select></div>
 			</div>
@@ -133,13 +164,16 @@ class OrderControlPage {
 		const D = this.D;
 		const $list = this.$root.find(".oc-list").html(`<div class="oc-loading">${__("Loading…")}</div>`);
 		const { period, ...f } = this.f;
+		f.kind = this.tab === "tickets" ? "ticket" : f.kind || "orders";
 		if (period) f.from_date = frappe.datetime.add_days(frappe.datetime.get_today(), 1 - Number(period));
 		if (!f.from_date) delete f.from_date;
 		if (!f.to_date) delete f.to_date;
 		const rows = await frappe.xcall(OC_API + "get_orders", f);
-		this.$root.find("[data-count-label]").text(__("{0} orders", [rows.length]));
+		const tickets = this.tab === "tickets";
+		this.$root.find("[data-count-label]").text(tickets ? __("{0} tickets", [rows.length]) : __("{0} orders", [rows.length]));
+		this.$root.find(`[data-count="${this.tab}"]`).text(rows.length);
 		if (!rows.length) {
-			$list.html(`<div class="oc-empty">${frappe.utils.icon("search", "lg")}<b>${__("No orders found")}</b>
+			$list.html(`<div class="oc-empty">${frappe.utils.icon("search", "lg")}<b>${tickets ? __("No tickets found") : __("No orders found")}</b>
 				<span>${__("Try another period (or older dates in From / To) or clear the filters.")}</span></div>`);
 			return;
 		}
@@ -155,8 +189,11 @@ class OrderControlPage {
 	}
 
 	renderEmptyDetail() {
+		const tickets = this.tab === "tickets";
 		this.$root.find(".oc-detail").html(`<div class="oc-empty">${frappe.utils.icon("list", "lg")}
-			<b>${__("Choose an order")}</b><span>${__("See where it is now and every step: who assigned the driver, who sent the goods out, what came back and every payment.")}</span></div>`);
+			<b>${tickets ? __("Choose a ticket") : __("Choose an order")}</b><span>${tickets
+				? __("See where the customer's item is now and every step: visits, workshop, spare parts and the return.")
+				: __("See where it is now and every step: who assigned the driver, who sent the goods out, what came back and every payment.")}</span></div>`);
 	}
 
 	async open(name) {
@@ -202,7 +239,7 @@ class OrderControlPage {
 		const S = window.dm_support;
 		const tile = (label, value) => `<div class="oc-tile"><span>${label}</span><b>${value || "—"}</b></div>`;
 		$d.html(`
-			<button type="button" class="btn btn-default btn-sm oc-back" data-back>${frappe.utils.icon("left", "xs")} ${__("Orders")}</button>
+			<button type="button" class="btn btn-default btn-sm oc-back" data-back>${frappe.utils.icon("left", "xs")} ${__("Tickets")}</button>
 			<div class="oc-head">
 				<div><h4><a href="#" data-ticket="${D.esc(o.name)}">${D.esc(o.name)}</a> · ${D.esc(o.subject)}</h4>
 					<div class="dd-muted">${__("Support ticket")} · ${__("made {0} by {1}",
@@ -220,7 +257,7 @@ class OrderControlPage {
 			${o.trip.date ? `<div class="dd-muted small">${__("Trip")}: ${D.date(o.trip.date)} ${D.esc(o.trip.time || "")}
 				· ${D.esc(o.trip.driver_name || __("No driver yet"))}</div>` : ""}
 			<h5 class="oc-h">${__("What happened")}</h5>
-			${o.steps.length ? this.timeline(o.steps, (v) => v, link) : `<div class="dd-muted">${__("No steps logged yet.")}</div>`}`);
+			${o.steps.length ? this.timeline(o.steps, (v) => format_currency(v), link) : `<div class="dd-muted">${__("No steps logged yet.")}</div>`}`);
 		$d.find("[data-ticket]").on("click", (e) => {
 			e.preventDefault();
 			S.openTicket(o.name, () => this.open(o.name));

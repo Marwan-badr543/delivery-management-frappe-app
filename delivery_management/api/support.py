@@ -18,7 +18,7 @@ import frappe
 from frappe import _
 from frappe.utils import cint, cstr, getdate, strip_html
 
-from delivery_management.customer_support import flow
+from delivery_management.customer_support import flow, spare_parts
 from delivery_management.customer_support import tickets as t
 
 FIELDS = """name, subject, customer, customer_name, sm_customer_phone, priority, issue_type, status, sm_stage, sm_step,
@@ -207,6 +207,7 @@ def get_ticket_detail(name, view=None):
 			and not ticket.sm_driver,
 		"resolve_needs_serial": step in flow.IN_STORE_STEPS and bool(ticket.sm_warehouse) and not ticket.sm_serial_no
 			and bool(ticket.sm_item_code) and flow.has_serial(ticket.sm_item_code),
+		"parts": spare_parts.ticket_parts(ticket, view),
 		"notes": [{"content": c.content, "creation": c.creation} for c in frappe.get_all("Comment",
 			filters={"reference_doctype": t.ISSUE, "reference_name": ticket.name, "comment_type": "Comment"},
 			fields=["content", "creation"], order_by="creation asc")],

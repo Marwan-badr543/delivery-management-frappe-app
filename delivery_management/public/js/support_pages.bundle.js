@@ -249,6 +249,10 @@
 			actions += `<div class="dd-box"><h5>${__("Receive in the workshop")}</h5>
 				${serialField(__("Scan the serial: from now the workshop answers for it"))}
 				<div><button class="btn btn-primary btn-sm" data-act="receive">${frappe.utils.icon("package", "xs")} ${__("Fetch Item")}</button></div></div>`;
+		// Spare parts and cost: in the work panel while repairing, else with the facts.
+		const partsBox = window.dm_spare ? window.dm_spare.box(t) : "";
+		const partsInWork = partsBox && t.parts.can_request;
+		if (partsInWork) actions += partsBox;
 		if (can.repair)
 			actions += `<div class="dd-box"><h5>${__("Repair")}</h5>
 				<div class="dd-field"><label>${__("Result")} *</label><select class="form-control" data-k="result">
@@ -302,7 +306,8 @@
 		const work = actions || foot ? `<div class="dm-work">${actions}${foot}</div>` : "";
 		$b.html(`${header}${work}<div class="dd-detail">
 			<div class="dm-sup-col">${customerBox}${itemBox}${tripBox}${descBox}</div>
-			<div class="dm-sup-col">${visitsBox}${workshopBox}${filesBox}${historyBox}</div></div>`);
+			<div class="dm-sup-col">${partsInWork ? "" : partsBox}${visitsBox}${workshopBox}${filesBox}${historyBox}</div></div>`);
+		window.dm_spare && window.dm_spare.bind($b, t, (msg) => changed(msg));
 		const val = (k) => ($b.find(`[data-k=${k}]`).val() || "").trim();
 		const act = (a, fn) => $b.find(`[data-act=${a}]`).on("click", fn);
 		const post = (method, args, msg, keepOpen = true) => call(method, { name, ...args }, { post: true, freeze: true })
@@ -331,6 +336,9 @@
 			post("receive_in_workshop", { serial_no: val("serial") }, __("Item received in the workshop"));
 		});
 		act("repaired", async () => {
+			if (t.parts && t.parts.open)
+				return frappe.msgprint({ title: __("Spare parts open"), indicator: "orange",
+					message: __("A spare parts request is still waiting or approved. Take the parts or cancel the request first.") });
 			if (!val("maint_report")) return frappe.msgprint(__("Please write the workshop report"));
 			if (!count("repair")) return frappe.msgprint(__("Upload a photo or video that proves the repair first."));
 			if (!(await sure(__("Finish the repair as <b>{0}</b>? Customer service then books the return.", [__(val("result"))])))) return;
@@ -465,6 +473,8 @@
 			this.page.set_secondary_action(__("Refresh"), () => this.load(true), "refresh");
 			if (view === "cs") this.page.set_primary_action(__("New Ticket"), () => this.newTicket(), "add");
 			this.page.add_menu_item(__("Issue list"), () => frappe.set_route("List", "Issue", { sm_stage: ["is", "set"] }));
+			if (view === "maintenance")
+				this.page.set_primary_action(__("Spare Parts"), () => frappe.set_route("spare-parts"), "tool");
 
 			this.$root.on("click", ".dd-tab-btn", (e) => {
 				this.tab = $(e.currentTarget).data("tab");

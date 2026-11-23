@@ -138,6 +138,12 @@ def _issue_fields() -> list[dict]:
 			"options": "\nRepaired\nNot repairable", "insert_after": "sm_maint_report", **ro},
 		{"fieldname": "sm_maint_report_by", "fieldtype": "Link", "options": "User", "label": "Workshop Report By",
 			"insert_after": "sm_repair_result", **ro},
+		{"fieldname": "sm_parts_cost", "fieldtype": "Currency", "label": "Spare Parts Cost", "insert_after": "sm_maint_report_by",
+			**ro, "description": "Parts taken for this repair minus parts returned (Spare Part Requests)."},
+		{"fieldname": "sm_repair_cost", "fieldtype": "Currency", "label": "Repair Cost", "insert_after": "sm_parts_cost",
+			**ro, "description": "Set by the workshop technician."},
+		{"fieldname": "sm_total_cost", "fieldtype": "Currency", "label": "Total Repair Cost", "insert_after": "sm_repair_cost",
+			**ro, "bold": 1},
 		{"fieldname": "sm_resolved_by", "fieldtype": "Link", "options": "User", "label": "Resolved By",
 			"insert_after": "sm_maint_report_by", **ro},
 		{"fieldname": "sm_last_note", "fieldtype": "Small Text", "label": "Last Note",
@@ -191,6 +197,9 @@ def get_custom_fields() -> dict:
 				"options": "Delivery Note", "insert_after": "stock_entry_type", "read_only": 1, "no_copy": 1,
 				"search_index": 1, "depends_on": "dm_delivery_note",
 				"description": "The order's goods sent out with its driver, or back (Stock Keeper page)."},
+			{"fieldname": "sm_spare_request", "fieldtype": "Link", "options": "Spare Part Request", "label": "Spare Part Request",
+				"insert_after": "dm_delivery_note", "read_only": 1, "no_copy": 1, "search_index": 1,
+				"depends_on": "sm_spare_request", "description": "Workshop spare parts taken or returned (Spare Parts page)."},
 		],
 		# Level 1: only a System Manager sees or sets it, not the user on their own profile.
 		"User": [
