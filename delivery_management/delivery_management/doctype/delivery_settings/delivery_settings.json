@@ -213,9 +213,9 @@
   {
    "fieldname": "ac_tech_max_orders_per_day",
    "fieldtype": "Int",
-   "label": "AC Tech Max Orders per Day",
+   "label": "AC Tech Max AC Units per Day",
    "non_negative": 1,
-   "description": "How many AC orders one AC Tech can take on one day. 0 = no limit. Exceptions per technician and day are in the AC Tech Day Limits table below."
+   "description": "How many AC units one AC Tech can install on one day (an order with more units than he has left cannot go to him). 0 = no limit. Exceptions per technician and day are in the AC Tech Day Limits table below."
   },
   {
    "fieldname": "tv_driver_gap_hours",

@@ -10,7 +10,7 @@ Rules, as in the old system:
   person assigning is a System Manager, 1 h otherwise). An order without a time
   conflicts with everything that day.
 * **AC** is booked per day: an AC Tech is unavailable once he has his daily maximum
-  of AC orders (Delivery Settings, or a per-day *AC Tech Day Limit*; 0 = day off).
+  of AC units (Delivery Settings, or a per-day *AC Tech Day Limit*; 0 = day off).
 * Every assignment is one row in **Driver Schedule** (the old driver_schedule table);
   availability is always counted from those rows, never from a stored counter.
 
@@ -160,17 +160,34 @@ def global_ac_max() -> int | None:
 	return get_settings().ac_tech_max_orders_per_day or None
 
 
-def ac_loads(work_date, exclude_delivery_note: str | None = None) -> tuple[list[dict], int | None]:
-	"""One entry per AC Tech for ``work_date`` and the global limit (None = no limit)."""
+def ac_units_of(names) -> dict[str, int]:
+	"""``{delivery_note: AC units}`` (goods returned before delivery taken off; an AC order is at least 1)."""
+	from delivery_management.drivers.stats import units_by_note
+
+	names = [n for n in names if n]
+	units = units_by_note(names)
+	return {n: max(cint(units.get(n, (0, 0))[0]), 1) for n in names}
+
+
+def assigned_ac_units(work_date, exclude_delivery_note: str | None = None, driver: str | None = None) -> dict[str, int]:
+	"""``{driver: AC units}`` already assigned on ``work_date``."""
+	filters = {"order_type": TYPE_AC, "delivery_date": getdate(work_date), "delivery_note": ["!=", exclude_delivery_note or ""]}
+	if driver:
+		filters["driver"] = driver
+	rows = frappe.get_all(ASSIGNMENT, filters=filters, fields=["driver", "delivery_note"])
+	units = ac_units_of([r.delivery_note for r in rows])
+	totals: dict[str, int] = {}
+	for r in rows:
+		totals[r.driver] = totals.get(r.driver, 0) + units.get(r.delivery_note, 1)
+	return totals
+
+
+def ac_loads(work_date, exclude_delivery_note: str | None = None, units: int = 0) -> tuple[list[dict], int | None]:
+	"""One entry per AC Tech for ``work_date`` and the global limit (None = no limit).
+	The limit is in AC units. ``units``: the order being assigned (full = it does not fit)."""
 	work_date = getdate(work_date)
 	global_max = global_ac_max()
-	counts = dict(
-		frappe.db.sql(
-			f"""select driver, count(*) from `tab{ASSIGNMENT}`
-			where order_type = %s and delivery_date = %s and delivery_note != %s group by driver""",
-			(TYPE_AC, work_date, exclude_delivery_note or ""),
-		)
-	)
+	counts = assigned_ac_units(work_date, exclude_delivery_note)
 	overrides = dict(
 		frappe.get_all(DAY_LIMIT, filters={**_DAY_LIMIT_PARENT, "work_date": work_date}, fields=["driver", "max_orders"],
 			as_list=True)
@@ -178,15 +195,15 @@ def ac_loads(work_date, exclude_delivery_note: str | None = None) -> tuple[list[
 	loads = []
 	for d in drivers_for(TYPE_AC):
 		assigned = cint(counts.get(d.user))
-		max_orders = effective_max_orders(overrides.get(d.user), global_max)
+		max_units = effective_max_orders(overrides.get(d.user), global_max)
 		loads.append({
 			"user": d.user,
 			"full_name": d.full_name,
-			"assigned_orders": assigned,
-			"max_orders": max_orders,
-			"is_full": max_orders is not None and assigned >= max_orders,
+			"assigned_units": assigned,
+			"max_units": max_units,
+			"is_full": max_units is not None and assigned + max(units, 1) > max_units,
 			# A limit of 0 is a deliberate "not working today", not a day that filled up.
-			"is_day_off": max_orders == 0,
+			"is_day_off": max_units == 0,
 			"has_override": d.user in overrides,
 		})
 	return loads, global_max
@@ -216,15 +233,17 @@ def availability(delivery_note: str, user: str | None = None) -> dict:
 		return result
 
 	if order_type == TYPE_AC:
-		loads, result["max_orders_per_day"] = ac_loads(day, exclude_delivery_note=dn.name)
+		units = ac_units_of([dn.name])[dn.name]
+		result["ac_units"] = units
+		loads, result["max_orders_per_day"] = ac_loads(day, exclude_delivery_note=dn.name, units=units)
 		for load in loads:
 			available = not load["is_full"]
 			if load["is_day_off"]:
 				label = _("day off")
-			elif load["max_orders"] is not None:
-				label = f"{load['assigned_orders']}/{load['max_orders']}" + (f" {_('full')}" if load["is_full"] else "")
+			elif load["max_units"] is not None:
+				label = _("{0}/{1} units").format(load["assigned_units"], load["max_units"]) + (f" {_('full')}" if load["is_full"] else "")
 			else:
-				label = _("{0} orders").format(load["assigned_orders"])
+				label = _("{0} units").format(load["assigned_units"])
 			result["drivers"].append({**load, "available": available, "label": label})
 		return result
 
@@ -252,16 +271,16 @@ def check_assignable(dn, driver: str, user: str | None = None) -> None:
 
 	if order_type == TYPE_AC:
 		override = frappe.db.get_value(DAY_LIMIT, {**_DAY_LIMIT_PARENT, "driver": driver, "work_date": day}, "max_orders")
-		max_orders = effective_max_orders(override, global_ac_max())
-		if max_orders is None:
+		max_units = effective_max_orders(override, global_ac_max())
+		if max_units is None:
 			return
-		if max_orders == 0:
+		if max_units == 0:
 			frappe.throw(_("This AC Tech is marked unavailable (day off) on {0}.").format(frappe.format(day, "Date")))
-		assigned = frappe.db.count(ASSIGNMENT, {"order_type": TYPE_AC, "driver": driver, "delivery_date": day,
-			"delivery_note": ["!=", dn.name]})
-		if assigned >= max_orders:
-			frappe.throw(_("This AC Tech already has {0} of {1} allowed orders on {2}.").format(
-				assigned, max_orders, frappe.format(day, "Date")))
+		assigned = cint(assigned_ac_units(day, dn.name, driver).get(driver))
+		units = ac_units_of([dn.name])[dn.name]
+		if assigned + units > max_units:
+			frappe.throw(_("This AC Tech has {0} of {1} AC units on {2}; this order has {3} more.").format(
+				assigned, max_units, frappe.format(day, "Date"), units))
 		return
 
 	if driver in busy_tv_drivers(day, time, conflict_window_hours(user), exclude_delivery_note=dn.name):

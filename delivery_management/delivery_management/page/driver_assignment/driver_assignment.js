@@ -357,7 +357,7 @@ class DriverAssignmentPage {
 			: `${D.date(info.delivery_date)} · ${D.time(info.delivery_time) || __("no time")}`;
 		const rule = ac
 			? (info.max_orders_per_day
-				? __("Each AC Tech can take {0} AC orders a day (per-day limits on this page).", [info.max_orders_per_day])
+				? __("Each AC Tech can install {0} AC units a day (per-day limits on this page). This order: {1} units.", [info.max_orders_per_day, info.ac_units])
 				: __("No daily limit set (Delivery Settings)."))
 			: __("A driver is busy if he has another order within {0} hour(s) of this time.", [info.window_hours]);
 		if (info.message) {
@@ -420,13 +420,13 @@ class DriverAssignmentPage {
 			<div class="dd-panel-head">
 				<h4>${frappe.utils.icon("users", "sm")} ${__("AC Tech load on {0}", [D.date(day)])}</h4>
 				<span class="dd-muted small">${res.max_orders_per_day
-					? __("Limit {0} orders a day", [res.max_orders_per_day])
+					? __("Limit {0} AC units a day", [res.max_orders_per_day])
 					: __("No daily limit set")} · ${__("click a technician to change his limit for this day")}</span>
 			</div>
 			${res.loads.length ? `<div class="dd-loads">${res.loads.map((l) => `
 				<button class="dd-load ${l.is_day_off ? "off" : l.is_full ? "full" : ""}" data-user="${D.esc(l.user)}">
 					${D.esc(l.full_name)}
-					<small>${l.is_day_off ? __("Day off") : `${l.assigned_orders}${l.max_orders != null ? "/" + l.max_orders : ""}`}
+					<small>${l.is_day_off ? __("Day off") : `${l.assigned_units}${l.max_units != null ? "/" + l.max_units : ""}`}
 						${l.is_full && !l.is_day_off ? " · " + __("Full") : ""}${l.has_override && !l.is_day_off ? " · " + __("Custom") : ""}</small>
 					${frappe.utils.icon("edit", "xs")}
 				</button>`).join("")}</div>`
@@ -443,11 +443,11 @@ class DriverAssignmentPage {
 			title: __("Daily limit · {0}", [load.full_name]),
 			fields: [
 				{ fieldtype: "HTML", options: `<div class="dd-pick-head"><span>${__("Day")}: <b>${D.date(day)}</b></span>
-					<span>${__("Already booked")}: <b>${load.assigned_orders}</b></span></div>` },
+					<span>${__("Units booked")}: <b>${load.assigned_units}</b></span></div>` },
 				{
 					// Data, not Int: an empty Int reads as 0, which would mean "day off".
-					fieldname: "max_orders", fieldtype: "Data", label: __("AC orders allowed on this day"),
-					default: load.has_override ? String(load.max_orders) : "",
+					fieldname: "max_orders", fieldtype: "Data", label: __("AC units allowed on this day"),
+					default: load.has_override ? String(load.max_units) : "",
 					description: __("Empty = follow the global limit ({0}). 0 = day off: he cannot be assigned any AC order on this day.",
 						[globalMax || __("no limit")]),
 				},

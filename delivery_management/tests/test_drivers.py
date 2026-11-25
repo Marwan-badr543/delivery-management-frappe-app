@@ -169,7 +169,7 @@ class TestAvailability(DriversTestCase):
 		# Global limit 2 reached.
 		self.assertRaises(frappe.ValidationError, asg.assign, c.name, self.ac1)
 		load = next(l for l in asg.ac_loads(DAY)[0] if l["user"] == self.ac1)
-		self.assertEqual((load["assigned_orders"], load["max_orders"], load["is_full"]), (2, 2, True))
+		self.assertEqual((load["assigned_units"], load["max_units"], load["is_full"]), (2, 2, True))
 		asg.set_day_limit(self.ac1, DAY, 3)
 		asg.assign(c.name, self.ac1)
 		# 0 = day off for that technician only.
@@ -180,6 +180,18 @@ class TestAvailability(DriversTestCase):
 		# Back to the global limit.
 		asg.set_day_limit(self.ac1, DAY, None)
 		self.assertFalse(frappe.db.exists("AC Tech Day Limit", {"driver": self.ac1, "work_date": DAY}))
+
+	def test_ac_limit_counts_units_not_orders(self):
+		big = self.dn([(self.ac, 3)], ac_day=DAY)
+		# Limit 2 units: one order of 3 units does not fit, even as his only order.
+		self.assertRaises(frappe.ValidationError, asg.assign, big.name, self.ac1)
+		self.assertFalse(next(x for x in asg.availability(big.name)["drivers"] if x["user"] == self.ac1)["available"])
+		asg.set_day_limit(self.ac1, DAY, 4)
+		asg.assign(big.name, self.ac1)
+		two = self.dn([(self.ac, 2)], ac_day=DAY)
+		self.assertRaises(frappe.ValidationError, asg.assign, two.name, self.ac1)  # 3 + 2 > 4
+		one = self.dn([(self.ac, 1)], ac_day=DAY)
+		asg.assign(one.name, self.ac1)  # 3 + 1 = 4
 
 	def test_unassign_and_cancel_free_the_driver(self):
 		a = self.dn([(self.ac, 1)], ac_day=DAY)
